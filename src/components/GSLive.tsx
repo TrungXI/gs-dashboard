@@ -22,12 +22,8 @@ interface GsLiveMatch {
   malayHome: string | null;
   malayAway: string | null;
   malayDraw: string | null;
-  hcLine: string | null;
-  hcHome: string | null;
-  hcAway: string | null;
-  ouLine: string | null;
-  ouOver: string | null;
-  ouUnder: string | null;
+  hcLines: { line: string | null; home: string | null; away: string | null }[];
+  ouLines: { line: string | null; over: string | null; under: string | null }[];
 }
 
 type Signal =
@@ -154,12 +150,13 @@ function OddsSlot({
   );
 }
 
-/** Malay odds already provided as string (for HC / O-U markets) */
-function RawOddsSlot({ label, val }: { label: string; val: string | null }) {
+/** Malay odds already provided as string (for HC / O-U markets). Negative = red. */
+function RawVal({ val }: { val: string | null }) {
+  if (val == null) return <span className="font-semibold text-[#555] text-xs">—</span>;
+  const isNeg = val.startsWith('-');
   return (
-    <span className="inline-flex items-center gap-1" style={{ width: 72, flexShrink: 0 }}>
-      <span className="text-[10px] text-[#666] w-3">{label}</span>
-      <span className="font-semibold text-white text-xs">{val ?? '—'}</span>
+    <span className={`font-semibold text-xs ${isNeg ? 'text-[#f87171]' : 'text-white'}`}>
+      {val}
     </span>
   );
 }
@@ -320,21 +317,29 @@ export default function GSLive() {
                         </span>
                       )}
                       {market === 'hc' && (
-                        <span className="inline-flex items-center gap-0">
-                          <span className="text-[10px] text-[#fbbf24] mr-2 w-10 shrink-0">
-                            {m.hcLine != null ? `±${m.hcLine}` : '—'}
-                          </span>
-                          <RawOddsSlot label="H" val={m.hcHome} />
-                          <RawOddsSlot label="A" val={m.hcAway} />
+                        <span className="inline-flex flex-col gap-0.5">
+                          {m.hcLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
+                          {m.hcLines.map((row, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-2">
+                              <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
+                              <span className="w-14 text-right"><RawVal val={row.home} /></span>
+                              <span className="w-14 text-right"><RawVal val={row.away} /></span>
+                            </span>
+                          ))}
                         </span>
                       )}
                       {market === 'ou' && (
-                        <span className="inline-flex items-center gap-0">
-                          <span className="text-[10px] text-[#fbbf24] mr-2 w-10 shrink-0">
-                            {m.ouLine ?? '—'}
-                          </span>
-                          <RawOddsSlot label="O" val={m.ouOver} />
-                          <RawOddsSlot label="U" val={m.ouUnder} />
+                        <span className="inline-flex flex-col gap-0.5">
+                          {m.ouLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
+                          {m.ouLines.map((row, idx) => (
+                            <span key={idx} className="inline-flex items-center gap-2">
+                              <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
+                              <span className="text-[10px] text-[#666] w-3">O</span>
+                              <span className="w-12 text-right"><RawVal val={row.over} /></span>
+                              <span className="text-[10px] text-[#666] w-3">U</span>
+                              <span className="w-12 text-right"><RawVal val={row.under} /></span>
+                            </span>
+                          ))}
                         </span>
                       )}
                     </td>
