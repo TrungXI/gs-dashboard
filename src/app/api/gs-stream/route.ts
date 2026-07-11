@@ -19,6 +19,9 @@ export async function GET(req: NextRequest) {
           lng: 'vi',
           'content-type': 'application/json',
           accept: 'application/json',
+          origin: 'https://det.zenandfe.com',
+          referer: 'https://det.zenandfe.com/',
+          'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
         },
         cache: 'no-store',
       }

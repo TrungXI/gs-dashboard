@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback, useRef, startTransition } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, startTransition, useLayoutEffect } from 'react';
 import type { Match } from '../types/match';
 import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
@@ -10,12 +10,11 @@ import UpdateDrawer from './UpdateDrawer';
 import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
 import VoltaAnalysis from './VoltaAnalysis';
-import GSPatternReport from './GSPatternReport';
 import GSLive from './GSLive';
 import { ALL_VOLTA_MATCHES, apiToVoltaRow } from '../lib/processVoltaData';
 import { apiToRow, sortMatchesDesc, vnTodayIso } from '../lib/matchUtils';
 
-type View = 'data' | 'report' | 'gs-pattern' | 'gs-live' | 'volta' | 'volta-analysis';
+type View = 'data' | 'report' | 'gs-live' | 'volta' | 'volta-analysis';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
@@ -53,6 +52,20 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [r2, setR2] = useState('');
   const [h1Filter, setH1Filter] = useState('all');
   const uiRestored = useRef(false);
+
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Sync theme to html element and localStorage
+  useLayoutEffect(() => {
+    const saved = localStorage.getItem('gs_theme') as 'dark' | 'light' | null;
+    if (saved) setTheme(saved);
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('gs_theme', theme);
+  }, [theme]);
 
   // Persist UI state — debounced to avoid writing on every keystroke
   const lsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -302,11 +315,21 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
   return (
     <>
-      <div className="flex h-screen overflow-hidden bg-[#0d0d0d]">
+      <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
         {/* Sidebar */}
-        <aside className="flex w-[260px] flex-shrink-0 flex-col bg-[#111] text-white">
+        <aside className={`gs-sidebar relative flex flex-shrink-0 flex-col transition-all duration-200 ${sidebarCollapsed ? 'w-[12px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
+          {/* Collapse handle — right border strip */}
+          <button
+            onClick={() => setSidebarCollapsed(c => !c)}
+            className={`absolute right-0 top-0 bottom-0 z-20 w-[12px] flex items-center justify-center cursor-pointer transition-colors ${theme === 'dark' ? 'hover:bg-white/10 border-r border-white/10' : 'hover:bg-black/5 border-r border-gray-200'}`}
+            title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
+          >
+            <span className="text-[9px] text-[#555] select-none">{sidebarCollapsed ? '›' : '‹'}</span>
+          </button>
+          {/* Sidebar content — hidden when collapsed */}
+          <div className={`flex flex-col flex-1 overflow-hidden transition-opacity duration-150 ${sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
           {/* Logo */}
-          <div className="flex items-center gap-3 border-b border-white/10 px-4 pb-3.5 pt-[18px]">
+          <div className={`flex items-center gap-3 border-b px-4 pb-3.5 pt-[18px] ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
             <div className="text-2xl">⚽</div>
             <div className="flex-1 min-w-0">
               <div className="text-base font-bold">GS Matches</div>
@@ -320,7 +343,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             <button
               onClick={quickFetchGS}
               disabled={quickFetching}
-              className="flex-shrink-0 rounded-md bg-white/[.08] px-2 py-1.5 text-[11px] text-white/60 hover:bg-[#4ade80]/20 hover:text-[#4ade80] transition-colors disabled:opacity-40"
+              className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors disabled:opacity-40 hover:text-[#4ade80] hover:bg-[#4ade80]/20 ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
               title="Cập nhật nhanh hôm nay"
             >
               {quickFetching ? '…' : '⚡'}
@@ -328,7 +351,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             {/* Update drawer */}
             <button
               onClick={() => setDrawerOpen(true)}
-              className="flex-shrink-0 rounded-md bg-white/[.08] px-2 py-1.5 text-[11px] text-white/60 hover:bg-[#17a2b8]/20 hover:text-[#17a2b8] transition-colors"
+              className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-[#17a2b8]/20 hover:text-[#17a2b8] ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
               title="Chọn ngày cập nhật"
             >
               ↻
@@ -337,7 +360,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
           {/* Updated at indicator */}
           {updatedAt && (
-            <div className="border-b border-white/5 px-4 py-1.5 text-[10px] text-[#4ade80]/70">
+            <div className={`border-b px-4 py-1.5 text-[10px] text-[#4ade80]/70 ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
               ✓ Cập nhật {updatedAt}
             </div>
           )}
@@ -348,7 +371,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               [
                 ['data', '📋', 'GS Dữ liệu'],
                 ['report', '📊', 'GS Phân tích'],
-                ['gs-pattern', '🔍', 'GS Pattern'],
                 ['gs-live', '🔴', 'GS Live'],
                 ['volta', '⚡', 'Volta'],
                 ['volta-analysis', '🔍', 'Volta Phân tích'],
@@ -359,8 +381,12 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 onClick={() => setView(v)}
                 className={`flex cursor-pointer items-center gap-2 border-l-[3px] px-5 py-2.5 text-[13px] font-semibold transition-all ${
                   view === v
-                    ? 'border-[#17a2b8] bg-white/[.12] text-white'
-                    : 'border-transparent text-white/60 hover:bg-white/[.08] hover:text-white'
+                    ? theme === 'dark'
+                      ? 'border-[#17a2b8] bg-white/[.12] text-white'
+                      : 'border-[#17a2b8] bg-[#17a2b8]/10 text-[#17a2b8]'
+                    : theme === 'dark'
+                      ? 'border-transparent text-white/60 hover:bg-white/[.08] hover:text-white'
+                      : 'border-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900'
                 }`}
               >
                 <span>{icon}</span> {label}
@@ -394,66 +420,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   </button>
                 </div>
               </div>
-            ) : view === 'data' ? (
-              <>
-                <div className="px-4 pt-3.5">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                    Loại trận
-                  </div>
-                  <div className="flex gap-1.5">
-                    {typeChips.map(([v, label]) => (
-                      <button
-                        key={v}
-                        onClick={() => startTransition(() => setFType(v))}
-                        className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
-                          fType === v
-                            ? 'bg-[#17a2b8] text-white'
-                            : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="px-4 pt-3.5">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                    Ngày
-                  </div>
-                  <select
-                    value={fDate}
-                    onChange={(e) => { const v = e.target.value; startTransition(() => setFDate(v)); }}
-                    className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="all" className="bg-[#111] text-white">
-                      📅 Tất cả ngày
-                    </option>
-                    {dates.map((d) => (
-                      <option key={d} value={d} className="bg-[#111] text-white">
-                        {d} ({dateCounts[d]} trận)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="px-4 pt-3.5">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                    Đội bóng
-                  </div>
-                  <SearchDropdown
-                    options={dataTeamOptions}
-                    value={fTeam}
-                    onChange={setFTeam}
-                    placeholder="-- Tất cả đội --"
-                  />
-                </div>
-
-                <div className="mx-4 mt-4 text-xs text-white/50">
-                  <span className="mr-1 text-lg font-bold text-white">{filtered.length}</span> /{' '}
-                  {matches.length} trận
-                </div>
-              </>
             ) : view === 'report' ? (
               <div className="px-4 pt-3.5">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
@@ -508,10 +474,24 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </div>
             ) : null}
           </div>
+          {/* Theme toggle */}
+          <div className={`border-t px-4 py-3 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+            <button
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
+                theme === 'dark'
+                  ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white'
+                  : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'
+              }`}
+            >
+              {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
+            </button>
+          </div>
+          </div>{/* end sidebar content */}
         </aside>
 
         {/* Main */}
-        <main className="flex-1 overflow-y-auto bg-[#0d0d0d] p-6">
+        <main className={`gs-main flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
           {view === 'volta' ? (
             <>
               <div className="mb-5 flex items-baseline gap-3 flex-wrap">
@@ -536,19 +516,50 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             </>
           ) : view === 'data' ? (
             <>
+              <div className="mb-4 flex flex-wrap items-center gap-2.5">
+                <div className="flex gap-1.5">
+                  {typeChips.map(([v, label]) => (
+                    <button
+                      key={v}
+                      onClick={() => startTransition(() => setFType(v))}
+                      className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                        fType === v
+                          ? 'bg-[#17a2b8] text-white'
+                          : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <select
+                  value={fDate}
+                  onChange={(e) => { const v = e.target.value; startTransition(() => setFDate(v)); }}
+                  className="rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
+                >
+                  <option value="all" className="bg-[#111] text-white">📅 Tất cả ngày</option>
+                  {dates.map((d) => (
+                    <option key={d} value={d} className="bg-[#111] text-white">
+                      {d} ({dateCounts[d]} trận)
+                    </option>
+                  ))}
+                </select>
+                <div className="w-52">
+                  <SearchDropdown
+                    options={dataTeamOptions}
+                    value={fTeam}
+                    onChange={setFTeam}
+                    placeholder="-- Tất cả đội --"
+                  />
+                </div>
+                <span className="text-xs text-white/50 ml-auto">
+                  <span className="mr-1 text-base font-bold text-white">{filtered.length}</span>/{matches.length} trận
+                </span>
+              </div>
               <div className="mb-5 flex items-baseline gap-3">
                 <h1 className="text-xl font-bold text-white">Kết quả trận đấu</h1>
-                <span className="text-[13px] text-[#666]">{filtered.length} trận</span>
               </div>
-              <DataTable matches={filtered} />
-            </>
-          ) : view === 'gs-pattern' ? (
-            <>
-              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
-                <h1 className="text-xl font-bold text-white">🔍 GS — Phân tích mẫu tỉ số</h1>
-                <span className="text-[13px] text-[#666]">{matches.length} trận</span>
-              </div>
-              <GSPatternReport matches={matches} />
+              <DataTable matches={filtered} highlightTeam={fTeam !== 'all' ? fTeam : undefined} />
             </>
           ) : view === 'gs-live' ? (
             <GSLive />
