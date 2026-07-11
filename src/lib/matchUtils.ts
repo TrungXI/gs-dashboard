@@ -1,18 +1,17 @@
 import type { Match } from '../types/match';
 
 export function toVnTime(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
-  d.setUTCHours(d.getUTCHours() + 7);
+  const ms = new Date(iso).getTime() + 7 * 60 * 60 * 1000;
+  const d = new Date(ms);
   const dd = String(d.getUTCDate()).padStart(2, '0');
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   const yyyy = d.getUTCFullYear();
-  let hh = d.getUTCHours();
+  const hh = String(d.getUTCHours()).padStart(2, '0');
   const min = String(d.getUTCMinutes()).padStart(2, '0');
-  const ampm = hh >= 12 ? 'PM' : 'AM';
-  hh = hh % 12 || 12;
   return {
     date: `${dd}/${mm}/${yyyy}`,
-    time: `${dd}/${mm}/${yyyy} ${String(hh).padStart(2, '0')}:${min} ${ampm}`,
+    // "DD/MM/YYYY HH:MM" — 24-hour, lexicographic sort works within same month/year
+    time: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
   };
 }
 

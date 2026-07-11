@@ -37,7 +37,7 @@ export default function DataTable({ matches }: { matches: Match[] }) {
                 {m.date}
               </td>
               <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-xs text-[#888]">
-                {m.time.split(' ').slice(1).join(' ')}
+                {m.time.split(' ')[1]}
               </td>
               <td className="border-b border-[#222] px-2.5 py-2 text-center">
                 <TypeBadge type={m.matchType} />

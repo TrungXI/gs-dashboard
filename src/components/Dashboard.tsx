@@ -2,20 +2,29 @@
 
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type { Match } from '../types/match';
+import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
 import DataTable from './DataTable';
 import Analysis from './Analysis';
 import UpdateDrawer from './UpdateDrawer';
+import VoltaTable from './VoltaTable';
+import VoltaUpdateDrawer from './VoltaUpdateDrawer';
+import { ALL_VOLTA_MATCHES } from '../lib/processVoltaData';
 
-type View = 'data' | 'report';
+type View = 'data' | 'report' | 'volta';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
+const LS_VOLTA = 'volta_matches';
+const LS_VOLTA_AT = 'volta_updated_at';
 
 export default function Dashboard({ initialMatches }: { initialMatches: Match[] }) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
+  const [voltaMatches, setVoltaMatches] = useState<VoltaMatch[]>(ALL_VOLTA_MATCHES);
+  const [voltaDrawerOpen, setVoltaDrawerOpen] = useState(false);
+  const [voltaUpdatedAt, setVoltaUpdatedAt] = useState<string | null>(null);
 
   const [view, setView] = useState<View>('data');
   const [fType, setFType] = useState<FType>('all');
@@ -27,6 +36,13 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
   // Load cached data from localStorage on mount
   useEffect(() => {
+    // Version 2: switched time format from 12h AM/PM to 24h; clear old cached data
+    const DATA_VERSION = '2';
+    if (localStorage.getItem('gs_data_version') !== DATA_VERSION) {
+      localStorage.removeItem(LS_MATCHES);
+      localStorage.removeItem('gs_updated_at');
+      localStorage.setItem('gs_data_version', DATA_VERSION);
+    }
     try {
       const saved = localStorage.getItem(LS_MATCHES);
       if (saved) {
@@ -37,6 +53,16 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
         }
       }
     } catch { /* ignore */ }
+    try {
+      const savedVolta = localStorage.getItem(LS_VOLTA);
+      if (savedVolta) {
+        const parsed = JSON.parse(savedVolta) as VoltaMatch[];
+        if (parsed.length > 0) {
+          setVoltaMatches(parsed);
+          setVoltaUpdatedAt(localStorage.getItem(LS_VOLTA_AT));
+        }
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const handleUpdate = useCallback((newMatches: Match[]) => {
@@ -44,6 +70,11 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     localStorage.setItem('gs_updated_at', now);
     setUpdatedAt(now);
     setMatches(newMatches);
+  }, []);
+
+  const handleVoltaUpdate = useCallback((newMatches: VoltaMatch[]) => {
+    setVoltaMatches(newMatches);
+    setVoltaUpdatedAt(localStorage.getItem(LS_VOLTA_AT));
   }, []);
 
   const teams = useMemo(
@@ -151,8 +182,9 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
           <nav className="flex flex-col">
             {(
               [
-                ['data', '📋', 'Dữ liệu'],
-                ['report', '📊', 'Phân tích'],
+                ['data', '📋', 'GS Dữ liệu'],
+                ['report', '📊', 'GS Phân tích'],
+                ['volta', '⚡', 'Volta'],
               ] as [View, string, string][]
             ).map(([v, icon, label]) => (
               <div
@@ -171,7 +203,22 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
           {/* Filters */}
           <div className="flex-1 overflow-y-auto pb-4">
-            {view === 'data' ? (
+            {view === 'volta' ? (
+              <div className="px-4 pt-3.5">
+                <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] text-white/50">
+                  <div className="text-[#4ade80] font-bold mb-1">⚡ {voltaMatches.length} trận</div>
+                  {voltaUpdatedAt && (
+                    <div className="text-[10px] text-[#4ade80]/60">✓ Cập nhật {voltaUpdatedAt}</div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setVoltaDrawerOpen(true)}
+                  className="mt-3 w-full rounded-lg bg-[#17a2b8]/20 px-3 py-2 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
+                >
+                  ↻ Cập nhật Volta
+                </button>
+              </div>
+            ) : view === 'data' ? (
               <>
                 <div className="px-4 pt-3.5">
                   <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
@@ -289,7 +336,15 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
         {/* Main */}
         <main className="flex-1 overflow-y-auto bg-[#0d0d0d] p-6">
-          {view === 'data' ? (
+          {view === 'volta' ? (
+            <>
+              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-xl font-bold text-white">⚡ Volta Matches</h1>
+                <span className="text-[13px] text-[#666]">{voltaMatches.length} trận mới nhất</span>
+              </div>
+              <VoltaTable matches={voltaMatches} />
+            </>
+          ) : view === 'data' ? (
             <>
               <div className="mb-5 flex items-baseline gap-3">
                 <h1 className="text-xl font-bold text-white">Kết quả trận đấu</h1>
@@ -325,12 +380,21 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
         </main>
       </div>
 
-      {/* Update Drawer */}
+      {/* GS Update Drawer */}
       {drawerOpen && (
         <UpdateDrawer
           currentMatches={matches}
           onUpdate={handleUpdate}
           onClose={() => setDrawerOpen(false)}
+        />
+      )}
+
+      {/* Volta Update Drawer */}
+      {voltaDrawerOpen && (
+        <VoltaUpdateDrawer
+          currentMatches={voltaMatches}
+          onUpdate={handleVoltaUpdate}
+          onClose={() => setVoltaDrawerOpen(false)}
         />
       )}
     </>
