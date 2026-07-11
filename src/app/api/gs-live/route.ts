@@ -34,6 +34,14 @@ export interface GsLiveMatch {
   malayHome: string | null;
   malayAway: string | null;
   malayDraw: string | null;
+  // Kèo Chấp (Asian Handicap) — market '5'. Values already in Malay format.
+  hcLine: string | null;       // e.g. "0.25", "0.5"
+  hcHome: string | null;       // Malay e.g. "0.82"
+  hcAway: string | null;       // Malay e.g. "0.89"
+  // Tài Xỉu (Over/Under) — market '3'. Values already in Malay format.
+  ouLine: string | null;       // e.g. "2.25"
+  ouOver: string | null;       // Malay e.g. "0.87"
+  ouUnder: string | null;      // Malay e.g. "0.83"
 }
 
 /** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
@@ -77,6 +85,44 @@ function parse1x2(
   return out;
 }
 
+/**
+ * Parse markets '3' (Tài Xỉu) and '5' (Kèo Chấp).
+ * Entry format: "LINE VAL*SELIDh VAL*SELIDa ..."
+ * Values are already in Malay format (no conversion needed).
+ */
+function parseAsianMarket(
+  market7: unknown,
+  key: '3' | '5',
+): { line: string | null; home: string | null; away: string | null } {
+  const empty = { line: null, home: null, away: null };
+  if (!market7 || typeof market7 !== 'object') return empty;
+  const raw = (market7 as Record<string, unknown>)[key];
+  if (raw == null) return empty;
+
+  const entries = Array.isArray(raw) ? (raw as unknown[]).map(String) : [String(raw)];
+  // Use the first entry (primary line)
+  const first = entries[0]?.trim();
+  if (!first) return empty;
+
+  const tokens = first.split(/\s+/);
+  let line: string | null = null;
+  let home: string | null = null;
+  let away: string | null = null;
+
+  for (const token of tokens) {
+    if (token.includes('*')) {
+      const [val, sel] = token.split('*');
+      if (!val || !sel) continue;
+      const side = sel.slice(-1);
+      if (side === 'h' && home == null) home = val;
+      else if (side === 'a' && away == null) away = val;
+    } else if (line == null && /^-?[\d.]+$/.test(token)) {
+      line = token;
+    }
+  }
+  return { line, home, away };
+}
+
 function buildMatch(
   leagueId: number,
   leagueName: string,
@@ -84,6 +130,8 @@ function buildMatch(
 ): GsLiveMatch {
   const score = (ev['4'] as Record<string, number>) ?? {};
   const odds = parse1x2(ev['7']);
+  const hc = parseAsianMarket(ev['7'], '5');
+  const ou = parseAsianMarket(ev['7'], '3');
   const isEsports = leagueId === 1203 || leagueId === 1204;
 
   return {
@@ -97,7 +145,6 @@ function buildMatch(
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
     minuteElapsed: typeof ev['5'] === 'number' ? ev['5'] : null,
-    // e-sports: ev['6'] is ms elapsed in the current period.
     secondsElapsed:
       isEsports && typeof ev['6'] === 'number' ? Math.floor((ev['6'] as number) / 1000) : null,
     bettingOpen: ev['11'] !== true,
@@ -108,6 +155,12 @@ function buildMatch(
     malayHome: odds.home != null ? decToMalay(odds.home) : null,
     malayAway: odds.away != null ? decToMalay(odds.away) : null,
     malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,
+    hcLine: hc.line,
+    hcHome: hc.home,
+    hcAway: hc.away,
+    ouLine: ou.line,
+    ouOver: ou.home,
+    ouUnder: ou.away,
   };
 }
 

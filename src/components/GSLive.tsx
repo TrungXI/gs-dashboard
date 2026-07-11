@@ -22,6 +22,12 @@ interface GsLiveMatch {
   malayHome: string | null;
   malayAway: string | null;
   malayDraw: string | null;
+  hcLine: string | null;
+  hcHome: string | null;
+  hcAway: string | null;
+  ouLine: string | null;
+  ouOver: string | null;
+  ouUnder: string | null;
 }
 
 type Signal =
@@ -119,11 +125,41 @@ function OddsCell({
   prev: number | null | undefined;
 }) {
   return (
-    <span className="whitespace-nowrap">
-      <span className="font-semibold text-white">{malay ?? '—'}</span>{' '}
-      <span className="text-[11px]">
+    <span className="inline-flex items-center gap-0.5">
+      <span className="font-semibold text-white">{malay ?? '—'}</span>
+      <span className="text-[10px]">
         <Drift cur={cur} prev={prev} />
       </span>
+    </span>
+  );
+}
+
+/** Fixed-width slot: label + value, always same width so columns don't jitter */
+function OddsSlot({
+  label,
+  malay,
+  cur,
+  prev,
+}: {
+  label: string;
+  malay: string | null;
+  cur?: number | null;
+  prev?: number | null;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1" style={{ width: 88, flexShrink: 0 }}>
+      <span className="text-[10px] text-[#666] w-3">{label}</span>
+      <OddsCell malay={malay} cur={cur ?? null} prev={prev ?? null} />
+    </span>
+  );
+}
+
+/** Malay odds already provided as string (for HC / O-U markets) */
+function RawOddsSlot({ label, val }: { label: string; val: string | null }) {
+  return (
+    <span className="inline-flex items-center gap-1" style={{ width: 72, flexShrink: 0 }}>
+      <span className="text-[10px] text-[#666] w-3">{label}</span>
+      <span className="font-semibold text-white text-xs">{val ?? '—'}</span>
     </span>
   );
 }
@@ -141,11 +177,20 @@ function phaseLabel(m: GsLiveMatch): string {
   return m.bettingOpen ? 'H1' : 'H2';
 }
 
+type MarketView = '1x2' | 'hc' | 'ou';
+
+const MARKET_LABELS: { key: MarketView; label: string }[] = [
+  { key: '1x2', label: '1X2' },
+  { key: 'hc',  label: 'Kèo Chấp' },
+  { key: 'ou',  label: 'Tài Xỉu' },
+];
+
 export default function GSLive() {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [market, setMarket] = useState<MarketView>('1x2');
   // Previous poll snapshot keyed by eventId, used to compute drift + FOLLOW signal.
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
@@ -190,7 +235,7 @@ export default function GSLive() {
 
   return (
     <>
-      <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+      <div className="mb-4 flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-white">🔴 GS Live — Odds Tracker</h1>
         <span className="text-[13px] text-[#666]">{matches.length} trận live</span>
         {loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
@@ -199,6 +244,22 @@ export default function GSLive() {
             ⟳ 5s · {updatedAt}
           </span>
         )}
+      </div>
+      {/* Market filter pills */}
+      <div className="mb-4 flex gap-1.5">
+        {MARKET_LABELS.map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => setMarket(key)}
+            className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
+              market === key
+                ? 'bg-[#3b82f6] text-white'
+                : 'bg-[#1e1e1e] text-[#888] hover:bg-[#2a2a2a] hover:text-white border border-[#2a2a2a]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {error && (
@@ -251,14 +312,31 @@ export default function GSLive() {
                       {phaseLabel(m)}
                     </td>
                     <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-xs">
-                      <span className="text-[#888]">H:</span>{' '}
-                      <OddsCell malay={m.malayHome} cur={m.oddsHome} prev={prev?.oddsHome} />
-                      <span className="mx-1.5 text-[#333]">|</span>
-                      <span className="text-[#888]">A:</span>{' '}
-                      <OddsCell malay={m.malayAway} cur={m.oddsAway} prev={prev?.oddsAway} />
-                      <span className="mx-1.5 text-[#333]">|</span>
-                      <span className="text-[#888]">D:</span>{' '}
-                      <OddsCell malay={m.malayDraw} cur={m.oddsDraw} prev={prev?.oddsDraw} />
+                      {market === '1x2' && (
+                        <span className="inline-flex items-center gap-0">
+                          <OddsSlot label="H" malay={m.malayHome} cur={m.oddsHome} prev={prev?.oddsHome} />
+                          <OddsSlot label="A" malay={m.malayAway} cur={m.oddsAway} prev={prev?.oddsAway} />
+                          <OddsSlot label="D" malay={m.malayDraw} cur={m.oddsDraw} prev={prev?.oddsDraw} />
+                        </span>
+                      )}
+                      {market === 'hc' && (
+                        <span className="inline-flex items-center gap-0">
+                          <span className="text-[10px] text-[#fbbf24] mr-2 w-10 shrink-0">
+                            {m.hcLine != null ? `±${m.hcLine}` : '—'}
+                          </span>
+                          <RawOddsSlot label="H" val={m.hcHome} />
+                          <RawOddsSlot label="A" val={m.hcAway} />
+                        </span>
+                      )}
+                      {market === 'ou' && (
+                        <span className="inline-flex items-center gap-0">
+                          <span className="text-[10px] text-[#fbbf24] mr-2 w-10 shrink-0">
+                            {m.ouLine ?? '—'}
+                          </span>
+                          <RawOddsSlot label="O" val={m.ouOver} />
+                          <RawOddsSlot label="U" val={m.ouUnder} />
+                        </span>
+                      )}
                     </td>
                     <td className="border-b border-[#222] px-2.5 py-2">
                       {signal && (
