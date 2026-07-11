@@ -317,7 +317,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     <>
       <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
         {/* Sidebar */}
-        <aside className={`gs-sidebar relative flex flex-shrink-0 flex-col transition-all duration-200 ${sidebarCollapsed ? 'w-[12px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
+        <aside className={`gs-sidebar relative flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[12px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
           {/* Collapse handle — right border strip */}
           <button
             onClick={() => setSidebarCollapsed(c => !c)}

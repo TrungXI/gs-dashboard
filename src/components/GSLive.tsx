@@ -155,18 +155,20 @@ function RawVal({ val }: { val: string | null }) {
   );
 }
 
-function phaseLabel(m: GsLiveMatch): string {
+function phaseLabel(m: GsLiveMatch, nowMs: number): string {
   if (m.secondsElapsed != null) {
     const half = m.bettingOpen ? '1H' : '2H';
     return `${half} ${m.secondsElapsed}s`;
   }
-  if (m.minuteElapsed != null) {
-    const halfMins = m.matchType === '20p' ? 10 : m.matchType === '12p' ? 6 : m.matchType === '8p' ? 4 : 8;
-    const min = m.minuteElapsed;
-    if (min <= halfMins) return `1H ${min}'`;
-    return `2H ${min - halfMins}'`;
-  }
-  return m.bettingOpen ? '1H' : '2H';
+  const halfMins = m.matchType === '20p' ? 10 : m.matchType === '12p' ? 6 : m.matchType === '8p' ? 4 : 8;
+  // Prefer server-provided minute if available, otherwise derive from startTime
+  const elapsedMin = m.minuteElapsed != null
+    ? m.minuteElapsed
+    : Math.floor((nowMs - new Date(m.startTime).getTime()) / 60000);
+  if (elapsedMin < 0) return 'Chờ';
+  if (elapsedMin >= halfMins * 2) return 'KT';
+  if (elapsedMin < halfMins) return `1H ${elapsedMin}'`;
+  return `2H ${elapsedMin - halfMins}'`;
 }
 
 export default function GSLive() {
@@ -179,6 +181,13 @@ export default function GSLive() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  // Tick every 30s so phaseLabel stays current without server round-trip
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -309,6 +318,7 @@ export default function GSLive() {
             onCollapseAll={handleCollapseAll}
             streamUrls={streamUrls}
             scoredIds={scoredIds}
+            nowMs={nowMs}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -320,6 +330,7 @@ export default function GSLive() {
             onCollapseAll={handleCollapseAll}
             streamUrls={streamUrls}
             scoredIds={scoredIds}
+            nowMs={nowMs}
           />
         </>
       )}
@@ -453,6 +464,7 @@ function LeagueSection({
   onCollapseAll,
   streamUrls,
   scoredIds,
+  nowMs,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -463,6 +475,7 @@ function LeagueSection({
   onCollapseAll: (ids: number[]) => void;
   streamUrls: Record<number, string>;
   scoredIds: Set<number>;
+  nowMs: number;
 }) {
   if (matches.length === 0) return null;
   const COL_COUNT = TABLE_HEADERS.length;
@@ -532,7 +545,7 @@ function LeagueSection({
                       {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
                     </td>
                     <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center text-xs text-[#888]">
-                      {phaseLabel(m)}
+                      {phaseLabel(m, nowMs)}
                     </td>
                     <td className="border-b border-[#222] px-2.5 py-2.5 text-xs align-top">
                       <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />

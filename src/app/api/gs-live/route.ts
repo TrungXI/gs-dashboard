@@ -144,9 +144,9 @@ function buildMatch(
 ): GsLiveMatch {
   const score = (ev['4'] as Record<string, number>) ?? {};
   const odds = parse1x2(ev['7']);
-  const hcRaw = parseAsianMarket(ev['7'], '5', true);
+  const hcRaw = parseAsianMarket(ev['7'], '5');
   const ouRaw = parseAsianMarket(ev['7'], '3');
-  const hcH1Raw = parseAsianMarket(ev['7'], '15', true);
+  const hcH1Raw = parseAsianMarket(ev['7'], '15');
   const ouH1Raw = parseAsianMarket(ev['7'], '13');
   const suspended = hcRaw.length > 0 ? hcRaw[0].suspended : false;
   const isEsports = leagueId === 1203 || leagueId === 1204;
