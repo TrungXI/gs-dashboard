@@ -36,6 +36,16 @@ export function apiToRow(m: Record<string, unknown>): Match {
   };
 }
 
+/** Today's date in Vietnam (UTC+7) as YYYY-MM-DD, independent of the host/browser timezone. */
+export function vnTodayIso(): string {
+  const ms = Date.now() + 7 * 60 * 60 * 1000;
+  const d = new Date(ms);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 /** YYYY-MM-DD → DD/MM/YYYY */
 export function apiDateToDisplay(d: string): string {
   const [y, m, day] = d.split('-');

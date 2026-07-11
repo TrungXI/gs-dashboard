@@ -11,10 +11,11 @@ import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
 import VoltaAnalysis from './VoltaAnalysis';
 import GSPatternReport from './GSPatternReport';
+import GSLive from './GSLive';
 import { ALL_VOLTA_MATCHES, apiToVoltaRow } from '../lib/processVoltaData';
-import { apiToRow, sortMatchesDesc } from '../lib/matchUtils';
+import { apiToRow, sortMatchesDesc, vnTodayIso } from '../lib/matchUtils';
 
-type View = 'data' | 'report' | 'gs-pattern' | 'volta' | 'volta-analysis';
+type View = 'data' | 'report' | 'gs-pattern' | 'gs-live' | 'volta' | 'volta-analysis';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
@@ -176,9 +177,9 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     setQuickFetching(true);
     try {
       const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
-      const today = new Date();
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      // Use Vietnam local date (UTC+7), not the host/browser date — otherwise after
+      // 17:00 UTC we'd fetch "tomorrow" before midnight Vietnam time.
+      const dateStr = vnTodayIso();
       const res = await fetch('/api/fetch-data', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -343,6 +344,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 ['data', '📋', 'GS Dữ liệu'],
                 ['report', '📊', 'GS Phân tích'],
                 ['gs-pattern', '🔍', 'GS Pattern'],
+                ['gs-live', '🔴', 'GS Live'],
                 ['volta', '⚡', 'Volta'],
                 ['volta-analysis', '🔍', 'Volta Phân tích'],
               ] as [View, string, string][]
@@ -543,6 +545,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </div>
               <GSPatternReport matches={matches} />
             </>
+          ) : view === 'gs-live' ? (
+            <GSLive />
           ) : (
             <>
               <div className="mb-5 flex items-baseline gap-3 flex-wrap">

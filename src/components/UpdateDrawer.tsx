@@ -2,22 +2,21 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Match } from '../types/match';
-import { apiToRow, apiDateToDisplay, sortMatchesDesc } from '../lib/matchUtils';
+import { apiToRow, apiDateToDisplay, sortMatchesDesc, vnTodayIso } from '../lib/matchUtils';
 
 const VN_DAYS = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
 
-function vnToday(): Date {
-  const now = new Date();
-  const vnOffset = 7 * 60;
-  return new Date(now.getTime() + (vnOffset - now.getTimezoneOffset()) * 60000);
-}
-
 function generateDays(n: number): string[] {
-  const base = vnToday();
+  // Anchor on Vietnam's "today" (UTC+7) so the day list matches how events are
+  // categorized. Step back in whole days using a UTC-noon anchor to avoid DST/TZ drift.
+  const [y, m, d] = vnTodayIso().split('-').map(Number);
+  const baseMs = Date.UTC(y, m - 1, d, 12, 0, 0);
   return Array.from({ length: n }, (_, i) => {
-    const d = new Date(base);
-    d.setDate(d.getDate() - i);
-    return d.toISOString().slice(0, 10);
+    const day = new Date(baseMs - i * 86400000);
+    const yyyy = day.getUTCFullYear();
+    const mm = String(day.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(day.getUTCDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
   });
 }
 
