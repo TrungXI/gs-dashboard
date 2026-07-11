@@ -1,15 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// 2140 = 16p, 2125 = 20p virtual football; 1203 = 8p e-sports, 1204 = 12p e-sports
-const GS_LEAGUE_IDS = new Set([2140, 2125, 1203, 1204]);
+// 2140 = GS Ảo 16p, 2125 = GS Ảo 20p
+const GS_LEAGUE_IDS = new Set([2140, 2125]);
 
 type MatchType = '16p' | '20p' | '8p' | '12p';
 
 const MATCH_TYPE: Record<number, MatchType> = {
   2140: '16p',
   2125: '20p',
-  1203: '8p',
-  1204: '12p',
 };
 
 export interface GsLiveMatch {
