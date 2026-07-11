@@ -14,11 +14,21 @@ interface Props {
   onClose: () => void;
 }
 
+function sortVolta(matches: VoltaMatch[]): VoltaMatch[] {
+  return [...matches].sort((a, b) => {
+    const parse = (m: VoltaMatch) => {
+      const [d, mo, y] = m.date.split('/');
+      return new Date(`${y}-${mo}-${d}T${m.time}:00`).getTime();
+    };
+    return parse(b) - parse(a);
+  });
+}
+
 export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }: Props) {
   const [token, setToken] = useState('');
   const [status, setStatus] = useState<'idle' | 'fetching' | 'done' | 'error'>('idle');
   const [log, setLog] = useState<string[]>([]);
-  const [count, setCount] = useState(0);
+  const [newCount, setNewCount] = useState(0);
 
   useEffect(() => {
     const saved = localStorage.getItem(LS_TOKEN);
@@ -30,7 +40,7 @@ export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }:
     localStorage.setItem(LS_TOKEN, token);
     setStatus('fetching');
     setLog([]);
-    setCount(0);
+    setNewCount(0);
 
     try {
       setLog(['Đang tải 100 trận Volta mới nhất...']);
@@ -48,29 +58,49 @@ export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }:
       }
 
       const fetched = json.data.map(apiToVoltaRow);
-      setCount(fetched.length);
 
-      // Keep existing matches for other dates, replace all (Volta has no stable fromDate filter)
-      const sorted = fetched.sort((a, b) => {
-        const parse = (m: VoltaMatch) => {
-          const [d, mo, y] = m.date.split('/');
-          return new Date(`${y}-${mo}-${d}T${m.time}`).getTime();
-        };
-        return parse(b) - parse(a);
-      });
+      // Merge by matchId — keep all existing + add only new ones
+      const existingIds = new Set(currentMatches.map(m => m.matchId));
+      const freshMatches = fetched.filter(m => !existingIds.has(m.matchId));
+      const merged = sortVolta([...currentMatches, ...freshMatches]);
 
-      localStorage.setItem(LS_VOLTA, JSON.stringify(sorted));
+      setNewCount(freshMatches.length);
+      localStorage.setItem(LS_VOLTA, JSON.stringify(merged));
       const now = new Date().toLocaleString('vi-VN');
       localStorage.setItem(LS_VOLTA_AT, now);
 
-      setLog((prev) => [...prev, `✓ Đã tải ${fetched.length} trận`, `Cập nhật lúc ${now}`]);
+      // Count by date for display
+      const byDate: Record<string, number> = {};
+      for (const m of merged) byDate[m.date] = (byDate[m.date] || 0) + 1;
+      const dateLines = Object.entries(byDate)
+        .sort(([a], [b]) => {
+          const parse = (s: string) => { const [d, mo, y] = s.split('/'); return +y * 10000 + +mo * 100 + +d; };
+          return parse(a) - parse(b);
+        })
+        .map(([d, n]) => `  ${d}: ${n} trận`);
+
+      setLog((prev) => [
+        ...prev,
+        `✓ +${freshMatches.length} trận mới (tổng: ${merged.length})`,
+        ...dateLines,
+        `Cập nhật lúc ${now}`,
+      ]);
       setStatus('done');
-      onUpdate(sorted);
+      onUpdate(merged);
     } catch (e) {
       setLog((prev) => [...prev, `Lỗi kết nối: ${String(e)}`]);
       setStatus('error');
     }
   }
+
+  // Count by date for sidebar info
+  const byDate: Record<string, number> = {};
+  for (const m of currentMatches) byDate[m.date] = (byDate[m.date] || 0) + 1;
+  const dateSummary = Object.entries(byDate)
+    .sort(([a], [b]) => {
+      const parse = (s: string) => { const [d, mo, y] = s.split('/'); return +y * 10000 + +mo * 100 + +d; };
+      return parse(a) - parse(b);
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-end bg-black/60" onClick={onClose}>
@@ -81,7 +111,7 @@ export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }:
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
           <div>
             <div className="text-[15px] font-bold text-white">⚡ Cập nhật Volta</div>
-            <div className="text-[11px] text-white/40">Tải 100 trận mới nhất</div>
+            <div className="text-[11px] text-white/40">Tích lũy trận mới — API chỉ trả 100 trận gần nhất</div>
           </div>
           <button onClick={onClose} className="text-white/40 hover:text-white text-xl leading-none">
             ×
@@ -103,9 +133,16 @@ export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }:
           </div>
 
           {currentMatches.length > 0 && (
-            <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] text-white/50">
-              Hiện có{' '}
-              <strong className="text-white">{currentMatches.length}</strong> trận Volta
+            <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] space-y-1">
+              <div className="text-white/50">
+                Đang có <strong className="text-white">{currentMatches.length}</strong> trận tích lũy:
+              </div>
+              {dateSummary.map(([d, n]) => (
+                <div key={d} className="flex justify-between text-[11px] text-white/40">
+                  <span>{d}</span>
+                  <span>{n} trận</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -114,23 +151,35 @@ export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }:
             disabled={!token || status === 'fetching'}
             className="w-full rounded-lg bg-[#17a2b8] px-4 py-2.5 text-sm font-bold text-white transition-opacity disabled:opacity-40 hover:opacity-90"
           >
-            {status === 'fetching' ? 'Đang tải...' : '⚡ Tải dữ liệu Volta'}
+            {status === 'fetching' ? 'Đang tải...' : '⚡ Fetch & Merge trận mới'}
           </button>
 
           {log.length > 0 && (
             <div className="rounded-lg bg-[#0a0a0a] p-3.5 font-mono text-[11px] space-y-1">
               {log.map((l, i) => (
-                <div key={i} className={l.startsWith('✓') ? 'text-[#4ade80]' : l.startsWith('Lỗi') ? 'text-[#f87171]' : 'text-white/60'}>
+                <div
+                  key={i}
+                  className={
+                    l.startsWith('✓') ? 'text-[#4ade80]' :
+                    l.startsWith('Lỗi') ? 'text-[#f87171]' :
+                    l.startsWith('  ') ? 'text-white/40' :
+                    'text-white/60'
+                  }
+                >
                   {l}
                 </div>
               ))}
-              {status === 'done' && count > 0 && (
+              {status === 'done' && (
                 <div className="mt-2 pt-2 border-t border-white/10 text-[#4ade80] font-bold">
-                  ✓ Đã cập nhật {count} trận Volta
+                  {newCount > 0 ? `✓ +${newCount} trận mới được thêm` : '✓ Không có trận mới'}
                 </div>
               )}
             </div>
           )}
+
+          <div className="rounded-lg border border-white/[.06] px-3.5 py-3 text-[11px] text-white/30 leading-relaxed">
+            💡 API Volta chỉ trả 100 trận (~2 giờ). Nhấn fetch mỗi 1-2 giờ để tích lũy dữ liệu nhiều ngày.
+          </div>
         </div>
       </div>
     </div>
