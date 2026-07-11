@@ -41,5 +41,13 @@ export function apiDateToDisplay(d: string): string {
 
 /** Sort matches newest first */
 export function sortMatchesDesc(matches: Match[]): Match[] {
-  return [...matches].sort((a, b) => b.time.localeCompare(a.time));
+  // time is "DD/MM/YYYY HH:MM" — must parse as timestamp, not localeCompare
+  // (e.g. "11/07/2026" < "30/06/2026" lexicographically but July > June)
+  const parseTime = (t: string): number => {
+    const [datePart, timePart = '00:00'] = t.split(' ');
+    const [d, mo, y] = datePart.split('/');
+    const [h, min] = timePart.split(':');
+    return Date.UTC(+y, +mo - 1, +d, +h, +min);
+  };
+  return [...matches].sort((a, b) => parseTime(b.time) - parseTime(a.time));
 }
