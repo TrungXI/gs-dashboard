@@ -5,13 +5,12 @@ import type { VoltaMatch } from '../types/voltaMatch';
 import {
   winDistribution,
   sequenceView,
-  streakStats,
-  transitionMatrix,
   teamDominance,
   detectAnomaly,
   predictNext,
   segmentByMetaPattern,
   type WinCode,
+  type Run,
   type MetaSegment,
   type NextPrediction,
 } from '../lib/voltaPatterns';
@@ -26,8 +25,6 @@ const SEQ_N = 40;
 export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
   const dist = useMemo(() => winDistribution(matches), [matches]);
   const seq = useMemo(() => sequenceView(matches), [matches]);
-  const stats = useMemo(() => streakStats(matches), [matches]);
-  const transitions = useMemo(() => transitionMatrix(matches), [matches]);
   const dominance = useMemo(() => teamDominance(matches), [matches]);
   const anomaly = useMemo(() => detectAnomaly(matches), [matches]);
   const prediction: NextPrediction = useMemo(
@@ -216,92 +213,8 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
         </div>
       </div>
 
-      {/* Card D — Streak length statistics */}
-      <div className={CARD}>
-        <div className={TITLE}>📏 Thống kê độ dài chuỗi</div>
-        <div className="p-4">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr>
-                {['Độ dài', 'H', 'A', 'Tổng'].map((h) => (
-                  <th key={h} className={TH}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {stats.buckets.map((b) => (
-                <tr key={b.length}>
-                  <td className={`${TD} text-[#ccc]`}>{b.label}</td>
-                  <td className={`${TD} text-center font-bold text-[#fbbf24]`}>{b.home}</td>
-                  <td className={`${TD} text-center font-bold text-[#4ade80]`}>{b.away}</td>
-                  <td className={`${TD} text-center font-bold text-white`}>{b.total}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-[#888]">
-            <span>
-              TB chuỗi: <span className="font-semibold text-[#22d3ee]">{stats.avgStreak}</span>
-            </span>
-            <span>
-              TB Home: <span className="font-semibold text-[#22d3ee]">{stats.avgHomeStreak}</span>
-            </span>
-            <span>
-              TB Away: <span className="font-semibold text-[#22d3ee]">{stats.avgAwayStreak}</span>
-            </span>
-            <span>
-              Dài nhất: H×{stats.longestHome} / A×{stats.longestAway}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Card E — Transition matrix */}
-      <div className={CARD}>
-        <div className={TITLE}>🔀 Sau chuỗi X, mẫu tiếp theo</div>
-        <div className="p-4">
-          <div className="mb-2 text-[12px] text-[#888]">
-            Ví dụ: sau H×3, tỉ lệ % đối thủ lật lại ngay 1 trận (Lật ngay) so với kéo dài ≥2 trận (Kéo dài).
-          </div>
-          {transitions.length === 0 ? (
-            <p className="text-[12px] text-[#555]">Chưa đủ dữ liệu.</p>
-          ) : (
-            <table className="w-full border-collapse text-xs">
-              <thead>
-                <tr>
-                  {['Sau chuỗi', 'Lật ngay (len 1)', 'Kéo dài (len ≥2)', 'Tổng'].map((h) => (
-                    <th key={h} className={TH}>
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {transitions.map((row) => (
-                  <tr key={`${row.afterCode}-${row.afterLength}`}>
-                    <td
-                      className={`${TD} font-bold ${
-                        row.afterCode === 'H' ? 'text-[#fbbf24]' : 'text-[#4ade80]'
-                      }`}
-                    >
-                      {row.afterCode}×{row.lengthLabel}
-                    </td>
-                    <td className={`${TD} text-center font-semibold text-[#fbbf24]`}>
-                      {row.flipBackPct}% ({row.flipBack})
-                    </td>
-                    <td className={`${TD} text-center font-semibold text-[#22d3ee]`}>
-                      {row.extendPct}% ({row.extend})
-                    </td>
-                    <td className={`${TD} text-center text-[#ccc]`}>{row.total}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      </div>
+      {/* Card D — Run pattern distribution by result */}
+      <RunPatternCard runs={seq.runs} />
 
       {/* Card F — Per-team dominance */}
       <div className={CARD}>
@@ -376,6 +289,92 @@ function DominanceTable({
           </tbody>
         </table>
       )}
+    </div>
+  );
+}
+
+function RunPatternCard({ runs }: { runs: Run[] }) {
+  // bucket run lengths: 1, 2, 3, 4+
+  const LABELS = ['×1', '×2', '×3', '×4+'];
+  const bucket = (len: number) => Math.min(len - 1, 3);
+
+  const hBuckets = [0, 0, 0, 0];
+  const aBuckets = [0, 0, 0, 0];
+  for (const r of runs) {
+    if (r.code === 'H') hBuckets[bucket(r.length)]++;
+    else aBuckets[bucket(r.length)]++;
+  }
+  const hTotal = hBuckets.reduce((s, v) => s + v, 0);
+  const aTotal = aBuckets.reduce((s, v) => s + v, 0);
+  const pct = (n: number, total: number) => (total === 0 ? 0 : Math.round((n / total) * 100));
+
+  const BAR_H = 'bg-[#d97706]';
+  const BAR_A = 'bg-[#16a34a]';
+
+  return (
+    <div className={CARD}>
+      <div className={TITLE}>📊 Khi ra H hoặc A — mẫu hình chuỗi tiếp theo</div>
+      <div className="p-4 grid grid-cols-2 gap-6">
+        {/* Home column */}
+        <div>
+          <div className="mb-3 text-[13px] font-bold text-[#fbbf24]">
+            🏠 Home ({hTotal} chuỗi)
+          </div>
+          <div className="flex flex-col gap-2">
+            {LABELS.map((lbl, i) => {
+              const count = hBuckets[i];
+              const p = pct(count, hTotal);
+              return (
+                <div key={lbl}>
+                  <div className="flex justify-between mb-0.5 text-[11px]">
+                    <span className="text-[#ccc] font-mono">H{lbl}</span>
+                    <span className="text-[#fbbf24] font-bold">{p}%</span>
+                    <span className="text-[#555]">{count} lần</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#2a2a2a] overflow-hidden">
+                    <div className={`h-full ${BAR_H} rounded-full`} style={{ width: `${p}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-[11px] text-[#666]">
+            TB chuỗi H: <span className="text-[#fbbf24] font-semibold">
+              {hTotal === 0 ? '—' : (hBuckets.reduce((s, v, i) => s + v * (i + 1), 0) / hTotal).toFixed(1)}
+            </span>
+          </div>
+        </div>
+
+        {/* Away column */}
+        <div>
+          <div className="mb-3 text-[13px] font-bold text-[#4ade80]">
+            ✈️ Away ({aTotal} chuỗi)
+          </div>
+          <div className="flex flex-col gap-2">
+            {LABELS.map((lbl, i) => {
+              const count = aBuckets[i];
+              const p = pct(count, aTotal);
+              return (
+                <div key={lbl}>
+                  <div className="flex justify-between mb-0.5 text-[11px]">
+                    <span className="text-[#ccc] font-mono">A{lbl}</span>
+                    <span className="text-[#4ade80] font-bold">{p}%</span>
+                    <span className="text-[#555]">{count} lần</span>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-[#2a2a2a] overflow-hidden">
+                    <div className={`h-full ${BAR_A} rounded-full`} style={{ width: `${p}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-3 text-[11px] text-[#666]">
+            TB chuỗi A: <span className="text-[#4ade80] font-semibold">
+              {aTotal === 0 ? '—' : (aBuckets.reduce((s, v, i) => s + v * (i + 1), 0) / aTotal).toFixed(1)}
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
