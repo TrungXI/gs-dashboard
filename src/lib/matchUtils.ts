@@ -15,6 +15,9 @@ export function toVnTime(iso: string): { date: string; time: string } {
   };
 }
 
+const renameTeam = (name: string): string =>
+  name.replace(/ \(V\)$/, ' (20)').replace(/ \(S\)$/, ' (16)');
+
 export function apiToRow(m: Record<string, unknown>): Match {
   const { date, time } = toVnTime(m['0'] as string);
   const league = m['1'] as string;
@@ -24,8 +27,8 @@ export function apiToRow(m: Record<string, unknown>): Match {
     time,
     matchType,
     league,
-    homeTeam: m['2'] as string,
-    awayTeam: m['3'] as string,
+    homeTeam: renameTeam(m['2'] as string),
+    awayTeam: renameTeam(m['3'] as string),
     h1Home: String(m['4']),
     h1Away: String(m['5']),
     ttHome: String(m['6']),

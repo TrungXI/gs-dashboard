@@ -40,6 +40,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [voltaMatches, setVoltaMatches] = useState<VoltaMatch[]>(ALL_VOLTA_MATCHES);
   const [voltaDrawerOpen, setVoltaDrawerOpen] = useState(false);
   const [voltaUpdatedAt, setVoltaUpdatedAt] = useState<string | null>(null);
+  const [quickFetching, setQuickFetching] = useState(false);
+  const [voltaQuickFetching, setVoltaQuickFetching] = useState(false);
 
   // Restore UI state from localStorage immediately (SSR-safe: default first, apply on mount)
   const [view, setView] = useState<View>('data');
@@ -71,8 +73,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
     uiRestored.current = true;
-    // Version 2: switched time format from 12h AM/PM to 24h; clear old cached data
-    const DATA_VERSION = '2';
+    // Version 3: renamed team suffixes (V)→(20), (S)→(16)
+    const DATA_VERSION = '3';
     if (localStorage.getItem('gs_data_version') !== DATA_VERSION) {
       localStorage.removeItem(LS_MATCHES);
       localStorage.removeItem('gs_updated_at');
@@ -169,6 +171,61 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     setVoltaUpdatedAt(localStorage.getItem(LS_VOLTA_AT));
   }, []);
 
+  const quickFetchGS = useCallback(async () => {
+    if (quickFetching) return;
+    setQuickFetching(true);
+    try {
+      const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+      const today = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const dateStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const res = await fetch('/api/fetch-data', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token, dates: [dateStr] }),
+      });
+      const json = await res.json() as { ok: boolean; data?: Record<string, unknown[]> };
+      if (json.ok && json.data) {
+        const newRaw = Object.values(json.data).flat();
+        const newRows = newRaw.map(r => apiToRow(r as Record<string, unknown>));
+        if (newRows.length > 0) {
+          setMatches(prev => {
+            const existing = prev.filter(m => !newRows.some(n => n.time === m.time && n.homeTeam === m.homeTeam));
+            return sortMatchesDesc([...existing, ...newRows]);
+          });
+          const now = new Date().toLocaleString('vi-VN');
+          localStorage.setItem('gs_updated_at', now);
+          setUpdatedAt(now);
+        }
+      }
+    } catch { /* silent */ } finally {
+      setQuickFetching(false);
+    }
+  }, [quickFetching]);
+
+  const quickFetchVolta = useCallback(async () => {
+    if (voltaQuickFetching) return;
+    setVoltaQuickFetching(true);
+    try {
+      const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+      const res = await fetch('/api/fetch-volta', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const json = await res.json() as { ok: boolean; data?: Record<string, unknown>[] };
+      if (json.ok && json.data) {
+        const newRows = json.data.map(r => apiToVoltaRow(r));
+        const now = new Date().toLocaleString('vi-VN');
+        localStorage.setItem(LS_VOLTA_AT, now);
+        setVoltaMatches(newRows);
+        setVoltaUpdatedAt(now);
+      }
+    } catch { /* silent */ } finally {
+      setVoltaQuickFetching(false);
+    }
+  }, [voltaQuickFetching]);
+
   const teams = useMemo(
     () => [...new Set(matches.flatMap((m) => [m.homeTeam, m.awayTeam]))].sort(),
     [matches],
@@ -253,11 +310,20 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   : `${matches.length} trận`}
               </div>
             </div>
-            {/* Update button */}
+            {/* Quick fetch today */}
+            <button
+              onClick={quickFetchGS}
+              disabled={quickFetching}
+              className="flex-shrink-0 rounded-md bg-white/[.08] px-2 py-1.5 text-[11px] text-white/60 hover:bg-[#4ade80]/20 hover:text-[#4ade80] transition-colors disabled:opacity-40"
+              title="Cập nhật nhanh hôm nay"
+            >
+              {quickFetching ? '…' : '⚡'}
+            </button>
+            {/* Update drawer */}
             <button
               onClick={() => setDrawerOpen(true)}
               className="flex-shrink-0 rounded-md bg-white/[.08] px-2 py-1.5 text-[11px] text-white/60 hover:bg-[#17a2b8]/20 hover:text-[#17a2b8] transition-colors"
-              title="Cập nhật dữ liệu"
+              title="Chọn ngày cập nhật"
             >
               ↻
             </button>
@@ -305,12 +371,21 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                     <div className="text-[10px] text-[#4ade80]/60">✓ Cập nhật {voltaUpdatedAt}</div>
                   )}
                 </div>
-                <button
-                  onClick={() => setVoltaDrawerOpen(true)}
-                  className="mt-3 w-full rounded-lg bg-[#17a2b8]/20 px-3 py-2 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
-                >
-                  ↻ Cập nhật Volta
-                </button>
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={quickFetchVolta}
+                    disabled={voltaQuickFetching}
+                    className="flex-1 rounded-lg bg-[#4ade80]/10 px-3 py-2 text-[12px] font-semibold text-[#4ade80] hover:bg-[#4ade80]/20 transition-colors disabled:opacity-40"
+                  >
+                    {voltaQuickFetching ? '…' : '⚡ Nhanh'}
+                  </button>
+                  <button
+                    onClick={() => setVoltaDrawerOpen(true)}
+                    className="flex-1 rounded-lg bg-[#17a2b8]/20 px-3 py-2 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
+                  >
+                    ↻ Chọn
+                  </button>
+                </div>
               </div>
             ) : view === 'data' ? (
               <>
