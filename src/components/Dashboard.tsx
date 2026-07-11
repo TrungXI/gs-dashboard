@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, startTransition } from 'react';
 import type { Match } from '../types/match';
 import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
@@ -54,10 +54,15 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [h1Filter, setH1Filter] = useState('all');
   const uiRestored = useRef(false);
 
-  // Persist UI state — skip first render so the restore effect below can read the saved value first
+  // Persist UI state — debounced to avoid writing on every keystroke
+  const lsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (!uiRestored.current) return;
-    localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
+    if (lsTimer.current) clearTimeout(lsTimer.current);
+    lsTimer.current = setTimeout(() => {
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
+    }, 300);
+    return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
   }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
 
   // Load cached data from localStorage on mount
@@ -399,7 +404,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                     {typeChips.map(([v, label]) => (
                       <button
                         key={v}
-                        onClick={() => setFType(v)}
+                        onClick={() => startTransition(() => setFType(v))}
                         className={`rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors ${
                           fType === v
                             ? 'bg-[#17a2b8] text-white'
@@ -418,7 +423,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   </div>
                   <select
                     value={fDate}
-                    onChange={(e) => setFDate(e.target.value)}
+                    onChange={(e) => { const v = e.target.value; startTransition(() => setFDate(v)); }}
                     className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
                   >
                     <option value="all" className="bg-[#111] text-white">
@@ -578,7 +583,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       {/* GS Update Drawer */}
       {drawerOpen && (
         <UpdateDrawer
-          currentMatches={matches}
+          dateCounts={dateCounts}
           onUpdate={handleUpdate}
           onClose={() => setDrawerOpen(false)}
         />

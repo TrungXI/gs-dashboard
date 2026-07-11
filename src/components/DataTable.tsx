@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import type { Match } from '../types/match';
 import { TeamBadge, TypeBadge } from './badges';
 
@@ -8,7 +9,7 @@ function ScoreCell({ my, opp }: { my: string; opp: string }) {
   return <span className={`font-bold ${cls}`}>{my}</span>;
 }
 
-export default function DataTable({ matches }: { matches: Match[] }) {
+const DataTable = memo(function DataTable({ matches }: { matches: Match[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
       <table className="w-full min-w-[720px] border-collapse bg-[#141414] text-sm">
@@ -62,4 +63,6 @@ export default function DataTable({ matches }: { matches: Match[] }) {
       </table>
     </div>
   );
-}
+});
+
+export default DataTable;

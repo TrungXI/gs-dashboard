@@ -27,23 +27,18 @@ interface FetchStatus {
 }
 
 interface Props {
-  currentMatches: Match[];
+  dateCounts: Record<string, number>;
   onUpdate: (matches: Match[]) => void;
   onClose: () => void;
 }
 
-export default function UpdateDrawer({ currentMatches, onUpdate, onClose }: Props) {
+export default function UpdateDrawer({ dateCounts, onUpdate, onClose }: Props) {
   const [token, setToken] = useState('69-6aed7dc417eb4882d88c6899ae3c0ae1');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fetchStatus, setFetchStatus] = useState<Record<string, FetchStatus>>({});
   const [loading, setLoading] = useState(false);
 
   const days = generateDays(21);
-
-  const dateCounts = currentMatches.reduce<Record<string, number>>((acc, m) => {
-    acc[m.date] = (acc[m.date] || 0) + 1;
-    return acc;
-  }, {});
 
   useEffect(() => {
     const saved = localStorage.getItem('gs_token');
@@ -101,7 +96,9 @@ export default function UpdateDrawer({ currentMatches, onUpdate, onClose }: Prop
         .filter((d) => updatedStatus[d].state === 'done')
         .map(apiDateToDisplay),
     );
-    const kept = currentMatches.filter((m) => !fetchedDisplayDates.has(m.date));
+    let existing: Match[] = [];
+    try { existing = JSON.parse(localStorage.getItem('gs_matches') ?? '[]'); } catch { /* ignore */ }
+    const kept = existing.filter((m) => !fetchedDisplayDates.has(m.date));
     const merged = sortMatchesDesc([...kept, ...fetchedMatches]);
 
     localStorage.setItem('gs_matches', JSON.stringify(merged));
