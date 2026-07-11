@@ -51,7 +51,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (saved) {
         const parsed = JSON.parse(saved) as Match[];
         if (parsed.length > 0) {
-          setMatches(parsed);
+          setMatches(sortMatchesDesc(parsed));
           setUpdatedAt(localStorage.getItem('gs_updated_at'));
         }
       }
