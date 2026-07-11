@@ -34,7 +34,7 @@ interface Props {
 }
 
 export default function UpdateDrawer({ currentMatches, onUpdate, onClose }: Props) {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState('69-6aed7dc417eb4882d88c6899ae3c0ae1');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fetchStatus, setFetchStatus] = useState<Record<string, FetchStatus>>({});
   const [loading, setLoading] = useState(false);
