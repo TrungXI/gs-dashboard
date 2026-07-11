@@ -692,38 +692,29 @@ function H1ScenarioPicker({
                   </div>
                 )}
                 {h2h.h2DistTop2.length > 0 && (
-                  <div className="mt-2 flex gap-1.5 flex-wrap">
-                    {h2h.h2DistTop2.map(([score, count]) => (
-                      <span
-                        key={score}
-                        className="rounded bg-white/[.06] px-2 py-0.5 text-[11px] text-white/60"
-                      >
-                        {score} ({count}x)
-                      </span>
-                    ))}
-                  </div>
+                  <>
+                    <div className="mt-2 mb-1 text-[11px] font-semibold text-[#888]">
+                      Tỉ số H2 phổ biến nhất:
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {h2h.h2DistTop2.map(([score, count]) => (
+                        <span
+                          key={score}
+                          className="rounded bg-[#1e1e1e] px-2.5 py-1 text-xs"
+                        >
+                          <b className="text-white">{score}</b>
+                          <span className="ml-1.5 text-[10px] text-[#666]">
+                            {count} · {Math.round((count / h2h.n) * 100)}%
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  </>
                 )}
               </>
             ) : (
               <div className="text-[11px] text-[#555]">Không đủ dữ liệu</div>
             )}
-          </div>
-
-          <div className="mt-3 mb-1 text-[11px] font-semibold text-[#888]">
-            Tỉ số H2 phổ biến nhất:
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {outcome.h2DistTop5.slice(0, 3).map((d) => (
-              <span
-                key={d.score}
-                className="rounded bg-[#1e1e1e] px-2.5 py-1 text-xs"
-              >
-                <b className="text-white">{d.score}</b>
-                <span className="ml-1.5 text-[10px] text-[#666]">
-                  {d.count} · {Math.round((d.count / outcome.total) * 100)}%
-                </span>
-              </span>
-            ))}
           </div>
         </>
       )}
