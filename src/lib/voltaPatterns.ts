@@ -329,3 +329,216 @@ export function detectAnomaly(matches: VoltaMatch[]): StreakAnomaly {
     message,
   };
 }
+
+// ---- Meta-pattern detector --------------------------------------------------
+
+export interface MetaPatternResult {
+  period: number;
+  template: number[];
+  score: number;
+  matchedRuns: number;
+}
+
+export interface MetaSegment {
+  startRunIdx: number;
+  endRunIdx: number;
+  period: number;
+  template: number[];
+  code: string;
+  score: number;
+  runCount: number;
+  matchCount: number;
+  label: string;
+}
+
+export interface NextPrediction {
+  currentMetaPattern: string;
+  currentSegmentLength: number;
+  positionInPattern: number;
+  nextExpectedRunLength: number;
+  remainingInRun: number;
+  nextCode: WinCode;
+  confidence: number;
+  reasoning: string;
+  label: string;
+}
+
+function mean(xs: number[]): number {
+  if (!xs.length) return 0;
+  return xs.reduce((a, b) => a + b, 0) / xs.length;
+}
+
+function stdDev(xs: number[]): number {
+  if (xs.length <= 1) return 0;
+  const m = mean(xs);
+  return Math.sqrt(mean(xs.map((x) => (x - m) ** 2)));
+}
+
+export function detectMetaPattern(runLengths: number[]): MetaPatternResult {
+  const window = runLengths.slice(0, Math.min(20, runLengths.length));
+  if (window.length < 3) return { period: 0, template: [], score: 0, matchedRuns: 0 };
+  const overallMean = mean(window);
+  if (overallMean === 0) return { period: 0, template: [], score: 0, matchedRuns: 0 };
+
+  let best: MetaPatternResult = { period: 0, template: [], score: -1, matchedRuns: 0 };
+
+  for (let P = 1; P <= 4; P++) {
+    if (window.length < P * 3) continue;
+    const chunks = Math.floor(window.length / P);
+    const template: number[] = [];
+    let meanPosStd = 0;
+    for (let i = 0; i < P; i++) {
+      const col: number[] = [];
+      for (let c = 0; c < chunks; c++) col.push(window[i + c * P]);
+      meanPosStd += stdDev(col);
+      template.push(Math.max(1, Math.round(mean(col))));
+    }
+    meanPosStd /= P;
+    const score = Math.max(0, Math.min(1, 1 - meanPosStd / overallMean));
+    const matchedRuns = chunks * P;
+    if (
+      score > best.score + 1e-9 ||
+      (Math.abs(score - best.score) < 1e-9 && (best.period === 0 || P < best.period))
+    ) {
+      best = { period: P, template, score, matchedRuns };
+    }
+  }
+
+  return best.period === 0 ? { period: 0, template: [], score: 0, matchedRuns: 0 } : best;
+}
+
+function getMetaLabel(period: number, template: number[], score: number): string {
+  if (score < 0.6 || period === 0) return 'Không đều';
+  if (period === 1 && template[0] === 1) return 'Luân phiên 1-1';
+  if (period === 1 && template[0] >= 2) return `Cặp đôi ${template[0]}-${template[0]}`;
+  return `Xen kẽ ${template.join('-')}`;
+}
+
+function getMetaCode(period: number, template: number[], score: number): string {
+  if (score < 0.6 || period === 0) return 'Không đều';
+  if (period === 1) return Array(4).fill(template[0]).join('-');
+  const repeated: number[] = [];
+  for (let i = 0; repeated.length < 4; i++) repeated.push(template[i % template.length]);
+  return repeated.join('-');
+}
+
+export function segmentByMetaPattern(runs: Run[]): MetaSegment[] {
+  if (runs.length === 0) return [];
+  const lengths = runs.map((r) => r.length);
+  const segments: MetaSegment[] = [];
+  let segStart = 0;
+  let consecDiff = 0;
+  let currentDet = detectMetaPattern([...lengths.slice(0, Math.min(20, lengths.length))].reverse());
+
+  for (let i = 0; i < runs.length; i++) {
+    const windowLen = i - segStart + 1;
+    const recent = lengths.slice(Math.max(segStart, i - 15), i + 1);
+    const det = detectMetaPattern([...recent].reverse()); // most-recent-first
+
+    const differs =
+      det.period !== currentDet.period ||
+      det.template.join('-') !== currentDet.template.join('-');
+    const hasDivergence = differs && det.score > 0.65;
+
+    if (hasDivergence) {
+      consecDiff++;
+    } else {
+      consecDiff = 0;
+      if (det.score >= 0.65) currentDet = det;
+    }
+
+    // Break: 3 consecutive divergent runs AND current segment has at least 4 runs
+    if (consecDiff >= 3 && windowLen >= 4 + 3) {
+      const breakAt = i - 3;
+      if (breakAt >= segStart) {
+        const segLengths = lengths.slice(segStart, breakAt + 1);
+        const segDet = detectMetaPattern([...segLengths].reverse());
+        segments.push({
+          startRunIdx: segStart,
+          endRunIdx: breakAt,
+          period: segDet.period,
+          template: segDet.template,
+          code: segDet.template.join('-'),
+          score: segDet.score,
+          runCount: breakAt - segStart + 1,
+          matchCount: runs.slice(segStart, breakAt + 1).reduce((s, r) => s + r.length, 0),
+          label: getMetaLabel(segDet.period, segDet.template, segDet.score),
+        });
+        segStart = i - 2;
+        consecDiff = 0;
+        const newRecent = lengths.slice(segStart, i + 1);
+        currentDet = detectMetaPattern([...newRecent].reverse());
+      }
+    }
+  }
+
+  // Close last segment
+  const finalLengths = lengths.slice(segStart);
+  const finalDet = detectMetaPattern([...finalLengths].reverse());
+  segments.push({
+    startRunIdx: segStart,
+    endRunIdx: runs.length - 1,
+    period: finalDet.period,
+    template: finalDet.template,
+    code: finalDet.template.join('-'),
+    score: finalDet.score,
+    runCount: runs.length - segStart,
+    matchCount: runs.slice(segStart).reduce((s, r) => s + r.length, 0),
+    label: getMetaLabel(finalDet.period, finalDet.template, finalDet.score),
+  });
+
+  return segments;
+}
+
+export function predictNext(runs: Run[], _matches: VoltaMatch[]): NextPrediction {
+  if (runs.length === 0) {
+    return {
+      currentMetaPattern: 'Không đủ dữ liệu',
+      currentSegmentLength: 0,
+      positionInPattern: 0,
+      nextExpectedRunLength: 1,
+      remainingInRun: 0,
+      nextCode: 'H',
+      confidence: 0,
+      reasoning: 'Chưa đủ dữ liệu.',
+      label: 'Không đủ dữ liệu',
+    };
+  }
+
+  const segments = segmentByMetaPattern(runs);
+  const current = segments[segments.length - 1];
+  const template = current.template.length ? current.template : [1];
+  const period = template.length;
+
+  const segRuns = runs.slice(current.startRunIdx);
+  const positionInPattern = (segRuns.length - 1) % period;
+  const nextExpectedRunLength = template[positionInPattern];
+  const currentRun = runs[runs.length - 1];
+  const remainingInRun = Math.max(0, nextExpectedRunLength - currentRun.length);
+
+  const nextCode: WinCode =
+    remainingInRun > 0 ? currentRun.code : currentRun.code === 'H' ? 'A' : 'H';
+  const confidence = Math.min(1, current.score * (1 - 1 / Math.max(1, segRuns.length)));
+  const metaCode = getMetaCode(current.period, current.template, current.score);
+
+  let reasoning: string;
+  if (current.score < 0.6) {
+    reasoning = 'Mẫu không đều — độ tin cậy thấp.';
+  } else if (remainingInRun > 0) {
+    reasoning = `Mẫu ${metaCode} — đang ở ${currentRun.code}×${nextExpectedRunLength}, mới ${currentRun.length}/${nextExpectedRunLength}, còn ${remainingInRun} trận nữa.`;
+  } else {
+    reasoning = `Mẫu ${metaCode} — ${currentRun.code}×${nextExpectedRunLength} đã đủ, dự sang ${nextCode}.`;
+  }
+
+  return {
+    currentMetaPattern: metaCode,
+    currentSegmentLength: segRuns.length,
+    positionInPattern,
+    nextExpectedRunLength,
+    remainingInRun,
+    nextCode,
+    confidence,
+    reasoning,
+    label: current.label,
+  };
+}

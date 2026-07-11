@@ -16,6 +16,7 @@ import {
   type CommonH1Score,
   type H1ToH2Result,
 } from '../lib/h2Stats';
+import { teamH2ResponseToH1, h2hH1ToH2Outcomes, type H2OutcomeSet } from '../lib/h2Stats';
 import { useState, useMemo } from 'react';
 import { TypeBadge, ResultTag } from './badges';
 
@@ -466,13 +467,90 @@ function H2CompareBar({
   );
 }
 
-function H1ScenarioPicker({ matches }: { matches: Match[] }) {
+function renderTeamCard(
+  teamLabel: string,
+  resp: { asHome: H2OutcomeSet; asAway: H2OutcomeSet } | undefined,
+  selected: CommonH1Score,
+) {
+  if (!resp) return <div className="text-[11px] text-[#555]">Không đủ dữ liệu</div>;
+
+  const lead = selected.home - selected.away;
+  const round = (n: number, d: number) => (d ? Math.round((n / d) * 100) : 0);
+
+  if (lead === 0) {
+    const line = (label: string, s: H2OutcomeSet) => {
+      const nn = s.h2W + s.h2D + s.h2L;
+      return (
+        <div className="text-[11px] text-white/70">
+          {label}: H2 W {round(s.h2W, nn)}% / D {round(s.h2D, nn)}% / L {round(s.h2L, nn)}% (n=
+          {s.n})
+        </div>
+      );
+    };
+    return (
+      <div className="flex flex-col gap-1">
+        {line('Sân nhà', resp.asHome)}
+        {line('Sân khách', resp.asAway)}
+      </div>
+    );
+  }
+
+  const primary = lead > 0 ? resp.asHome : resp.asAway;
+  const secondary = lead > 0 ? resp.asAway : resp.asHome;
+
+  return (
+    <div className="flex flex-col gap-1">
+      {primary.n < 5 ? (
+        <div className="text-[11px] text-[#888]">
+          Đang thắng H1 → Không đủ dữ liệu (n={primary.n})
+        </div>
+      ) : (
+        <div className="text-[11px] text-white/70">
+          Đang thắng → tiếp tục: {round(primary.holds, primary.n)}% · bị ngược:{' '}
+          {round(primary.reversedAgainst, primary.n)}% (n={primary.n})
+        </div>
+      )}
+      {secondary.n >= 5 && (
+        <div className="text-[10px] text-[#888]">
+          Khi là {lead > 0 ? 'Khách' : 'Nhà'} (đang thua): comeback{' '}
+          {round(secondary.recovers, secondary.n)}% (n={secondary.n})
+        </div>
+      )}
+    </div>
+  );
+}
+
+function H1ScenarioPicker({
+  matches,
+  t1,
+  t2,
+}: {
+  matches: Match[];
+  t1: string;
+  t2: string;
+}) {
   const commonH1 = useMemo(() => getCommonH1Scores(matches), [matches]);
   const [selected, setSelected] = useState<CommonH1Score | null>(null);
 
   const outcome: H1ToH2Result | null = useMemo(
     () => (selected ? h1ToH2Outcomes(matches, selected.home, selected.away) : null),
     [matches, selected],
+  );
+
+  const teamResp = useMemo(
+    () =>
+      selected
+        ? {
+            t1: teamH2ResponseToH1(matches, t1, selected.home, selected.away),
+            t2: teamH2ResponseToH1(matches, t2, selected.home, selected.away),
+          }
+        : null,
+    [matches, selected, t1, t2],
+  );
+
+  const h2h = useMemo(
+    () => (selected ? h2hH1ToH2Outcomes(matches, t1, t2, selected.home, selected.away) : null),
+    [matches, selected, t1, t2],
   );
 
   let holdPct = 0,
@@ -547,6 +625,80 @@ function H1ScenarioPicker({ matches }: { matches: Match[] }) {
             <span className="text-[#f87171]">■ Lật kèo</span>
           </div>
 
+          {/* Layer 2 — Per-team response */}
+          <div className="mt-4 mb-2 text-[11px] font-semibold text-[#888]">
+            Phản ứng từng đội khi H1 {selected.label}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {[
+              { label: t1, resp: teamResp?.t1 },
+              { label: t2, resp: teamResp?.t2 },
+            ].map(({ label, resp }) => (
+              <div
+                key={label}
+                className="rounded-lg border border-white/10 bg-[#1a1a1a] p-3"
+              >
+                <div className="text-[12px] font-bold text-white mb-2">{label}</div>
+                {renderTeamCard(label, resp, selected)}
+              </div>
+            ))}
+          </div>
+
+          {/* Layer 3 — H2H */}
+          <div className="mt-4 rounded-lg border border-white/10 bg-[#1a1a1a] p-3">
+            <div className="text-[11px] text-[#888] mb-2">
+              {t1} vs {t2} — đối đầu H1 {selected.label}
+            </div>
+            {h2h && h2h.n > 0 ? (
+              <>
+                <div className="text-[11px] text-white/60 mb-2">
+                  n={h2h.n} trận{h2h.n < 5 ? ' · Không đủ dữ liệu (n<5)' : ''}
+                </div>
+                {h2h.n >= 1 && (
+                  <div className="flex gap-2 flex-wrap text-[11px]">
+                    <span style={{ color: '#4ade80' }}>
+                      {t1} thắng H2: {Math.round((h2h.t1WinsH2 / h2h.n) * 100)}%
+                    </span>
+                    <span style={{ color: '#888' }}>
+                      Hòa: {Math.round((h2h.drawsH2 / h2h.n) * 100)}%
+                    </span>
+                    <span style={{ color: '#f87171' }}>
+                      {t2} thắng H2: {Math.round((h2h.t2WinsH2 / h2h.n) * 100)}%
+                    </span>
+                  </div>
+                )}
+                {h2h.n >= 5 && h2h.t1WinsH2 !== h2h.t2WinsH2 && (
+                  <div className="mt-1.5 text-[11px] text-[#fbbf24]">
+                    Trong bối cảnh H1 {selected.label}:{' '}
+                    {h2h.t1WinsH2 > h2h.t2WinsH2 ? t1 : t2} có H2 mạnh hơn (
+                    {h2h.t1WinsH2 > h2h.t2WinsH2
+                      ? Math.round((h2h.t1WinsH2 / h2h.n) * 100)
+                      : Math.round((h2h.t2WinsH2 / h2h.n) * 100)}
+                    % vs{' '}
+                    {h2h.t1WinsH2 > h2h.t2WinsH2
+                      ? Math.round((h2h.t2WinsH2 / h2h.n) * 100)
+                      : Math.round((h2h.t1WinsH2 / h2h.n) * 100)}
+                    %)
+                  </div>
+                )}
+                {h2h.h2DistTop2.length > 0 && (
+                  <div className="mt-2 flex gap-1.5 flex-wrap">
+                    {h2h.h2DistTop2.map(([score, count]) => (
+                      <span
+                        key={score}
+                        className="rounded bg-white/[.06] px-2 py-0.5 text-[11px] text-white/60"
+                      >
+                        {score} ({count}x)
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-[11px] text-[#555]">Không đủ dữ liệu</div>
+            )}
+          </div>
+
           <div className="mt-3 mb-1 text-[11px] font-semibold text-[#888]">
             Tỉ số H2 phổ biến nhất:
           </div>
@@ -591,7 +743,7 @@ function H2DecisionPanel({
       </div>
       <div className="flex flex-col gap-4 p-4">
         <H2CompareBar matches={matches} t1={t1} t2={t2} />
-        <H1ScenarioPicker matches={matches} />
+        <H1ScenarioPicker matches={matches} t1={t1} t2={t2} />
       </div>
     </div>
   );

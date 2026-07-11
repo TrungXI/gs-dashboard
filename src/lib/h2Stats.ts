@@ -123,3 +123,160 @@ export function getCommonH1Scores(matches: Match[]): CommonH1Score[] {
     .sort((a, b) => b.count - a.count)
     .slice(0, 6);
 }
+
+export interface H2OutcomeSet {
+  n: number;
+  holds: number;
+  recovers: number;
+  draws: number;
+  reversedAgainst: number;
+  h1Draw: boolean;
+  h2W: number;
+  h2D: number;
+  h2L: number;
+  h2DistTop3: [string, number][];
+}
+
+function buildH2OutcomeSet(
+  matches: Match[],
+  team: string,
+  h1HomeGoals: number,
+  h1AwayGoals: number,
+  isHome: boolean,
+): H2OutcomeSet {
+  const list = matches.filter((m) => {
+    if (!(+m.h1Home === h1HomeGoals && +m.h1Away === h1AwayGoals)) return false;
+    return isHome ? m.homeTeam === team : m.awayTeam === team;
+  });
+
+  const set: H2OutcomeSet = {
+    n: list.length,
+    holds: 0,
+    recovers: 0,
+    draws: 0,
+    reversedAgainst: 0,
+    h1Draw: h1HomeGoals === h1AwayGoals,
+    h2W: 0,
+    h2D: 0,
+    h2L: 0,
+    h2DistTop3: [],
+  };
+
+  const dist = new Map<string, number>();
+
+  for (const m of list) {
+    const myH1 = isHome ? +m.h1Home : +m.h1Away;
+    const opH1 = isHome ? +m.h1Away : +m.h1Home;
+    const myTT = isHome ? +m.ttHome : +m.ttAway;
+    const opTT = isHome ? +m.ttAway : +m.ttHome;
+    const { h2Home, h2Away } = h2Score(m);
+    const myH2 = isHome ? h2Home : h2Away;
+    const opH2 = isHome ? h2Away : h2Home;
+    const h1Diff = myH1 - opH1;
+
+    if (h1Diff === 0) {
+      set.h1Draw = true;
+      if (myTT === opTT) set.draws++;
+      if (myH2 > opH2) set.h2W++;
+      else if (myH2 === opH2) set.h2D++;
+      else set.h2L++;
+    } else if (h1Diff > 0) {
+      if (myTT > opTT) set.holds++;
+      else if (myTT === opTT) set.draws++;
+      else set.reversedAgainst++;
+    } else {
+      if (myTT >= opTT) set.recovers++;
+      if (myTT === opTT) set.draws++;
+      if (myH2 > opH2) set.h2W++;
+      else if (myH2 === opH2) set.h2D++;
+      else set.h2L++;
+    }
+
+    const key = `${myH2}-${opH2}`;
+    dist.set(key, (dist.get(key) ?? 0) + 1);
+  }
+
+  set.h2DistTop3 = [...dist.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+
+  return set;
+}
+
+export function teamH2ResponseToH1(
+  matches: Match[],
+  team: string,
+  h1HomeGoals: number,
+  h1AwayGoals: number,
+): { asHome: H2OutcomeSet; asAway: H2OutcomeSet } {
+  return {
+    asHome: buildH2OutcomeSet(matches, team, h1HomeGoals, h1AwayGoals, true),
+    asAway: buildH2OutcomeSet(matches, team, h1HomeGoals, h1AwayGoals, false),
+  };
+}
+
+export function h2hH1ToH2Outcomes(
+  matches: Match[],
+  t1: string,
+  t2: string,
+  h1HomeGoals: number,
+  h1AwayGoals: number,
+): {
+  n: number;
+  t1WinsH2: number;
+  t2WinsH2: number;
+  drawsH2: number;
+  t1WinsTT: number;
+  t2WinsTT: number;
+  drawsTT: number;
+  h2DistTop2: [string, number][];
+} {
+  const list = matches.filter(
+    (m) =>
+      ((m.homeTeam === t1 && m.awayTeam === t2) ||
+        (m.homeTeam === t2 && m.awayTeam === t1)) &&
+      +m.h1Home === h1HomeGoals &&
+      +m.h1Away === h1AwayGoals,
+  );
+
+  let t1WinsH2 = 0,
+    t2WinsH2 = 0,
+    drawsH2 = 0,
+    t1WinsTT = 0,
+    t2WinsTT = 0,
+    drawsTT = 0;
+  const dist = new Map<string, number>();
+
+  for (const m of list) {
+    const t1IsHome = m.homeTeam === t1;
+    const { h2Home, h2Away } = h2Score(m);
+    const t1H2 = t1IsHome ? h2Home : h2Away;
+    const t2H2 = t1IsHome ? h2Away : h2Home;
+    const t1TT = t1IsHome ? +m.ttHome : +m.ttAway;
+    const t2TT = t1IsHome ? +m.ttAway : +m.ttHome;
+
+    if (t1H2 > t2H2) t1WinsH2++;
+    else if (t1H2 === t2H2) drawsH2++;
+    else t2WinsH2++;
+
+    if (t1TT > t2TT) t1WinsTT++;
+    else if (t1TT === t2TT) drawsTT++;
+    else t2WinsTT++;
+
+    const key = `${t1H2}-${t2H2}`;
+    dist.set(key, (dist.get(key) ?? 0) + 1);
+  }
+
+  const h2DistTop2 = [...dist.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2);
+
+  return {
+    n: list.length,
+    t1WinsH2,
+    t2WinsH2,
+    drawsH2,
+    t1WinsTT,
+    t2WinsTT,
+    drawsTT,
+    h2DistTop2,
+  };
+}

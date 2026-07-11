@@ -9,7 +9,11 @@ import {
   transitionMatrix,
   teamDominance,
   detectAnomaly,
+  predictNext,
+  segmentByMetaPattern,
   type WinCode,
+  type MetaSegment,
+  type NextPrediction,
 } from '../lib/voltaPatterns';
 
 const CARD = 'overflow-hidden rounded-[10px] border border-[#2a2a2a] bg-[#141414]';
@@ -26,6 +30,14 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
   const transitions = useMemo(() => transitionMatrix(matches), [matches]);
   const dominance = useMemo(() => teamDominance(matches), [matches]);
   const anomaly = useMemo(() => detectAnomaly(matches), [matches]);
+  const prediction: NextPrediction = useMemo(
+    () => predictNext(seq.runs, matches),
+    [seq.runs, matches],
+  );
+  const segments: MetaSegment[] = useMemo(
+    () => segmentByMetaPattern(seq.runs),
+    [seq.runs],
+  );
 
   if (matches.length === 0) {
     return (
@@ -40,6 +52,110 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Card 1 — Meta-Pattern Detector */}
+      <div style={{ background: '#141414' }} className="rounded-xl border border-white/[.06]">
+        <div className="border-b border-white/[.06] px-5 py-3 text-[13px] font-bold text-white/80 tracking-wide">
+          🎯 Bộ dò Meta-Pattern
+        </div>
+        <div className="p-4 flex flex-col gap-3">
+          {/* Row 1 — current pattern */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[12px] text-[#888]">Mẫu hiện tại:</span>
+            <span
+              className={`rounded px-2 py-0.5 text-[12px] font-bold ${
+                prediction.currentMetaPattern === 'Không đều'
+                  ? 'bg-white/[.06] text-[#888]'
+                  : 'bg-[#16a34a]/20 text-[#4ade80]'
+              }`}
+            >
+              [{prediction.currentMetaPattern}]
+            </span>
+            <span className="text-[12px] text-white/50">· {prediction.label}</span>
+            <span className="ml-auto text-[11px] text-[#555]">
+              Đã kéo dài: {prediction.currentSegmentLength} runs
+            </span>
+          </div>
+
+          {seq.runs.length < 4 || prediction.confidence === 0 ? (
+            <div className="text-[12px] text-[#555]">
+              Không đủ dữ liệu để nhận diện mẫu.
+            </div>
+          ) : (
+            <>
+              {/* Row 2 — position in cycle */}
+              {seq.currentRun && (
+                <div className="text-[12px] text-white/70">
+                  <span className="text-[#888]">▶ Vị trí chu kỳ: </span>
+                  {seq.currentRun.code}×{prediction.nextExpectedRunLength} đang ở run{' '}
+                  {seq.currentRun.length}/{prediction.nextExpectedRunLength}{' '}
+                  →{' '}
+                  {prediction.remainingInRun > 0
+                    ? `Còn ${prediction.remainingInRun} trận nữa rồi flip`
+                    : 'Đã đủ, sắp flip'}
+                </div>
+              )}
+              {/* Row 3 — prediction */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-[#888]">Dự đoán trận tiếp:</span>
+                <span
+                  className={`rounded px-3 py-1 text-[14px] font-bold ${
+                    prediction.nextCode === 'H'
+                      ? 'bg-[#16a34a] text-white'
+                      : 'bg-[#dc2626] text-white'
+                  }`}
+                >
+                  [{prediction.nextCode}]
+                </span>
+                <span className="text-[12px] text-[#888]">
+                  (độ tin cậy {Math.round(prediction.confidence * 100)}%)
+                </span>
+              </div>
+              {/* Row 4 — reasoning */}
+              <div className="text-[11px] text-white/40 italic">{prediction.reasoning}</div>
+              {/* Honesty note */}
+              <div className="text-[10px] text-[#555] border-t border-white/[.04] pt-2">
+                ⚠ Volta gần như ngẫu nhiên — đây là gợi ý dựa trên xu hướng gần đây, không phải
+                đảm bảo. Cân nhắc kỹ.
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Card 2 — Segment History */}
+      <div style={{ background: '#141414' }} className="rounded-xl border border-white/[.06]">
+        <div className="border-b border-white/[.06] px-5 py-3 text-[13px] font-bold text-white/80 tracking-wide">
+          🧭 Lịch sử Meta-Pattern
+        </div>
+        <div className="p-4">
+          {segments.length === 0 ? (
+            <p className="text-[12px] text-[#555]">Chưa đủ dữ liệu.</p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {segments.map((seg, idx) => {
+                const isLast = idx === segments.length - 1;
+                const chipLabel = seg.code || 'Không đều';
+                let chipCls = 'rounded px-2.5 py-1 text-[11px] font-mono ';
+                if (seg.label === 'Không đều') chipCls += 'bg-[#1e1e1e] text-[#888]';
+                else if (seg.label.startsWith('Xen kẽ'))
+                  chipCls += 'bg-[#22d3ee]/15 text-[#22d3ee]';
+                else chipCls += 'bg-[#16a34a]/15 text-[#4ade80]';
+                if (isLast) chipCls += ' ring-2 ring-[#fbbf24]';
+                return (
+                  <span key={idx} className="flex items-center gap-2">
+                    {idx > 0 && <span className="text-[#555] text-[11px]">→</span>}
+                    <span className={chipCls}>
+                      [{chipLabel}: {seg.runCount} runs → {seg.matchCount} trận]
+                      {isLast ? ' ← đây' : ''}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Card A — Anomaly banner */}
       <div
         className={`rounded-[10px] px-4 py-3 text-[13px] ${
