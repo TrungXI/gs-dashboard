@@ -9,6 +9,14 @@ import {
   type TypeStats,
   type TeamStats,
 } from '../lib/stats';
+import {
+  h2StatsForTeam,
+  h1ToH2Outcomes,
+  getCommonH1Scores,
+  type CommonH1Score,
+  type H1ToH2Result,
+} from '../lib/h2Stats';
+import { useState, useMemo } from 'react';
 import { TypeBadge, ResultTag } from './badges';
 
 function scoreLine(m: Match, team: string) {
@@ -89,6 +97,40 @@ function StatsTable({ s20, s16 }: { s20: TypeStats; s16: TypeStats }) {
     );
   };
 
+  const H2StatRow = ({ label, s }: { label: '20p' | '16p'; s: TypeStats }) => {
+    if (!s.n) return null;
+    const h2n = s.h2W + s.h2D + s.h2L; // === s.n
+    return (
+      <tr>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px]">
+          <span className="rounded-[3px] bg-[#334155] px-1.5 py-px text-[10px] font-bold text-[#cbd5e1]">
+            H2·{label}
+          </span>
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#ccc]">{h2n}</td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#4ade80]">
+          {s.h2W}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#fbbf24]">
+          {s.h2D}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#f87171]">
+          {s.h2L}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-white">
+          {pct(s.h2W, h2n)}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#ccc]">
+          {s.h2gf}–{s.h2ga}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-semibold text-[#22d3ee]">
+          {avg(s.h2gf, h2n)} / {avg(s.h2ga, h2n)}
+        </td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#666]">—</td>
+      </tr>
+    );
+  };
+
   if (!s20.n && !s16.n) return null;
   return (
     <table className="mt-1 w-full border-collapse text-xs">
@@ -108,7 +150,9 @@ function StatsTable({ s20, s16 }: { s20: TypeStats; s16: TypeStats }) {
       </thead>
       <tbody>
         <StatRow label="20p" s={s20} />
+        <H2StatRow label="20p" s={s20} />
         <StatRow label="16p" s={s16} />
+        <H2StatRow label="16p" s={s16} />
       </tbody>
     </table>
   );
@@ -314,6 +358,245 @@ function H2HBlock({
   );
 }
 
+function H2CompareBar({
+  matches,
+  t1,
+  t2,
+}: {
+  matches: Match[];
+  t1: string;
+  t2: string;
+}) {
+  const s1 = h2StatsForTeam(matches, t1);
+  const s2 = h2StatsForTeam(matches, t2);
+  const r1 = Math.round(s1.winRate * 100);
+  const r2 = Math.round(s2.winRate * 100);
+
+  const rateColor = (r: number) =>
+    r >= 50 ? '#4ade80' : r < 40 ? '#f87171' : '#fbbf24';
+
+  const total = r1 + r2;
+  const w1 = total ? Math.round((r1 / total) * 100) : 50;
+  const w2 = 100 - w1;
+
+  const c1 = teamColor(t1);
+  const c2 = teamColor(t2);
+
+  const cols = [
+    { team: t1, c: c1, s: s1, r: r1 },
+    { team: t2, c: c2, s: s2, r: r2 },
+  ];
+
+  return (
+    <div className="rounded-lg bg-[#1e1e1e] px-4 py-3.5">
+      <div className="mb-3 text-xs font-bold uppercase tracking-wide text-[#777]">
+        Hiệp 2 — So sánh
+      </div>
+      {s1.n === 0 && s2.n === 0 ? (
+        <div className="text-xs text-[#666]">Không có dữ liệu H2</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            {cols.map((col) => (
+              <div key={col.team}>
+                <span
+                  className="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+                  style={{ background: col.c.bg, color: col.c.fg }}
+                >
+                  {col.team}
+                </span>
+                <div className="mt-2">
+                  <span
+                    className="text-3xl font-bold"
+                    style={{ color: rateColor(col.r) }}
+                  >
+                    {col.r}
+                  </span>
+                  <span className="text-sm text-[#666]">%</span>
+                </div>
+                <div className="text-[10px] text-[#888]">H2 win rate</div>
+                <div className="mt-1.5 text-xs text-[#888]">
+                  H2 W-D-L:{' '}
+                  <span className="text-[#4ade80]">{col.s.W}</span>-
+                  <span className="text-[#fbbf24]">{col.s.D}</span>-
+                  <span className="text-[#f87171]">{col.s.L}</span>
+                </div>
+                <div className="text-[11px] text-[#666]">
+                  Bàn H2: <b className="text-[#aaa]">{col.s.gf}</b>–
+                  <b className="text-[#aaa]">{col.s.ga}</b>
+                </div>
+                <div className="text-[10px] text-[#555]">{col.s.n} trận</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold text-[#ddd]">
+              {t1}
+            </span>
+            <div className="flex h-[22px] flex-1 overflow-hidden rounded">
+              {total === 0 ? (
+                <div className="flex flex-1 items-center justify-center bg-[#2a2a2a] text-[11px] text-[#666]" />
+              ) : (
+                <>
+                  <div
+                    className="flex items-center justify-center bg-[#16a34a] text-[11px] font-bold text-white"
+                    style={{ width: `${w1}%` }}
+                  >
+                    {r1}%
+                  </div>
+                  <div
+                    className="flex items-center justify-center bg-[#dc2626] text-[11px] font-bold text-white"
+                    style={{ width: `${w2}%` }}
+                  >
+                    {r2}%
+                  </div>
+                </>
+              )}
+            </div>
+            <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] font-semibold text-[#ddd]">
+              {t2}
+            </span>
+          </div>
+          <div className="mt-1 text-[10px] text-[#666]">
+            So sánh tỉ lệ thắng Hiệp 2
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function H1ScenarioPicker({ matches }: { matches: Match[] }) {
+  const commonH1 = useMemo(() => getCommonH1Scores(matches), [matches]);
+  const [selected, setSelected] = useState<CommonH1Score | null>(null);
+
+  const outcome: H1ToH2Result | null = useMemo(
+    () => (selected ? h1ToH2Outcomes(matches, selected.home, selected.away) : null),
+    [matches, selected],
+  );
+
+  let holdPct = 0,
+    revPct = 0,
+    drawPct = 0;
+  if (outcome && outcome.total > 0) {
+    holdPct = Math.round(
+      ((outcome.homeHolds + outcome.awayHolds) / outcome.total) * 100,
+    );
+    revPct = Math.round((outcome.reversal / outcome.total) * 100);
+    drawPct = 100 - holdPct - revPct;
+  }
+
+  return (
+    <div className="rounded-lg bg-[#1e1e1e] px-4 py-3.5">
+      <div className="mb-2 text-xs font-bold uppercase tracking-wide text-[#777]">
+        Kịch bản H1
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {commonH1.map((sc) => (
+          <button
+            key={sc.label}
+            onClick={() => setSelected(selected?.label === sc.label ? null : sc)}
+            className={`rounded-md px-3 py-1.5 text-sm font-bold transition-colors ${
+              selected?.label === sc.label
+                ? 'bg-[#17a2b8] text-white'
+                : 'bg-[#2a2a2a] text-[#ccc] hover:bg-[#333]'
+            }`}
+          >
+            {sc.label}
+            <span className="ml-1 text-[10px] font-normal text-[#888]">
+              {sc.count}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {!selected && (
+        <div className="mt-3 text-xs text-[#666]">
+          Chọn tỉ số H1 để xem kịch bản Hiệp 2
+        </div>
+      )}
+
+      {outcome && outcome.total > 0 && selected && (
+        <>
+          <div className="mt-3 mb-2 text-xs text-[#aaa]">
+            Sau H1 {selected.label}, Hiệp 2 diễn biến ({outcome.total} trận):
+          </div>
+          <div className="flex h-[26px] overflow-hidden rounded">
+            <div
+              className="flex items-center justify-center bg-[#16a34a] text-[11px] font-bold text-white"
+              style={{ width: `${holdPct}%` }}
+            >
+              Giữ {holdPct}%
+            </div>
+            <div
+              className="flex items-center justify-center bg-[#d97706] text-[11px] font-bold text-white"
+              style={{ width: `${drawPct}%` }}
+            >
+              Hòa {drawPct}%
+            </div>
+            <div
+              className="flex items-center justify-center bg-[#dc2626] text-[11px] font-bold text-white"
+              style={{ width: `${revPct}%` }}
+            >
+              Lật {revPct}%
+            </div>
+          </div>
+          <div className="mt-1.5 flex gap-4 text-[10px]">
+            <span className="text-[#4ade80]">■ Giữ (leader thắng)</span>
+            <span className="text-[#fbbf24]">■ Hòa</span>
+            <span className="text-[#f87171]">■ Lật kèo</span>
+          </div>
+
+          <div className="mt-3 mb-1 text-[11px] font-semibold text-[#888]">
+            Tỉ số H2 phổ biến nhất:
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {outcome.h2DistTop5.slice(0, 3).map((d) => (
+              <span
+                key={d.score}
+                className="rounded bg-[#1e1e1e] px-2.5 py-1 text-xs"
+              >
+                <b className="text-white">{d.score}</b>
+                <span className="ml-1.5 text-[10px] text-[#666]">
+                  {d.count} · {Math.round((d.count / outcome.total) * 100)}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      {outcome && outcome.total === 0 && selected && (
+        <div className="mt-3 text-xs text-[#666]">
+          Không có trận nào với H1 {selected.label}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function H2DecisionPanel({
+  matches,
+  t1,
+  t2,
+}: {
+  matches: Match[];
+  t1: string;
+  t2: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-[#2a2a2a] bg-[#141414]">
+      <div className="border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-3 text-[15px] font-bold text-white">
+        🎯 Phân tích Hiệp 2: {t1} vs {t2}
+      </div>
+      <div className="flex flex-col gap-4 p-4">
+        <H2CompareBar matches={matches} t1={t1} t2={t2} />
+        <H1ScenarioPicker matches={matches} />
+      </div>
+    </div>
+  );
+}
+
 export default function Analysis({
   matches,
   t1,
@@ -325,6 +608,7 @@ export default function Analysis({
 }) {
   return (
     <div className="flex flex-col gap-4">
+      <H2DecisionPanel matches={matches} t1={t1} t2={t2} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TeamCard matches={matches} team={t1} />
         <TeamCard matches={matches} team={t2} />

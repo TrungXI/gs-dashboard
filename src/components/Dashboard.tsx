@@ -9,9 +9,11 @@ import Analysis from './Analysis';
 import UpdateDrawer from './UpdateDrawer';
 import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
+import VoltaAnalysis from './VoltaAnalysis';
+import GSPatternReport from './GSPatternReport';
 import { ALL_VOLTA_MATCHES } from '../lib/processVoltaData';
 
-type View = 'data' | 'report' | 'volta';
+type View = 'data' | 'report' | 'gs-pattern' | 'volta' | 'volta-analysis';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
@@ -184,7 +186,9 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               [
                 ['data', '📋', 'GS Dữ liệu'],
                 ['report', '📊', 'GS Phân tích'],
+                ['gs-pattern', '🔍', 'GS Pattern'],
                 ['volta', '⚡', 'Volta'],
+                ['volta-analysis', '🔍', 'Volta Phân tích'],
               ] as [View, string, string][]
             ).map(([v, icon, label]) => (
               <div
@@ -278,7 +282,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   {matches.length} trận
                 </div>
               </>
-            ) : (
+            ) : view === 'report' ? (
               <div className="px-4 pt-3.5">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
                   Chọn đội phân tích
@@ -330,7 +334,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   )}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </aside>
 
@@ -344,6 +348,14 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </div>
               <VoltaTable matches={voltaMatches} />
             </>
+          ) : view === 'volta-analysis' ? (
+            <>
+              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-xl font-bold text-white">🔍 Volta — Phân tích mẫu hình</h1>
+                <span className="text-[13px] text-[#666]">{voltaMatches.length} trận</span>
+              </div>
+              <VoltaAnalysis matches={voltaMatches} />
+            </>
           ) : view === 'data' ? (
             <>
               <div className="mb-5 flex items-baseline gap-3">
@@ -351,6 +363,14 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 <span className="text-[13px] text-[#666]">{filtered.length} trận</span>
               </div>
               <DataTable matches={filtered} />
+            </>
+          ) : view === 'gs-pattern' ? (
+            <>
+              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-xl font-bold text-white">🔍 GS — Phân tích mẫu tỉ số</h1>
+                <span className="text-[13px] text-[#666]">{matches.length} trận</span>
+              </div>
+              <GSPatternReport matches={matches} />
             </>
           ) : (
             <>

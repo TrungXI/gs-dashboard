@@ -9,6 +9,11 @@ export interface TypeStats {
   ga: number;
   h1gf: number;
   h1ga: number;
+  h2gf: number;
+  h2ga: number;
+  h2W: number;
+  h2D: number;
+  h2L: number;
 }
 
 export interface TeamStats {
@@ -36,20 +41,34 @@ function statsFor(list: Match[], team: string): TypeStats {
     gf = 0,
     ga = 0,
     h1gf = 0,
-    h1ga = 0;
+    h1ga = 0,
+    h2gf = 0,
+    h2ga = 0,
+    h2W = 0,
+    h2D = 0,
+    h2L = 0;
   for (const m of list) {
     const isHome = m.homeTeam === team;
     const my = +(isHome ? m.ttHome : m.ttAway);
     const op = +(isHome ? m.ttAway : m.ttHome);
+    const myH1 = +(isHome ? m.h1Home : m.h1Away);
+    const opH1 = +(isHome ? m.h1Away : m.h1Home);
     gf += my;
     ga += op;
-    h1gf += +(isHome ? m.h1Home : m.h1Away);
-    h1ga += +(isHome ? m.h1Away : m.h1Home);
+    h1gf += myH1;
+    h1ga += opH1;
+    const myH2 = my - myH1;
+    const opH2 = op - opH1;
+    h2gf += myH2;
+    h2ga += opH2;
+    if (myH2 > opH2) h2W++;
+    else if (myH2 === opH2) h2D++;
+    else h2L++;
     if (my > op) W++;
     else if (my === op) D++;
     else L++;
   }
-  return { n: list.length, W, D, L, gf, ga, h1gf, h1ga };
+  return { n: list.length, W, D, L, gf, ga, h1gf, h1ga, h2gf, h2ga, h2W, h2D, h2L };
 }
 
 export function calcStats(matches: Match[], team: string): TeamStats {
