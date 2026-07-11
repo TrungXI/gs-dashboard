@@ -181,7 +181,7 @@ export default function GSLive() {
     }
 
     poll();
-    const id = setInterval(poll, 10000);
+    const id = setInterval(poll, 5000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -196,7 +196,7 @@ export default function GSLive() {
         {loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
         {updatedAt && (
           <span className="ml-auto text-[12px] text-[#4ade80]/70">
-            ⟳ 10s · {updatedAt}
+            ⟳ 5s · {updatedAt}
           </span>
         )}
       </div>
