@@ -146,10 +146,10 @@ function OddsSlot({
 
 /** Malay odds already provided as string (for HC / O-U markets). Negative = red. */
 function RawVal({ val }: { val: string | null }) {
-  if (val == null) return <span className="font-semibold text-[#555] text-xs">—</span>;
+  if (val == null) return <span className="font-semibold text-[#555] text-xs min-w-[32px] text-right">—</span>;
   const isNeg = val.startsWith('-');
   return (
-    <span className={`font-semibold text-xs ${isNeg ? 'text-[#f87171]' : 'text-white'}`}>
+    <span className={`font-semibold text-xs min-w-[32px] text-right ${isNeg ? 'text-[#f87171]' : 'text-white'}`}>
       {val}
     </span>
   );
@@ -337,10 +337,12 @@ function parseMalay(s: string | null | undefined): number | null {
 
 function Tri({ cur, prev }: { cur: string | null; prev?: string | null | undefined }) {
   const cn = parseMalay(cur), pn = parseMalay(prev);
-  if (cn == null || pn == null || Math.abs(cn - pn) < 0.005) return null;
+  const hasChange = cn != null && pn != null && Math.abs(cn - pn) >= 0.005;
   return (
-    <span className={`ml-0.5 text-[9px] font-bold leading-none ${cn > pn ? 'text-[#16a34a]' : 'text-[#dc2626]'}`}>
-      {cn > pn ? '▲' : '▼'}
+    <span className={`inline-block w-[10px] shrink-0 text-[9px] font-bold leading-none text-center${
+      hasChange ? (cn! > pn! ? ' text-[#16a34a]' : ' text-[#dc2626]') : ''
+    }`}>
+      {hasChange ? (cn! > pn! ? '▲' : '▼') : ''}
     </span>
   );
 }
