@@ -20,6 +20,18 @@ type FType = 'all' | '20p' | '16p';
 const LS_MATCHES = 'gs_matches';
 const LS_VOLTA = 'volta_matches';
 const LS_VOLTA_AT = 'volta_updated_at';
+const LS_UI = 'gs_ui_state';
+
+function loadUiState() {
+  try {
+    const s = localStorage.getItem(LS_UI);
+    if (!s) return null;
+    return JSON.parse(s) as {
+      view?: View; fType?: FType; fDate?: string; fTeam?: string;
+      r1?: string; r2?: string; h1Filter?: string;
+    };
+  } catch { return null; }
+}
 
 export default function Dashboard({ initialMatches }: { initialMatches: Match[] }) {
   const [matches, setMatches] = useState<Match[]>(initialMatches);
@@ -29,6 +41,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [voltaDrawerOpen, setVoltaDrawerOpen] = useState(false);
   const [voltaUpdatedAt, setVoltaUpdatedAt] = useState<string | null>(null);
 
+  // Restore UI state from localStorage immediately (SSR-safe: default first, apply on mount)
   const [view, setView] = useState<View>('data');
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all');
@@ -37,8 +50,24 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [r2, setR2] = useState('');
   const [h1Filter, setH1Filter] = useState('all');
 
+  // Persist UI state whenever it changes
+  useEffect(() => {
+    localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
+  }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
+
   // Load cached data from localStorage on mount
   useEffect(() => {
+    // Restore UI position first
+    const ui = loadUiState();
+    if (ui) {
+      if (ui.view) setView(ui.view);
+      if (ui.fType) setFType(ui.fType);
+      if (ui.fDate) setFDate(ui.fDate);
+      if (ui.fTeam) setFTeam(ui.fTeam);
+      if (ui.r1 != null) setR1(ui.r1);
+      if (ui.r2 != null) setR2(ui.r2);
+      if (ui.h1Filter) setH1Filter(ui.h1Filter);
+    }
     // Version 2: switched time format from 12h AM/PM to 24h; clear old cached data
     const DATA_VERSION = '2';
     if (localStorage.getItem('gs_data_version') !== DATA_VERSION) {
