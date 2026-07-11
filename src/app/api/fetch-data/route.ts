@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { supabaseAdmin } from '../../../lib/supabase';
 
 async function fetchDay(
   token: string,
@@ -43,9 +44,24 @@ export async function POST(req: NextRequest) {
     }
 
     const result: Record<string, unknown[]> = {};
+    const db = supabaseAdmin();
+
     for (const date of dates) {
       const r = await fetchDay(token, date);
       result[date] = r.matches;
+
+      // Save to Supabase (fire-and-forget, don't block response on failure)
+      if (r.matches.length > 0) {
+        const dateKey = 'matches' + date.replace(/-/g, '');
+        db.from('gs_matches_cache').upsert({
+          date_key: dateKey,
+          matches: r.matches,
+          match_count: r.matches.length,
+          updated_at: new Date().toISOString(),
+        }).then(({ error }) => {
+          if (error) console.error('[gs-cache] upsert error:', error.message);
+        });
+      }
     }
 
     return NextResponse.json({ ok: true, data: result });

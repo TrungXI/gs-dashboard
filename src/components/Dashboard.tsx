@@ -11,7 +11,8 @@ import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
 import VoltaAnalysis from './VoltaAnalysis';
 import GSPatternReport from './GSPatternReport';
-import { ALL_VOLTA_MATCHES } from '../lib/processVoltaData';
+import { ALL_VOLTA_MATCHES, apiToVoltaRow } from '../lib/processVoltaData';
+import { apiToRow, sortMatchesDesc } from '../lib/matchUtils';
 
 type View = 'data' | 'report' | 'gs-pattern' | 'volta' | 'volta-analysis';
 type FType = 'all' | '20p' | '16p';
@@ -65,6 +66,63 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
         }
       }
     } catch { /* ignore */ }
+  }, []);
+
+  // Load the shared, cross-session data from Supabase on mount. Supabase is the
+  // authoritative store (persists across users/browsers), so when it has data we
+  // process the raw items through the existing pipeline and use them as-is.
+  useEffect(() => {
+    async function loadFromSupabase() {
+      // GS
+      try {
+        const res = await fetch('/api/gs-cache');
+        const json = (await res.json()) as {
+          ok: boolean;
+          data?: Record<string, unknown[]>;
+          updatedAt?: string;
+        };
+        if (json.ok && json.data && Object.keys(json.data).length > 0) {
+          const rows = sortMatchesDesc(
+            Object.values(json.data)
+              .flat()
+              .map((m) => apiToRow(m as Record<string, unknown>)),
+          );
+          if (rows.length > 0) {
+            setMatches(rows);
+            localStorage.setItem(LS_MATCHES, JSON.stringify(rows));
+            if (json.updatedAt) {
+              const at = new Date(json.updatedAt).toLocaleString('vi-VN');
+              localStorage.setItem('gs_updated_at', at);
+              setUpdatedAt(at);
+            }
+          }
+        }
+      } catch { /* Supabase unavailable — keep bundled/localStorage data */ }
+
+      // Volta
+      try {
+        const res = await fetch('/api/volta-cache');
+        const json = (await res.json()) as {
+          ok: boolean;
+          data?: Record<string, unknown>[];
+          updatedAt?: string;
+        };
+        if (json.ok && json.data && json.data.length > 0) {
+          const rows = json.data.map(apiToVoltaRow);
+          if (rows.length > 0) {
+            setVoltaMatches(rows);
+            localStorage.setItem(LS_VOLTA, JSON.stringify(rows));
+            if (json.updatedAt) {
+              const at = new Date(json.updatedAt).toLocaleString('vi-VN');
+              localStorage.setItem(LS_VOLTA_AT, at);
+              setVoltaUpdatedAt(at);
+            }
+          }
+        }
+      } catch { /* Supabase unavailable — keep bundled/localStorage data */ }
+    }
+
+    loadFromSupabase();
   }, []);
 
   const handleUpdate = useCallback((newMatches: Match[]) => {
