@@ -1,15 +1,14 @@
 import rawData from '../gs-raw-all.json';
-import { apiToRow } from './matchUtils';
+import { apiToRow, sortMatchesDesc } from './matchUtils';
 import type { Match } from '../types/match';
 
-// Cached — only processed once at build/startup
 const raw = rawData as unknown as Record<string, Record<string, unknown>[]>;
-export const ALL_MATCHES: Match[] = [
-  ...raw.matches11.map(apiToRow),
-  ...raw.matches10.map(apiToRow),
-  ...raw.matches09.map(apiToRow),
-  ...raw.matches08.map(apiToRow),
-  ...raw.matches07.map(apiToRow),
-  ...raw.matches06.map(apiToRow),
-  ...raw.matches05.map(apiToRow),
-];
+
+// Collect all match keys (matches20260627, matches20260628, ...)
+const matchKeys = Object.keys(raw)
+  .filter((k) => k.startsWith('matches'))
+  .sort((a, b) => b.localeCompare(a)); // newest date first
+
+export const ALL_MATCHES: Match[] = sortMatchesDesc(
+  matchKeys.flatMap((k) => raw[k].map(apiToRow)),
+);
