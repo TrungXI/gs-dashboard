@@ -271,95 +271,132 @@ export default function GSLive() {
           <div className="text-[15px] text-[#888]">Chưa có trận live. Đang chờ dữ liệu…</div>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
-          <table className="w-full min-w-[860px] border-collapse bg-[#141414] text-sm">
-            <thead>
-              <tr>
-                {['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Odds (Malay)', 'Tín hiệu'].map((h, i) => (
-                  <th
-                    key={h}
-                    className={`bg-[#1a1a1a] px-2.5 py-2.5 text-xs font-semibold text-[#aaa] ${
-                      i === 0 || i === 2 || i === 3 ? 'text-center' : 'text-left'
-                    }`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {matches.map((m, i) => {
-                const prev = prevMap.get(m.eventId);
-                const signal = classifySignals(m, prev);
-                return (
-                  <tr key={m.eventId} className="odd:bg-[#141414] even:bg-[#181818] hover:bg-[#222]">
-                    <td className="border-b border-[#222] px-2.5 py-2 text-center text-[11px] text-[#555]">
-                      {i + 1}
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2">
-                      <span className="text-white">{m.homeTeam}</span>
-                      <span className="mx-1.5 text-[#555]">vs</span>
-                      <span className="text-white">{m.awayTeam}</span>
-                      <span className="ml-2 text-[10px] text-[#555]">{m.matchType}</span>
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center font-bold text-[#fbbf24]">
-                      {m.h1Home}-{m.h1Away}
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center text-xs text-[#888]">
-                      {phaseLabel(m)}
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-xs">
-                      {market === '1x2' && (
-                        <span className="inline-flex items-center gap-0">
-                          <OddsSlot label="H" malay={m.malayHome} cur={m.oddsHome} prev={prev?.oddsHome} />
-                          <OddsSlot label="A" malay={m.malayAway} cur={m.oddsAway} prev={prev?.oddsAway} />
-                          <OddsSlot label="D" malay={m.malayDraw} cur={m.oddsDraw} prev={prev?.oddsDraw} />
-                        </span>
-                      )}
-                      {market === 'hc' && (
-                        <span className="inline-flex flex-col gap-0.5">
-                          {m.hcLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
-                          {m.hcLines.map((row, idx) => (
-                            <span key={idx} className="inline-flex items-center gap-2">
-                              <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
-                              <span className="w-14 text-right"><RawVal val={row.home} /></span>
-                              <span className="w-14 text-right"><RawVal val={row.away} /></span>
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                      {market === 'ou' && (
-                        <span className="inline-flex flex-col gap-0.5">
-                          {m.ouLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
-                          {m.ouLines.map((row, idx) => (
-                            <span key={idx} className="inline-flex items-center gap-2">
-                              <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
-                              <span className="text-[10px] text-[#666] w-3">O</span>
-                              <span className="w-12 text-right"><RawVal val={row.over} /></span>
-                              <span className="text-[10px] text-[#666] w-3">U</span>
-                              <span className="w-12 text-right"><RawVal val={row.under} /></span>
-                            </span>
-                          ))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2">
-                      {signal && (
-                        <span
-                          className="rounded-md px-2 py-0.5 text-[11px] font-bold"
-                          style={{ color: signal.color, backgroundColor: `${signal.color}22` }}
-                        >
-                          {signal.label}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <LeagueSection
+          title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
+          matches={matches.filter((m) => m.leagueId === 2125)}
+          prevMap={prevMap}
+          market={market}
+        />
+      )}
+      {matches.some((m) => m.leagueId === 2140) && (
+        <LeagueSection
+          title="Giao Hữu Châu Á GS (Ảo) 16 Phút"
+          matches={matches.filter((m) => m.leagueId === 2140)}
+          prevMap={prevMap}
+          market={market}
+        />
       )}
     </>
+  );
+}
+
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Odds (Malay)', 'Tín hiệu'];
+
+function LeagueSection({
+  title,
+  matches,
+  prevMap,
+  market,
+}: {
+  title: string;
+  matches: GsLiveMatch[];
+  prevMap: Map<number, GsLiveMatch>;
+  market: MarketView;
+}) {
+  if (matches.length === 0) return null;
+  return (
+    <div className="mb-5">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
+        <span className="text-[11px] text-[#555]">{matches.length} trận</span>
+      </div>
+      <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
+        <table className="w-full min-w-[860px] border-collapse bg-[#141414] text-sm">
+          <thead>
+            <tr>
+              {TABLE_HEADERS.map((h, i) => (
+                <th
+                  key={h}
+                  className={`bg-[#1a1a1a] px-2.5 py-2.5 text-xs font-semibold text-[#aaa] ${
+                    i === 0 || i === 2 || i === 3 ? 'text-center' : 'text-left'
+                  }`}
+                >
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {matches.map((m, i) => {
+              const prev = prevMap.get(m.eventId);
+              const signal = classifySignals(m, prev);
+              return (
+                <tr key={m.eventId} className="odd:bg-[#141414] even:bg-[#181818] hover:bg-[#222]">
+                  <td className="border-b border-[#222] px-2.5 py-2 text-center text-[11px] text-[#555]">
+                    {i + 1}
+                  </td>
+                  <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2">
+                    <span className="text-white">{m.homeTeam}</span>
+                    <span className="mx-1.5 text-[#555]">vs</span>
+                    <span className="text-white">{m.awayTeam}</span>
+                  </td>
+                  <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center font-bold text-[#fbbf24]">
+                    {m.h1Home}-{m.h1Away}
+                  </td>
+                  <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center text-xs text-[#888]">
+                    {phaseLabel(m)}
+                  </td>
+                  <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-xs">
+                    {market === '1x2' && (
+                      <span className="inline-flex items-center gap-0">
+                        <OddsSlot label="H" malay={m.malayHome} cur={m.oddsHome} prev={prev?.oddsHome} />
+                        <OddsSlot label="A" malay={m.malayAway} cur={m.oddsAway} prev={prev?.oddsAway} />
+                        <OddsSlot label="D" malay={m.malayDraw} cur={m.oddsDraw} prev={prev?.oddsDraw} />
+                      </span>
+                    )}
+                    {market === 'hc' && (
+                      <span className="inline-flex flex-col gap-0.5">
+                        {m.hcLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
+                        {m.hcLines.map((row, idx) => (
+                          <span key={idx} className="inline-flex items-center gap-2">
+                            <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
+                            <span className="w-14 text-right"><RawVal val={row.home} /></span>
+                            <span className="w-14 text-right"><RawVal val={row.away} /></span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                    {market === 'ou' && (
+                      <span className="inline-flex flex-col gap-0.5">
+                        {m.ouLines.length === 0 && <span className="text-[#555] text-xs">—</span>}
+                        {m.ouLines.map((row, idx) => (
+                          <span key={idx} className="inline-flex items-center gap-2">
+                            <span className="text-[10px] text-[#fbbf24] w-10 shrink-0">{row.line ?? '—'}</span>
+                            <span className="text-[10px] text-[#666] w-3">O</span>
+                            <span className="w-12 text-right"><RawVal val={row.over} /></span>
+                            <span className="text-[10px] text-[#666] w-3">U</span>
+                            <span className="w-12 text-right"><RawVal val={row.under} /></span>
+                          </span>
+                        ))}
+                      </span>
+                    )}
+                  </td>
+                  <td className="border-b border-[#222] px-2.5 py-2">
+                    {signal && (
+                      <span
+                        className="rounded-md px-2 py-0.5 text-[11px] font-bold"
+                        style={{ color: signal.color, backgroundColor: `${signal.color}22` }}
+                      >
+                        {signal.label}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }
