@@ -17,6 +17,16 @@ import {
   type H1ToH2Result,
 } from '../lib/h2Stats';
 import { teamH2ResponseToH1, h2hH1ToH2Outcomes, type H2OutcomeSet } from '../lib/h2Stats';
+import {
+  teamDayStats,
+  bestAndWorstDay,
+  todayDayOfWeek,
+  todayStats,
+  DAY_LABELS,
+  DAY_LABELS_FULL,
+  type DayStats,
+  type DayOfWeek,
+} from '../lib/dayStats';
 import { useState, useMemo } from 'react';
 import { TypeBadge, ResultTag } from './badges';
 
@@ -749,6 +759,143 @@ function H2DecisionPanel({
   );
 }
 
+function cellStyle(s: DayStats): { background: string; color: string } {
+  if (s.n === 0) return { background: '#1e1e1e', color: '#555' };
+  if (s.winRate >= 65) return { background: '#16a34a', color: '#4ade80' };
+  if (s.winRate >= 50) return { background: '#d97706', color: '#fbbf24' };
+  return { background: '#dc2626', color: '#f87171' };
+}
+
+function DayCell({ s, today }: { s: DayStats; today: DayOfWeek }) {
+  const isToday = s.day === today;
+  return (
+    <div
+      className={`flex flex-col items-center justify-center rounded px-1 py-1.5 text-center ${
+        isToday ? 'ring-2 ring-white' : ''
+      }`}
+      style={cellStyle(s)}
+    >
+      <span className="text-[10px] font-bold opacity-80">{s.label}</span>
+      {s.n === 0 ? (
+        <span className="text-sm">—</span>
+      ) : s.n >= 3 ? (
+        <>
+          <span className="text-sm font-bold">{s.winRate}%</span>
+          <span className="text-[9px] opacity-70">n={s.n}</span>
+        </>
+      ) : (
+        <>
+          <span className="text-sm font-bold">{s.winRate}%</span>
+          <span className="text-[9px] italic opacity-60">(n={s.n})</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function TeamDayBlock({
+  team,
+  stats,
+  today,
+}: {
+  team: string;
+  stats: DayStats[];
+  today: DayOfWeek;
+}) {
+  const { best, worst } = bestAndWorstDay(stats);
+  const t = todayStats(stats);
+  const c = teamColor(team);
+  return (
+    <div>
+      <span
+        className="inline-block rounded px-2 py-0.5 text-xs font-semibold"
+        style={{ background: c.bg, color: c.fg }}
+      >
+        {team}
+      </span>
+      <div className="mt-2 grid grid-cols-7 gap-1">
+        {stats.map((s) => (
+          <DayCell key={s.day} s={s} today={today} />
+        ))}
+      </div>
+      <div className="mt-2 flex flex-col gap-0.5 text-[11px]">
+        {best && (
+          <div className="text-[#4ade80]">
+            ★ Mạnh nhất: {best.label} ({best.winRate}%)
+          </div>
+        )}
+        {worst && (
+          <div className="text-[#f87171]">
+            ✗ Yếu nhất: {worst.label} ({worst.winRate}%)
+          </div>
+        )}
+        {(!best || !worst) && (
+          <div className="text-[#666]">
+            Chưa đủ dữ liệu theo ngày (cần ≥3 trận/ngày)
+          </div>
+        )}
+        {t && t.n > 0 && (
+          <div className="text-[#aaa]">
+            Hôm nay ({t.label}): {t.winRate}% {t.winRate >= 50 ? '↑' : '↓'}
+          </div>
+        )}
+        {t && t.n === 0 && (
+          <div className="text-[#666]">Hôm nay ({t.label}): chưa có trận</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DayPerformancePanel({
+  t1,
+  t2,
+  t1DayStats,
+  t2DayStats,
+}: {
+  t1: string;
+  t2: string;
+  t1DayStats: DayStats[];
+  t2DayStats: DayStats[];
+}) {
+  const today = todayDayOfWeek();
+  const todayLabel = DAY_LABELS_FULL[today];
+  const t1t = todayStats(t1DayStats);
+  const t2t = todayStats(t2DayStats);
+
+  return (
+    <div className="overflow-hidden rounded-[10px] border border-[#2a2a2a] bg-[#141414]">
+      <div className="border-b border-[#2a2a2a] bg-[#1a1a1a] px-4 py-3 text-[15px] font-bold text-white">
+        📅 Phong Độ Theo Ngày
+      </div>
+      <div className="p-4">
+        <div className="text-xs text-[#888] mb-3">
+          Hôm nay: {todayLabel} ({DAY_LABELS[today]})
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <TeamDayBlock team={t1} stats={t1DayStats} today={today} />
+          <TeamDayBlock team={t2} stats={t2DayStats} today={today} />
+        </div>
+        <div className="mt-3 border-t border-[#2a2a2a] pt-3 text-xs text-[#aaa]">
+          Hôm nay ({DAY_LABELS[today]}):{' '}
+          <b style={{ color: teamColor(t1).bg }}>{t1}</b> ={' '}
+          {t1t?.n ? `${t1t.winRate}%` : '—'} vs{' '}
+          <b style={{ color: teamColor(t2).bg }}>{t2}</b> ={' '}
+          {t2t?.n ? `${t2t.winRate}%` : '—'}
+          {t1t?.n && t2t?.n ? (
+            <span className="ml-1 text-[#fbbf24]">
+              →{' '}
+              {t1t.winRate === t2t.winRate
+                ? 'Ngang nhau'
+                : `${t1t.winRate > t2t.winRate ? t1 : t2} mạnh hơn hôm nay`}
+            </span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Analysis({
   matches,
   t1,
@@ -758,9 +905,15 @@ export default function Analysis({
   t1: string;
   t2: string;
 }) {
+  const t1DayStats = useMemo(() => (t1 ? teamDayStats(matches, t1) : []), [matches, t1]);
+  const t2DayStats = useMemo(() => (t2 ? teamDayStats(matches, t2) : []), [matches, t2]);
+
   return (
     <div className="flex flex-col gap-4">
       <H2DecisionPanel matches={matches} t1={t1} t2={t2} />
+      {t1 && t2 && (
+        <DayPerformancePanel t1={t1} t2={t2} t1DayStats={t1DayStats} t2DayStats={t2DayStats} />
+      )}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TeamCard matches={matches} team={t1} />
         <TeamCard matches={matches} team={t2} />
