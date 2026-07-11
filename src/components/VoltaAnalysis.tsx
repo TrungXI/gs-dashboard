@@ -173,13 +173,13 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
         <div className="p-4">
           <div className="flex h-[26px] overflow-hidden rounded">
             <div
-              className="flex items-center justify-center bg-[#16a34a] text-[11px] font-bold text-white"
+              className="flex items-center justify-center bg-[#d97706] text-[11px] font-bold text-white"
               style={{ width: `${dist.homePct}%` }}
             >
               {dist.homePct >= 12 ? `H ${dist.home} · ${dist.homePct}%` : ''}
             </div>
             <div
-              className="flex items-center justify-center bg-[#dc2626] text-[11px] font-bold text-white"
+              className="flex items-center justify-center bg-[#16a34a] text-[11px] font-bold text-white"
               style={{ width: `${dist.awayPct}%` }}
             >
               {dist.awayPct >= 12 ? `A ${dist.away} · ${dist.awayPct}%` : ''}
@@ -200,7 +200,7 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
                 <div
                   key={i}
                   className={`flex h-5 w-5 items-center justify-center rounded-sm text-[10px] font-bold text-white ${
-                    code === 'H' ? 'bg-[#16a34a]' : 'bg-[#dc2626]'
+                    code === 'H' ? 'bg-[#d97706]' : 'bg-[#16a34a]'
                   } ${inCurrent ? 'ring-2 ring-[#fbbf24]' : ''}`}
                 >
                   {code}
@@ -234,8 +234,8 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
               {stats.buckets.map((b) => (
                 <tr key={b.length}>
                   <td className={`${TD} text-[#ccc]`}>{b.label}</td>
-                  <td className={`${TD} text-center font-bold text-[#4ade80]`}>{b.home}</td>
-                  <td className={`${TD} text-center font-bold text-[#f87171]`}>{b.away}</td>
+                  <td className={`${TD} text-center font-bold text-[#fbbf24]`}>{b.home}</td>
+                  <td className={`${TD} text-center font-bold text-[#4ade80]`}>{b.away}</td>
                   <td className={`${TD} text-center font-bold text-white`}>{b.total}</td>
                 </tr>
               ))}
@@ -283,7 +283,7 @@ export default function VoltaAnalysis({ matches }: { matches: VoltaMatch[] }) {
                   <tr key={`${row.afterCode}-${row.afterLength}`}>
                     <td
                       className={`${TD} font-bold ${
-                        row.afterCode === 'H' ? 'text-[#4ade80]' : 'text-[#f87171]'
+                        row.afterCode === 'H' ? 'text-[#fbbf24]' : 'text-[#4ade80]'
                       }`}
                     >
                       {row.afterCode}×{row.lengthLabel}
@@ -362,7 +362,7 @@ function DominanceTable({
                   <td className={`${TD} text-center text-[#888]`}>{games}</td>
                   <td
                     className={`${TD} text-center font-bold ${
-                      isHome ? 'text-[#4ade80]' : 'text-[#f87171]'
+                      isHome ? 'text-[#fbbf24]' : 'text-[#4ade80]'
                     }`}
                   >
                     {winPct}%{' '}

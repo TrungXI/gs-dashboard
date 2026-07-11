@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import type { Match } from '../types/match';
 import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
@@ -49,9 +49,11 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [r1, setR1] = useState('');
   const [r2, setR2] = useState('');
   const [h1Filter, setH1Filter] = useState('all');
+  const uiRestored = useRef(false);
 
-  // Persist UI state whenever it changes
+  // Persist UI state — skip first render so the restore effect below can read the saved value first
   useEffect(() => {
+    if (!uiRestored.current) return;
     localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
   }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
 
@@ -68,6 +70,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (ui.r2 != null) setR2(ui.r2);
       if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
+    uiRestored.current = true;
     // Version 2: switched time format from 12h AM/PM to 24h; clear old cached data
     const DATA_VERSION = '2';
     if (localStorage.getItem('gs_data_version') !== DATA_VERSION) {
@@ -294,7 +297,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
           {/* Filters */}
           <div className="flex-1 overflow-y-auto pb-4">
-            {view === 'volta' ? (
+            {view === 'volta' || view === 'volta-analysis' ? (
               <div className="px-4 pt-3.5">
                 <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] text-white/50">
                   <div className="text-[#4ade80] font-bold mb-1">⚡ {voltaMatches.length} trận</div>
