@@ -26,9 +26,9 @@ export function TypeBadge({ type }: { type: '20p' | '16p' }) {
 
 export function ResultTag({ result }: { result: 'W' | 'D' | 'L' }) {
   const map = {
-    W: 'bg-[#d4edda] text-[#155724]',
-    D: 'bg-[#fff3cd] text-[#856404]',
-    L: 'bg-[#f8d7da] text-[#721c24]',
+    W: 'bg-[#14532d] text-[#4ade80]',
+    D: 'bg-[#451a03] text-[#fbbf24]',
+    L: 'bg-[#450a0a] text-[#f87171]',
   } as const;
   return (
     <span

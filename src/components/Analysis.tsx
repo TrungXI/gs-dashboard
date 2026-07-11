@@ -21,7 +21,7 @@ function scoreLine(m: Match, team: string) {
   return (
     <>
       {isHome ? '🏠' : '✈️'} vs {opp} · H1:{myH1}-{opH1} ·{' '}
-      <strong>
+      <strong className="text-white">
         {myTT}-{opTT}
       </strong>
     </>
@@ -37,19 +37,16 @@ function FormRow({
   matches: Match[];
   team: string;
 }) {
+  if (!matches.length) return null;
   return (
     <div className="mb-1 flex items-center gap-2">
-      <span className="flex w-[75px] flex-shrink-0 items-center gap-1 text-xs font-semibold text-[#666]">
+      <span className="flex w-[75px] flex-shrink-0 items-center gap-1 text-xs font-semibold text-[#888]">
         <TypeBadge type={label} /> Form
       </span>
       <span className="flex flex-wrap gap-1">
-        {matches.length ? (
-          matches.map((m, i) => (
-            <ResultTag key={i} result={resultFor(m, team)} />
-          ))
-        ) : (
-          <span className="text-[#999]">–</span>
-        )}
+        {matches.map((m, i) => (
+          <ResultTag key={i} result={resultFor(m, team)} />
+        ))}
       </span>
     </div>
   );
@@ -60,52 +57,39 @@ function StatsTable({ s20, s16 }: { s20: TypeStats; s16: TypeStats }) {
   const avg = (g: number, n: number) => (n ? (g / n).toFixed(1) : '–');
 
   const StatRow = ({ label, s }: { label: '20p' | '16p'; s: TypeStats }) => {
-    if (!s.n) {
-      return (
-        <tr>
-          <td className="border-b border-[#f5f5f5] px-2 py-[7px]">
-            <TypeBadge type={label} />
-          </td>
-          <td
-            colSpan={8}
-            className="border-b border-[#f5f5f5] px-2 py-[7px] text-center text-xs text-[#bbb]"
-          >
-            Không có dữ liệu
-          </td>
-        </tr>
-      );
-    }
+    if (!s.n) return null;
     return (
       <tr>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px]">
           <TypeBadge type={label} />
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center">{s.n}</td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center font-bold text-[#155724]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#ccc]">{s.n}</td>
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#4ade80]">
           {s.W}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center font-bold text-[#856404]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#fbbf24]">
           {s.D}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center font-bold text-[#721c24]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-[#f87171]">
           {s.L}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center font-bold">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-bold text-white">
           {pct(s.W, s.n)}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#ccc]">
           {s.gf}–{s.ga}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center font-semibold text-[#17a2b8]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center font-semibold text-[#22d3ee]">
           {avg(s.gf, s.n)} / {avg(s.ga, s.n)}
         </td>
-        <td className="border-b border-[#f5f5f5] px-2 py-[7px] text-center text-[#999]">
+        <td className="border-b border-[#2a2a2a] px-2 py-[7px] text-center text-[#666]">
           {s.h1gf}–{s.h1ga}
         </td>
       </tr>
     );
   };
 
+  if (!s20.n && !s16.n) return null;
   return (
     <table className="mt-1 w-full border-collapse text-xs">
       <thead>
@@ -114,7 +98,7 @@ function StatsTable({ s20, s16 }: { s20: TypeStats; s16: TypeStats }) {
             (h) => (
               <th
                 key={h}
-                className="bg-[#f0f2f5] px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#555]"
+                className="bg-[#1e1e1e] px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-[#777]"
               >
                 {h}
               </th>
@@ -132,17 +116,17 @@ function StatsTable({ s20, s16 }: { s20: TypeStats; s16: TypeStats }) {
 
 function RecentTable({ matches, team }: { matches: Match[]; team: string }) {
   if (!matches.length) {
-    return <p className="my-1 text-xs text-[#999]">Không có dữ liệu</p>;
+    return <p className="my-1 text-xs text-[#555]">Không có dữ liệu</p>;
   }
   return (
     <table className="w-full border-collapse">
       <tbody>
         {matches.map((m, i) => (
           <tr key={i}>
-            <td className="whitespace-nowrap px-1.5 py-1 text-[11px] text-[#999]">
+            <td className="whitespace-nowrap px-1.5 py-1 text-[11px] text-[#555]">
               {m.date}
             </td>
-            <td className="px-1.5 py-1 text-xs">{scoreLine(m, team)}</td>
+            <td className="px-1.5 py-1 text-xs text-[#bbb]">{scoreLine(m, team)}</td>
             <td className="px-1 py-1">
               <ResultTag result={resultFor(m, team)} />
             </td>
@@ -156,8 +140,12 @@ function RecentTable({ matches, team }: { matches: Match[]; team: string }) {
 function TeamCard({ matches, team }: { matches: Match[]; team: string }) {
   const s: TeamStats = calcStats(matches, team);
   const c = teamColor(team);
+  const has20 = s.s20.n > 0;
+  const has16 = s.s16.n > 0;
+  const bothTypes = has20 && has16;
+
   return (
-    <div className="overflow-hidden rounded-[10px] border-[1.5px] border-[#e8eaf0] bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[10px] border border-[#2a2a2a] bg-[#141414]">
       <div
         className="px-4 py-3 text-[15px] font-bold"
         style={{ background: c.bg, color: c.fg }}
@@ -165,25 +153,31 @@ function TeamCard({ matches, team }: { matches: Match[]; team: string }) {
         {team}
       </div>
       <div className="p-4">
-        <FormRow label="20p" matches={s.r20} team={team} />
-        <FormRow label="16p" matches={s.r16} team={team} />
+        {has20 && <FormRow label="20p" matches={s.r20} team={team} />}
+        {has16 && <FormRow label="16p" matches={s.r16} team={team} />}
         <div className="mt-3.5">
           <StatsTable s20={s.s20} s16={s.s16} />
         </div>
-        <div className="mt-3.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#666]">
-              <TypeBadge type="20p" /> 5 trận gần nhất
-            </div>
-            <RecentTable matches={s.r20} team={team} />
+        {(has20 || has16) && (
+          <div className={`mt-3.5 grid gap-3 ${bothTypes ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {has20 && (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#888]">
+                  <TypeBadge type="20p" /> 5 trận gần nhất
+                </div>
+                <RecentTable matches={s.r20} team={team} />
+              </div>
+            )}
+            {has16 && (
+              <div>
+                <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#888]">
+                  <TypeBadge type="16p" /> 5 trận gần nhất
+                </div>
+                <RecentTable matches={s.r16} team={team} />
+              </div>
+            )}
           </div>
-          <div>
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-bold text-[#666]">
-              <TypeBadge type="16p" /> 5 trận gần nhất
-            </div>
-            <RecentTable matches={s.r16} team={team} />
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -206,43 +200,43 @@ function H2HBar({
   const wd = Math.round((s.D / s.n) * 100);
   const w2 = 100 - w1 - wd;
   return (
-    <div className="min-w-[200px] flex-1 rounded-lg bg-[#f8f9fa] px-3.5 py-3">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold">
+    <div className="min-w-[200px] flex-1 rounded-lg bg-[#1e1e1e] px-3.5 py-3">
+      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-[#aaa]">
         <TypeBadge type={label} /> — {s.n} trận
       </div>
       <div className="flex items-center gap-2">
-        <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold text-[#333]">
+        <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-[11px] font-semibold text-[#ddd]">
           {t1}
         </span>
         <div className="flex h-[22px] flex-1 overflow-hidden rounded">
           <div
-            className="flex items-center justify-center bg-[#28a745] text-[11px] font-bold text-white"
+            className="flex items-center justify-center bg-[#16a34a] text-[11px] font-bold text-white"
             style={{ width: `${w1}%` }}
             title={`${t1}: ${s.W}W`}
           >
             {s.W || ''}
           </div>
           <div
-            className="flex items-center justify-center bg-[#ffc107] text-[11px] font-bold text-[#333]"
+            className="flex items-center justify-center bg-[#d97706] text-[11px] font-bold text-white"
             style={{ width: `${wd}%` }}
             title={`Hòa: ${s.D}D`}
           >
             {s.D || ''}
           </div>
           <div
-            className="flex items-center justify-center bg-[#dc3545] text-[11px] font-bold text-white"
+            className="flex items-center justify-center bg-[#dc2626] text-[11px] font-bold text-white"
             style={{ width: `${w2}%` }}
             title={`${t2}: ${s.L}W`}
           >
             {s.L || ''}
           </div>
         </div>
-        <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] font-semibold text-[#333]">
+        <span className="w-20 overflow-hidden text-ellipsis whitespace-nowrap text-right text-[11px] font-semibold text-[#ddd]">
           {t2}
         </span>
       </div>
-      <div className="mt-1.5 text-[11px] text-[#888]">
-        Bàn: {t1} <strong>{s.gf}</strong> – <strong>{s.ga}</strong> {t2}
+      <div className="mt-1.5 text-[11px] text-[#666]">
+        Bàn: {t1} <strong className="text-[#aaa]">{s.gf}</strong> – <strong className="text-[#aaa]">{s.ga}</strong> {t2}
       </div>
     </div>
   );
@@ -263,7 +257,7 @@ function H2HBlock({
       (m.homeTeam === t2 && m.awayTeam === t1),
   );
   if (!h2h.length) {
-    return <p className="text-[#999]">Chưa gặp nhau trong dữ liệu này</p>;
+    return <p className="text-[#666]">Chưa gặp nhau trong dữ liệu này</p>;
   }
   const h20 = h2h.filter((m) => m.matchType === '20p');
   const h16 = h2h.filter((m) => m.matchType === '16p');
@@ -278,38 +272,37 @@ function H2HBlock({
         <tbody>
           {h2h.map((m, i) => {
             const ih = m.homeTeam === t1;
-            const t1TT = ih ? m.ttHome : m.ttAway;
-            const t2TT = ih ? m.ttAway : m.ttHome;
-            const t1H1 = ih ? m.h1Home : m.h1Away;
-            const t2H1 = ih ? m.h1Away : m.h1Home;
+            // Score always shown as home – away to match "homeTeam vs awayTeam" display
+            const homeScore = +m.ttHome;
+            const awayScore = +m.ttAway;
             const winner =
-              +t1TT > +t2TT ? t1 : +t2TT > +t1TT ? t2 : 'Hòa';
+              homeScore > awayScore ? m.homeTeam : awayScore > homeScore ? m.awayTeam : 'Hòa';
             const wCls =
               winner === t1
-                ? 'text-[#155724]'
+                ? 'text-[#4ade80]'
                 : winner === t2
-                  ? 'text-[#721c24]'
-                  : 'text-[#856404]';
+                  ? 'text-[#f87171]'
+                  : 'text-[#fbbf24]';
             return (
               <tr key={i}>
-                <td className="whitespace-nowrap border-b border-[#f5f5f5] px-2 py-[5px] text-[11px] text-[#999]">
+                <td className="whitespace-nowrap border-b border-[#2a2a2a] px-2 py-[5px] text-[11px] text-[#555]">
                   {m.date}
                 </td>
-                <td className="border-b border-[#f5f5f5] px-2 py-[5px] text-xs">
+                <td className="border-b border-[#2a2a2a] px-2 py-[5px] text-xs text-[#bbb]">
                   {ih ? '🏠' : '✈️'} {m.homeTeam} vs {m.awayTeam}
                 </td>
-                <td className="border-b border-[#f5f5f5] px-2 py-[5px] text-center text-xs text-[#999]">
-                  H1 {t1H1}–{t2H1}
+                <td className="border-b border-[#2a2a2a] px-2 py-[5px] text-center text-xs text-[#555]">
+                  H1 {m.h1Home}–{m.h1Away}
                 </td>
-                <td className="border-b border-[#f5f5f5] px-2 py-[5px] text-center font-bold">
-                  {t1TT} – {t2TT}
+                <td className="border-b border-[#2a2a2a] px-2 py-[5px] text-center font-bold text-white">
+                  {m.ttHome} – {m.ttAway}
                 </td>
                 <td
-                  className={`border-b border-[#f5f5f5] px-2 py-[5px] text-center text-xs font-bold ${wCls}`}
+                  className={`border-b border-[#2a2a2a] px-2 py-[5px] text-center text-xs font-bold ${wCls}`}
                 >
                   {winner}
                 </td>
-                <td className="border-b border-[#f5f5f5] px-2 py-[5px] text-center">
+                <td className="border-b border-[#2a2a2a] px-2 py-[5px] text-center">
                   <TypeBadge type={m.matchType} />
                 </td>
               </tr>
@@ -336,8 +329,8 @@ export default function Analysis({
         <TeamCard matches={matches} team={t1} />
         <TeamCard matches={matches} team={t2} />
       </div>
-      <div className="overflow-hidden rounded-[10px] border-[1.5px] border-[#1a1a2e] bg-white shadow-sm">
-        <div className="bg-[#1a1a2e] px-4 py-3 text-[15px] font-bold text-white">
+      <div className="overflow-hidden rounded-[10px] border border-[#2a2a2a] bg-[#141414]">
+        <div className="bg-[#1a1a1a] px-4 py-3 text-[15px] font-bold text-white border-b border-[#2a2a2a]">
           ⚔️ Đối đầu trực tiếp: {t1} vs {t2}
         </div>
         <div className="p-4">
