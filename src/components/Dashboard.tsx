@@ -437,9 +437,15 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             </>
           ) : view === 'volta-analysis' ? (
             <>
-              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+              <div className="mb-5 flex items-center gap-3 flex-wrap">
                 <h1 className="text-xl font-bold text-white">🔍 Volta — Phân tích mẫu hình</h1>
                 <span className="text-[13px] text-[#666]">{voltaMatches.length} trận</span>
+                <button
+                  onClick={() => setVoltaDrawerOpen(true)}
+                  className="ml-auto rounded-lg bg-[#17a2b8]/20 px-3 py-1.5 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
+                >
+                  ↻ Cập nhật
+                </button>
               </div>
               <VoltaAnalysis matches={voltaMatches} />
             </>
