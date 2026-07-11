@@ -23,6 +23,7 @@ export interface GsLiveMatch {
   minuteElapsed: number | null;
   secondsElapsed: number | null; // e-sports: ms elapsed in current period → seconds
   bettingOpen: boolean;   // false = H2 underway / locked
+  suspended: boolean;     // true = market locked, show --- for all odds
   isLive: boolean;
   // 1X2 odds (decimal). null when the market is unavailable.
   oddsHome: number | null;
@@ -32,10 +33,15 @@ export interface GsLiveMatch {
   malayHome: string | null;
   malayAway: string | null;
   malayDraw: string | null;
-  // Kèo Chấp (Asian Handicap) — market '5'. 2 lines. Values in Malay format.
+  // Kèo Chấp (Asian Handicap) — market '5' TT, '15' H1. 2 lines. Values in Malay format.
+  // NOTE: 'home'/'away' here match the visual display (home team on top). In the raw API the
+  // 'h' selection suffix corresponds to the AWAY team odds and 'a' to the HOME team odds —
+  // they are swapped here so callers get the correct team mapping.
   hcLines: { line: string | null; home: string | null; away: string | null }[];
-  // Tài Xỉu (Over/Under) — market '3'. 2 lines. Values in Malay format.
+  hcH1Lines: { line: string | null; home: string | null; away: string | null }[];
+  // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
   ouLines: { line: string | null; over: string | null; under: string | null }[];
+  ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
 }
 
 /** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
@@ -85,11 +91,15 @@ function parse1x2(
  * Values are already in Malay format.
  * LINE can look like "0", "0.25", "0-0.5", "2.5", "2.5-3".
  */
-function parseAsianEntry(raw: string): { line: string | null; h: string | null; a: string | null } {
+function parseAsianEntry(raw: string): {
+  line: string | null; h: string | null; a: string | null; suspended: boolean;
+} {
   const tokens = raw.trim().split(/\s+/);
   let line: string | null = null;
   let h: string | null = null;
   let a: string | null = null;
+  // Last token '1' = market suspended/locked by bookmaker
+  const suspended = tokens[tokens.length - 1] === '1';
 
   for (const token of tokens) {
     if (token.includes('*')) {
@@ -103,22 +113,27 @@ function parseAsianEntry(raw: string): { line: string | null; h: string | null; 
       line = token;
     }
   }
-  return { line, h, a };
+  return { line, h, a, suspended };
 }
 
-/** Parse up to 2 lines from market '5' (Kèo Chấp) or '3' (Tài Xỉu). */
+/** Parse up to 2 lines from an Asian market (HC or O/U) by market key.
+ *  swapHA=true corrects the h/a suffix mapping for HC markets where 'a' = home team odds. */
 function parseAsianMarket(
   market7: unknown,
-  key: '3' | '5',
-): { line: string | null; home: string | null; away: string | null }[] {
+  key: string,
+  swapHA = false,
+): { line: string | null; home: string | null; away: string | null; suspended: boolean }[] {
   if (!market7 || typeof market7 !== 'object') return [];
   const raw = (market7 as Record<string, unknown>)[key];
   if (raw == null) return [];
 
   const entries = Array.isArray(raw) ? (raw as unknown[]).map(String) : [String(raw)];
   return entries.slice(0, 2).map((e) => {
-    const { line, h, a } = parseAsianEntry(e);
-    return { line, home: h, away: a };
+    const { line, h, a, suspended } = parseAsianEntry(e);
+    // HC markets: 'a' suffix = home team odds, 'h' suffix = away team odds (confirmed by live data)
+    return swapHA
+      ? { line, home: a, away: h, suspended }
+      : { line, home: h, away: a, suspended };
   });
 }
 
@@ -129,8 +144,11 @@ function buildMatch(
 ): GsLiveMatch {
   const score = (ev['4'] as Record<string, number>) ?? {};
   const odds = parse1x2(ev['7']);
-  const hcRaw = parseAsianMarket(ev['7'], '5');
+  const hcRaw = parseAsianMarket(ev['7'], '5', true);
   const ouRaw = parseAsianMarket(ev['7'], '3');
+  const hcH1Raw = parseAsianMarket(ev['7'], '15', true);
+  const ouH1Raw = parseAsianMarket(ev['7'], '13');
+  const suspended = hcRaw.length > 0 ? hcRaw[0].suspended : false;
   const isEsports = leagueId === 1203 || leagueId === 1204;
 
   return {
@@ -147,6 +165,7 @@ function buildMatch(
     secondsElapsed:
       isEsports && typeof ev['6'] === 'number' ? Math.floor((ev['6'] as number) / 1000) : null,
     bettingOpen: ev['11'] !== true,
+    suspended,
     isLive: ev['1'] === true,
     oddsHome: odds.home,
     oddsAway: odds.away,
@@ -154,8 +173,10 @@ function buildMatch(
     malayHome: odds.home != null ? decToMalay(odds.home) : null,
     malayAway: odds.away != null ? decToMalay(odds.away) : null,
     malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,
-    hcLines: hcRaw,
+    hcLines: hcRaw.map(({ line, home, away }) => ({ line, home, away })),
+    hcH1Lines: hcH1Raw.map(({ line, home, away }) => ({ line, home, away })),
     ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
+    ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
   };
 }
 
