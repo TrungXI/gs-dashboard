@@ -31,7 +31,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `getLiveLink ${res.status}` }, { status: 502 });
     }
 
-    const data = (await res.json()) as { h5Link?: string; src?: string };
+    // API returns a double-encoded JSON string (the body is itself a JSON string).
+    const raw = await res.json();
+    const data = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { h5Link?: string; src?: string };
     const h5Link = data.h5Link;
 
     if (!h5Link) {
