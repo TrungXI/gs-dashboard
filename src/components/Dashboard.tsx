@@ -206,7 +206,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     if (quickFetching) return;
     setQuickFetching(true);
     try {
-      const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+      const token = localStorage.getItem('gs_token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
       // Use Vietnam local date (UTC+7), not the host/browser date — otherwise after
       // 17:00 UTC we'd fetch "tomorrow" before midnight Vietnam time.
       const dateStr = vnTodayIso();
@@ -257,7 +257,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     if (voltaQuickFetching) return;
     setVoltaQuickFetching(true);
     try {
-      const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+      const token = localStorage.getItem('gs_token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
       const res = await fetch('/api/fetch-volta', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

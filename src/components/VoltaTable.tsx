@@ -18,7 +18,7 @@ export default function VoltaTable({ matches }: { matches: VoltaMatch[] }) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-[#2a2a2a]">
+    <div className="gs-volta-table overflow-x-auto rounded-xl border border-[#2a2a2a]">
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="bg-[#1a1a1a]">

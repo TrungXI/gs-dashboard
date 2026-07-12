@@ -17,3 +17,241 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Light theme — odds boxes */
+[data-theme="light"] .odds-home-box {
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+[data-theme="light"] .odds-away-box {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+/* In light mode, override "white" text inside boxes to dark */
+[data-theme="light"] .odds-home-box .text-white,
+[data-theme="light"] .odds-away-box .text-white {
+  color: #111827 !important;
+}
+
+/* ===================================================================
+   Light theme — comprehensive overrides
+   Strategy: the `theme` state already toggles top-level bg/text on the
+   sidebar and <main> via conditional Tailwind. These rules handle the
+   deeply-nested children that use hardcoded dark colors, scoped to the
+   .gs-sidebar / .gs-main / table wrappers so intentional colors
+   (score green/red/yellow, signal badges, team badges, odds boxes)
+   are preserved.
+   =================================================================== */
+
+/* ---- Sidebar ---- */
+/* Muted logo subtitle + section labels use text-white/xx opacity utils */
+[data-theme="light"] .gs-sidebar .text-white\/40,
+[data-theme="light"] .gs-sidebar .text-white\/45,
+[data-theme="light"] .gs-sidebar .text-white\/35,
+[data-theme="light"] .gs-sidebar .text-white\/50 {
+  color: #6b7280;
+}
+/* Report-view select (H1 filter) — dark glass bg → light input */
+[data-theme="light"] .gs-sidebar select {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d1d5db;
+}
+[data-theme="light"] .gs-sidebar select option {
+  background: #ffffff;
+  color: #111827;
+}
+/* Volta info card in sidebar */
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.04\] {
+  background: #f3f4f6;
+}
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.04\].text-white\/50 {
+  color: #6b7280;
+}
+/* Report-view divider */
+[data-theme="light"] .gs-sidebar .border-white\/10 {
+  border-color: #e5e7eb;
+}
+
+/* ---- SearchDropdown (used in sidebar report view + main data view) ---- */
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.07\],
+[data-theme="light"] .gs-main .bg-white\/\[\.07\] {
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  color: #111827;
+}
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.07\] .text-white,
+[data-theme="light"] .gs-main .bg-white\/\[\.07\] .text-white,
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.07\].text-white,
+[data-theme="light"] .gs-main .bg-white\/\[\.07\].text-white {
+  color: #111827;
+}
+[data-theme="light"] .gs-sidebar .bg-white\/\[\.07\] .text-white\/40,
+[data-theme="light"] .gs-main .bg-white\/\[\.07\] .text-white\/40 {
+  color: #9ca3af;
+}
+/* Dropdown popup panel */
+[data-theme="light"] .gs-sidebar .bg-\[\#252547\],
+[data-theme="light"] .gs-main .bg-\[\#252547\] {
+  background: #ffffff;
+  border-color: #d1d5db;
+}
+[data-theme="light"] .gs-sidebar .bg-\[\#252547\] input,
+[data-theme="light"] .gs-main .bg-\[\#252547\] input,
+[data-theme="light"] .gs-sidebar .bg-\[\#252547\] .text-white,
+[data-theme="light"] .gs-main .bg-\[\#252547\] .text-white,
+[data-theme="light"] .gs-sidebar .bg-\[\#252547\] .text-white\/75,
+[data-theme="light"] .gs-main .bg-\[\#252547\] .text-white\/75 {
+  color: #111827;
+}
+
+/* ---- Main content generic text/surfaces ---- */
+/* Page headings + generic white text → dark. Colored score/signal cells
+   never use text-white, so this is safe. Odds-box white text is handled
+   separately below (and by the existing !important rule). */
+[data-theme="light"] .gs-main h1.text-white,
+[data-theme="light"] .gs-main .text-white:not(.odds-home-box):not(.odds-away-box) {
+  color: #111827;
+}
+/* Muted greys used for meta text, "vs", "—" placeholders, dates */
+[data-theme="light"] .gs-main .text-\[\#666\],
+[data-theme="light"] .gs-main .text-\[\#888\],
+[data-theme="light"] .gs-main .text-\[\#aaa\],
+[data-theme="light"] .gs-main .text-\[\#bbb\] {
+  color: #6b7280;
+}
+[data-theme="light"] .gs-main .text-\[\#555\] {
+  color: #9ca3af;
+}
+/* Filter row select (GS data view) */
+[data-theme="light"] .gs-main select {
+  background: #ffffff;
+  color: #111827;
+  border: 1px solid #d1d5db;
+}
+[data-theme="light"] .gs-main select option {
+  background: #ffffff;
+  color: #111827;
+}
+/* Type chips + count buttons using white glass bg */
+[data-theme="light"] .gs-main .bg-white\/10 {
+  background: #f3f4f6;
+}
+[data-theme="light"] .gs-main .text-white\/65,
+[data-theme="light"] .gs-main .text-white\/50 {
+  color: #6b7280;
+}
+/* Empty-state boxes */
+[data-theme="light"] .gs-main .bg-\[\#1a1a1a\] {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-main .border-\[\#2a2a2a\] {
+  border-color: #e5e7eb;
+}
+
+/* ---- GS live table (already partly handled) ---- */
+[data-theme="light"] .gs-league-table {
+  background: #ffffff;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .gs-league-table th,
+[data-theme="light"] .gs-league-table th.bg-\[\#1a1a1a\] {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #e5e7eb;
+}
+
+[data-theme="light"] .gs-league-table td {
+  border-color: #f0f0f0;
+  color: #111827;
+}
+
+[data-theme="light"] .gs-league-table tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+[data-theme="light"] .gs-league-table tr:nth-child(even) {
+  background: #f9fafb;
+}
+
+[data-theme="light"] .gs-league-table tr:hover {
+  background: #f3f4f6;
+}
+/* Inner row dividers + line labels */
+[data-theme="light"] .gs-league-table .border-\[\#2a2a2a\] {
+  border-color: #e5e7eb;
+}
+/* Table element bg + Tailwind odd/even utilities (match specificity) */
+[data-theme="light"] .gs-league-table table.bg-\[\#141414\] {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-league-table tr.odd\:bg-\[\#141414\]:nth-child(odd) {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-league-table tr.even\:bg-\[\#181818\]:nth-child(even) {
+  background: #f9fafb;
+}
+[data-theme="light"] .gs-league-table tr.hover\:bg-\[\#222\]:hover {
+  background: #f3f4f6;
+}
+[data-theme="light"] .gs-league-table .border-\[\#222\] {
+  border-color: #f0f0f0;
+}
+
+/* ---- GS data table (virtualized) ---- */
+[data-theme="light"] .gs-data-table {
+  border-color: #e5e7eb;
+}
+[data-theme="light"] .gs-data-table table {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-data-table th,
+[data-theme="light"] .gs-data-table th.bg-\[\#1a1a1a\] {
+  background: #f9fafb;
+  color: #374151;
+}
+[data-theme="light"] .gs-data-table td,
+[data-theme="light"] .gs-data-table .border-\[\#222\] {
+  border-color: #f0f0f0;
+}
+[data-theme="light"] .gs-data-table .bg-\[\#141414\] {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-data-table .bg-\[\#181818\] {
+  background: #f9fafb;
+}
+[data-theme="light"] .gs-data-table .hover\:bg-\[\#222\]:hover {
+  background: #f3f4f6;
+}
+
+/* ---- Volta table ---- */
+[data-theme="light"] .gs-volta-table {
+  border-color: #e5e7eb;
+}
+[data-theme="light"] .gs-volta-table .bg-\[\#1a1a1a\] {
+  background: #f9fafb;
+}
+[data-theme="light"] .gs-volta-table th {
+  color: #374151;
+}
+[data-theme="light"] .gs-volta-table .bg-\[\#141414\] {
+  background: #ffffff;
+}
+[data-theme="light"] .gs-volta-table .bg-\[\#181818\] {
+  background: #f9fafb;
+}
+[data-theme="light"] .gs-volta-table .hover\:bg-\[\#222\]:hover {
+  background: #f3f4f6;
+}
+[data-theme="light"] .gs-volta-table .border-\[\#222\] {
+  border-color: #f0f0f0;
+}
+/* Score chip in volta */
+[data-theme="light"] .gs-volta-table .bg-\[\#1e1e1e\] {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+[data-theme="light"] .gs-volta-table .bg-\[\#1e1e1e\] .text-white {
+  color: #111827;
+}

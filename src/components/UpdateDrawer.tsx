@@ -33,7 +33,7 @@ interface Props {
 }
 
 export default function UpdateDrawer({ dateCounts, onUpdate, onClose }: Props) {
-  const [token, setToken] = useState('69-6aed7dc417eb4882d88c6899ae3c0ae1');
+  const [token, setToken] = useState('69-940214f0e803120fcfc9183ee4df89d5');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [fetchStatus, setFetchStatus] = useState<Record<string, FetchStatus>>({});
   const [loading, setLoading] = useState(false);

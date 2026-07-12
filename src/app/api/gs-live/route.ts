@@ -194,7 +194,7 @@ function buildMatch(
 }
 
 export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get('token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+  const token = req.nextUrl.searchParams.get('token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
 
   try {
     const res = await fetch(

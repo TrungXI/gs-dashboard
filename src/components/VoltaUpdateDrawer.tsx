@@ -25,7 +25,7 @@ function sortVolta(matches: VoltaMatch[]): VoltaMatch[] {
 }
 
 export default function VoltaUpdateDrawer({ currentMatches, onUpdate, onClose }: Props) {
-  const [token, setToken] = useState('69-6aed7dc417eb4882d88c6899ae3c0ae1');
+  const [token, setToken] = useState('69-940214f0e803120fcfc9183ee4df89d5');
   const [status, setStatus] = useState<'idle' | 'fetching' | 'done' | 'error'>('idle');
   const [log, setLog] = useState<string[]>([]);
   const [newCount, setNewCount] = useState(0);

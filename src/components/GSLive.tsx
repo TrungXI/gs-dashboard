@@ -194,7 +194,7 @@ export default function GSLive() {
     async function poll() {
       setLoading(true);
       try {
-        const token = localStorage.getItem('gs_token') ?? '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+        const token = localStorage.getItem('gs_token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(token)}`, {
           cache: 'no-store',
         });
@@ -445,7 +445,7 @@ function OuCell({
   );
 }
 
-const GS_STREAM_TOKEN = '69-6aed7dc417eb4882d88c6899ae3c0ae1';
+const GS_STREAM_TOKEN = '69-940214f0e803120fcfc9183ee4df89d5';
 
 function LeagueSection({
   title,
