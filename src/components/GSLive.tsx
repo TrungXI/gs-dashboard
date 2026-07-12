@@ -161,10 +161,10 @@ function phaseLabel(m: GsLiveMatch, nowMs: number): string {
     const half = m.isH2 ? '2H' : '1H';
     return `${half} ${m.secondsElapsed}s`;
   }
-  // ev['5'] resets to 0 at H2 start; use ev['15'] (isH2) to detect which half
   if (!m.isLive) {
     return nowMs < new Date(m.startTime).getTime() ? 'Chờ' : 'KT';
   }
+  // minuteElapsed = halfDuration - ev['5'] (elapsed virtual minutes in current half)
   const min = m.minuteElapsed ?? 0;
   if (m.isH2) return `2H ${min}'`;
   return `1H ${min}'`;
@@ -303,7 +303,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Tín hiệu', 'Video'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -444,11 +444,23 @@ function LeagueSection({
       <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
         <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
           <thead>
+            {/* Group row */}
+            <tr>
+              <th colSpan={4} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+              <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
+                Toàn Trận
+              </th>
+              <th colSpan={2} className="bg-[#1e2d3a] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#60a5fa] text-center border-l border-r border-[#2a2a2a]">
+                Hiệp 1
+              </th>
+              <th className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+            </tr>
+            {/* Column row */}
             <tr>
               {TABLE_HEADERS.map((h, i) => (
                 <th
                   key={h}
-                  className={`bg-[#1a1a1a] px-2.5 py-2.5 text-xs font-semibold text-[#aaa] ${
+                  className={`bg-[#1a1a1a] px-2.5 py-2 text-xs font-semibold text-[#aaa] ${
                     i === 0 || i === 2 || i === 3 ? 'text-center' : 'text-left'
                   }`}
                 >
@@ -460,7 +472,6 @@ function LeagueSection({
           <tbody>
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
-              const signal = m.suspended ? null : classifySignals(m, prev);
               const scored = scoredIds.has(m.eventId);
               const streamUrl = streamUrls[m.eventId];
               return (
@@ -507,17 +518,6 @@ function LeagueSection({
                   {/* Tài Xỉu H1 */}
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
-                  </td>
-                  {/* Tín hiệu */}
-                  <td className="border-b border-[#222] px-2 py-2 align-top w-16">
-                    {signal && (
-                      <span
-                        className="block rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
-                        style={{ color: signal.color, backgroundColor: `${signal.color}22` }}
-                      >
-                        {signal.label}
-                      </span>
-                    )}
                   </td>
                   {/* Video inline */}
                   <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 320 }}>

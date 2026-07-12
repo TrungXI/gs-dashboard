@@ -10,6 +10,12 @@ const MATCH_TYPE: Record<number, MatchType> = {
   2125: '20p',
 };
 
+// ev['5'] counts DOWN from half duration (remaining virtual minutes)
+const HALF_DURATION: Record<number, number> = {
+  2125: 20, // 20p format — 20 virtual minutes per half
+  2140: 16, // 16p format — 16 virtual minutes per half
+};
+
 export interface GsLiveMatch {
   leagueId: number;
   leagueName: string;
@@ -147,10 +153,17 @@ function buildMatch(
   const odds = parse1x2(ev['7']);
   const hcRaw = parseAsianMarket(ev['7'], '5');
   const ouRaw = parseAsianMarket(ev['7'], '3');
-  const hcH1Raw = parseAsianMarket(ev['7'], '15');
-  const ouH1Raw = parseAsianMarket(ev['7'], '13');
+  // H1 market keys: '6' = HC H1, '4' = OU H1 (different from pre-match keys '15'/'13')
+  const hcH1Raw = parseAsianMarket(ev['7'], '6');
+  const ouH1Raw = parseAsianMarket(ev['7'], '4');
   const suspended = hcRaw.length > 0 ? hcRaw[0].suspended : false;
   const isEsports = leagueId === 1203 || leagueId === 1204;
+
+  // ev['5'] counts DOWN (remaining virtual minutes in current half).
+  // Convert to elapsed = halfDuration - remaining.
+  const halfDur = HALF_DURATION[leagueId] ?? 10;
+  const remaining = typeof ev['5'] === 'number' ? (ev['5'] as number) : null;
+  const minuteElapsed = remaining !== null ? Math.max(0, halfDur - remaining) : null;
 
   return {
     leagueId,
@@ -162,7 +175,7 @@ function buildMatch(
     awayTeam: ev['3'] as string,
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
-    minuteElapsed: typeof ev['5'] === 'number' ? ev['5'] : null,
+    minuteElapsed,
     secondsElapsed:
       isEsports && typeof ev['6'] === 'number' ? Math.floor((ev['6'] as number) / 1000) : null,
     bettingOpen: ev['11'] !== true,
