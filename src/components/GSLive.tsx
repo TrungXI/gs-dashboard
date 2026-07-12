@@ -186,6 +186,12 @@ export default function GSLive() {
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
   const fetchingRef = useRef<Set<number>>(new Set());
   const [loadTs] = useState(() => Date.now());
+  const [tokenVal, setTokenVal] = useState('');
+
+  useEffect(() => {
+    const saved = localStorage.getItem('gs_token');
+    if (saved && saved !== GS_STREAM_TOKEN) setTokenVal(saved);
+  }, []);
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -259,6 +265,8 @@ export default function GSLive() {
     };
   }, []);
 
+  const activeToken = tokenVal ? extractToken(tokenVal) : (localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN);
+
   return (
     <>
       <div className="mb-4 flex items-center gap-3 flex-wrap">
@@ -269,6 +277,41 @@ export default function GSLive() {
           <span className="ml-auto text-[12px] text-[#4ade80]/70">
             ⟳ 2s · {updatedAt}
           </span>
+        )}
+      </div>
+
+      {/* Token input — paste raw token or full link */}
+      <div className="mb-4 flex items-center gap-2">
+        <input
+          type="text"
+          value={tokenVal}
+          onChange={(e) => {
+            const tok = extractToken(e.target.value);
+            setTokenVal(tok);
+            if (tok && tok !== GS_STREAM_TOKEN) {
+              localStorage.setItem('gs_token', tok);
+            } else {
+              localStorage.removeItem('gs_token');
+            }
+          }}
+          onPaste={(e) => {
+            e.preventDefault();
+            const pasted = e.clipboardData.getData('text');
+            const tok = extractToken(pasted);
+            setTokenVal(tok);
+            if (tok && tok !== GS_STREAM_TOKEN) {
+              localStorage.setItem('gs_token', tok);
+            } else {
+              localStorage.removeItem('gs_token');
+            }
+          }}
+          placeholder="Dán token hoặc link (để xem video live)…"
+          className="flex-1 max-w-[480px] rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-1.5 text-[12px] text-white placeholder:text-[#444] outline-none focus:border-[#17a2b8] transition-colors"
+        />
+        {tokenVal && tokenVal !== GS_STREAM_TOKEN ? (
+          <span className="text-[11px] text-[#4ade80]">✓ Token tùy chỉnh</span>
+        ) : (
+          <span className="text-[11px] text-[#555]">Token mặc định</span>
         )}
       </div>
 
@@ -293,6 +336,7 @@ export default function GSLive() {
             nowMs={nowMs}
             streamUrls={streamUrls}
             loadTs={loadTs}
+            activeToken={activeToken}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -302,6 +346,7 @@ export default function GSLive() {
             nowMs={nowMs}
             streamUrls={streamUrls}
             loadTs={loadTs}
+            activeToken={activeToken}
           />
         </>
       )}
@@ -422,6 +467,18 @@ function OuCell({
 
 const GS_STREAM_TOKEN = '69-940214f0e803120fcfc9183ee4df89d5';
 
+/** Extract token from a raw token string or a full URL (reads ?token= param). */
+function extractToken(input: string): string {
+  const s = input.trim();
+  if (!s) return GS_STREAM_TOKEN;
+  try {
+    const url = new URL(s);
+    const t = url.searchParams.get('token');
+    if (t) return t;
+  } catch { /* not a URL */ }
+  return s;
+}
+
 function CardBadges({ yellow, red }: { yellow: number; red: number }) {
   if (!yellow && !red) return null;
   return (
@@ -450,6 +507,7 @@ function LeagueSection({
   nowMs,
   streamUrls,
   loadTs,
+  activeToken,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -458,6 +516,7 @@ function LeagueSection({
   nowMs: number;
   streamUrls: Record<number, string>;
   loadTs: number;
+  activeToken: string;
 }) {
   if (matches.length === 0) return null;
   return (
@@ -501,14 +560,14 @@ function LeagueSection({
               // Primary: glivestreaming.com via /api/gs-stream proxy
               // Fallback: zenandfe.com?gamePart=2 (no geo-block, CSS-cropped)
               const streamUrl = streamUrls[m.eventId];
-              const fallbackUrl = `https://zenandfe.com/?token=${encodeURIComponent(GS_STREAM_TOKEN)}&agentId=69&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+              const fallbackUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=69&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
               return (
                 <tr
                   key={m.eventId}
                   className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
                     scored ? '!bg-[#16a34a]/10' : ''
                   }`}
-                  style={{ height: 200 }}
+                  style={{ height: 500 }}
                 >
                   {/* # */}
                   <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
@@ -569,14 +628,14 @@ function LeagueSection({
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
                   {/* Video: glivestreaming.com (primary) or zenandfe.com CSS-cropped (fallback) */}
-                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 360 }}>
-                    <div className="relative overflow-hidden bg-black" style={{ height: 200, width: 360 }}>
+                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 480 }}>
+                    <div className="relative overflow-hidden bg-black" style={{ height: 500, width: 480 }}>
                       <iframe
                         key={streamUrl ?? fallbackUrl}
                         src={streamUrl ?? fallbackUrl}
                         style={{
-                          width: streamUrl ? '100%' : '480px',
-                          height: streamUrl ? 200 : 520,
+                          width: streamUrl ? '100%' : '640px',
+                          height: streamUrl ? 500 : 700,
                           border: 'none',
                           display: 'block',
                           // CSS crop for zenandfe: shift up to hide header/nav, left to hide sidepanel

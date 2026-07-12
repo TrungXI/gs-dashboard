@@ -10,10 +10,11 @@ import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
 import VoltaAnalysis from './VoltaAnalysis';
 import GSLive from './GSLive';
+import Analysis from './Analysis';
 import { ALL_VOLTA_MATCHES, apiToVoltaRow } from '../lib/processVoltaData';
 import { apiToRow, sortMatchesDesc, vnTodayIso } from '../lib/matchUtils';
 
-type View = 'data' | 'gs-live' | 'volta' | 'volta-analysis';
+type View = 'data' | 'gs-live' | 'volta' | 'volta-analysis' | 'report';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
@@ -27,6 +28,7 @@ function loadUiState() {
     if (!s) return null;
     return JSON.parse(s) as {
       view?: View; fType?: FType; fDate?: string; fTeam?: string;
+      r1?: string; r2?: string; h1Filter?: string;
     };
   } catch { return null; }
 }
@@ -46,6 +48,9 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all');
   const [fTeam, setFTeam] = useState('all');
+  const [r1, setR1] = useState('');
+  const [r2, setR2] = useState('');
+  const [h1Filter, setH1Filter] = useState('all');
   const uiRestored = useRef(false);
 
   const theme = 'dark';
@@ -67,10 +72,10 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     if (!uiRestored.current) return;
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam }));
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
     }, 300);
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [view, fType, fDate, fTeam]);
+  }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
 
   // Load cached data from localStorage on mount
   useEffect(() => {
@@ -81,6 +86,9 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
+      if (ui.r1 != null) setR1(ui.r1);
+      if (ui.r2 != null) setR2(ui.r2);
+      if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
     uiRestored.current = true;
     // Version 3: renamed team suffixes (V)→(20), (S)→(16)
@@ -310,6 +318,30 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
   const teamOptions = teams.map((t) => ({ value: t, label: t }));
   const dataTeamOptions = [{ value: 'all', label: '-- Tất cả đội --' }, ...teamOptions];
+  const reportTeamOptions = [{ value: '', label: '-- Chọn đội --' }, ...teamOptions];
+
+  const h1Options = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const m of matches) {
+      const key = `${m.h1Home}–${m.h1Away}`;
+      counts[key] = (counts[key] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .sort((a, b) => {
+        const [aH, aA] = a[0].split('–').map(Number);
+        const [bH, bA] = b[0].split('–').map(Number);
+        const aTot = aH + aA, bTot = bH + bA;
+        if (aTot !== bTot) return aTot - bTot;
+        return b[1] - a[1];
+      })
+      .map(([score, count]) => ({ value: score, label: `${score}  (${count} trận)` }));
+  }, [matches]);
+
+  const analysisMatches = useMemo(() => {
+    if (h1Filter === 'all') return matches;
+    const [h1H, h1A] = h1Filter.split('–');
+    return matches.filter((m) => String(m.h1Home) === h1H && String(m.h1Away) === h1A);
+  }, [matches, h1Filter]);
 
   const typeChips: [FType, string][] = [
     ['all', 'Tất cả'],
@@ -333,6 +365,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 [
                   ['data', '📋', 'GS Dữ liệu'],
                   ['gs-live', '🔴', 'GS Live'],
+                  ['report', '📊', 'GS Phân tích'],
                   ['volta', '⚡', 'Volta'],
                   ['volta-analysis', '🔍', 'Volta Phân tích'],
                 ] as [View, string, string][]
@@ -414,6 +447,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                   [
                     ['data', '📋', 'GS Dữ liệu'],
                     ['gs-live', '🔴', 'GS Live'],
+                    ['report', '📊', 'GS Phân tích'],
                     ['volta', '⚡', 'Volta'],
                     ['volta-analysis', '🔍', 'Volta Phân tích'],
                   ] as [View, string, string][]
@@ -460,6 +494,59 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                       >
                         ↻ Chọn
                       </button>
+                    </div>
+                  </div>
+                )}
+                {view === 'report' && (
+                  <div className="px-4 pt-3.5">
+                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
+                      Chọn đội phân tích
+                    </div>
+                    <div className="mb-0.5 text-[11px] text-white/45">Đội 1</div>
+                    <SearchDropdown
+                      options={reportTeamOptions}
+                      value={r1}
+                      onChange={setR1}
+                      placeholder="-- Chọn đội 1 --"
+                    />
+                    <div className="mb-0.5 mt-2.5 text-[11px] text-white/45">Đội 2</div>
+                    <SearchDropdown
+                      options={reportTeamOptions}
+                      value={r2}
+                      onChange={setR2}
+                      placeholder="-- Chọn đội 2 --"
+                    />
+                    <div className="mt-4 border-t border-white/10 pt-4">
+                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
+                        Lọc tỉ số H1
+                      </div>
+                      <select
+                        value={h1Filter}
+                        onChange={(e) => setH1Filter(e.target.value)}
+                        className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
+                      >
+                        <option value="all" className="bg-[#111] text-white">
+                          Tất cả tỉ số H1
+                        </option>
+                        {h1Options.map((o) => (
+                          <option key={o.value} value={o.value} className="bg-[#111] text-white">
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                      {h1Filter !== 'all' && (
+                        <div className="mt-2 flex items-center justify-between">
+                          <span className="text-[11px] text-[#fbbf24]">
+                            H1 {h1Filter} → {analysisMatches.length} trận
+                          </span>
+                          <button
+                            onClick={() => setH1Filter('all')}
+                            className="text-[10px] text-[#17a2b8] hover:text-white"
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -540,8 +627,33 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </div>
               <DataTable matches={filtered} highlightTeam={fTeam !== 'all' ? fTeam : undefined} />
             </>
-          ) : (
+          ) : view === 'gs-live' ? (
             <GSLive />
+          ) : (
+            /* report view — GS Phân tích */
+            <>
+              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
+                <h1 className="text-xl font-bold text-white">📊 Phân tích đối đầu &amp; Form</h1>
+                <span className="text-[13px] text-[#666]">
+                  {dates.length > 0 ? `${dates[dates.length - 1]}–${dates[0]}` : 'Dữ liệu'}
+                </span>
+                {h1Filter !== 'all' && (
+                  <span className="rounded-md bg-[#fbbf24]/15 px-2 py-0.5 text-[12px] font-semibold text-[#fbbf24]">
+                    H1 = {h1Filter}
+                  </span>
+                )}
+              </div>
+              {r1 && r2 && r1 !== r2 ? (
+                <Analysis matches={analysisMatches} t1={r1} t2={r2} />
+              ) : (
+                <div className="flex h-[300px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
+                  <div className="mb-4 text-5xl">📊</div>
+                  <div className="text-[15px] text-[#888]">
+                    Chọn 2 đội ở menu bên trái để xem thống kê
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>
