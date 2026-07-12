@@ -198,11 +198,14 @@ export default function GSLive() {
     if (!raw.trim()) {
       localStorage.removeItem('gs_token');
       setTokenVal('');
-      return;
+    } else {
+      const tok = extractToken(raw);
+      localStorage.setItem('gs_token', tok);
+      setTokenVal(tok);
     }
-    const tok = extractToken(raw);
-    localStorage.setItem('gs_token', tok);
-    setTokenVal(tok);
+    // Clear cached stream URLs so they re-fetch with the new token
+    setStreamUrls({});
+    fetchingRef.current.clear();
   }
 
   // Tick every 30s so phaseLabel stays current without server round-trip
@@ -351,7 +354,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Phân Tích', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -527,7 +530,7 @@ function LeagueSection({
           <thead>
             {/* Group row */}
             <tr>
-              <th colSpan={4} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+              <th colSpan={3} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
               <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
                 Toàn Trận
               </th>
@@ -590,24 +593,6 @@ function LeagueSection({
                     </div>
                     <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </td>
-                  {/* Phân Tích */}
-                  {(() => {
-                    const sig = classifySignals(m, prev);
-                    return (
-                      <td className="border-b border-[#222] px-2 py-2 text-center align-middle w-20">
-                        {sig ? (
-                          <span
-                            className="inline-block rounded px-2 py-1 text-[11px] font-bold leading-tight"
-                            style={{ background: `${sig.color}22`, color: sig.color, border: `1px solid ${sig.color}55` }}
-                          >
-                            {sig.label}
-                          </span>
-                        ) : (
-                          <span className="text-[11px] text-[#333]">—</span>
-                        )}
-                      </td>
-                    );
-                  })()}
                   {/* Kèo Chấp TT */}
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
@@ -624,25 +609,16 @@ function LeagueSection({
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
-                  {/* Video: glivestreaming.com (primary) or zenandfe.com CSS-cropped (fallback) */}
-                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 480 }}>
-                    <div className="relative overflow-hidden bg-black" style={{ height: 500, width: 480 }}>
+                  {/* Video */}
+                  <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
+                    <div className="relative bg-black" style={{ height: 500 }}>
                       <iframe
                         key={streamUrl ?? fallbackUrl}
                         src={streamUrl ?? fallbackUrl}
-                        style={{
-                          width: streamUrl ? '100%' : '640px',
-                          height: streamUrl ? 500 : 700,
-                          border: 'none',
-                          display: 'block',
-                          // CSS crop for zenandfe: shift up to hide header/nav, left to hide sidepanel
-                          marginTop: streamUrl ? 0 : -52,
-                          marginLeft: streamUrl ? 0 : -60,
-                          transform: streamUrl ? 'none' : 'scale(0.82)',
-                          transformOrigin: 'top left',
-                        }}
+                        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                         title={`${m.homeTeam} vs ${m.awayTeam}`}
                         allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                        allowFullScreen
                       />
                       <a
                         href={streamUrl ?? fallbackUrl}
