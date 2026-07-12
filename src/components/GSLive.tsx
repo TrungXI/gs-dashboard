@@ -523,6 +523,26 @@ function LeagueSection({
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const cropIframeRef = useRef<HTMLIFrameElement>(null);
 
+  // Mobile video scale: content inside det.zenandfe.com has a fixed internal width.
+  // We render the iframe at MOBILE_CONTENT_W then CSS-scale it down to fit the card.
+  const MOBILE_CONTENT_W = 480;
+  const MOBILE_DISPLAY_H = 220;
+  const [mobileContainerW, setMobileContainerW] = useState(() =>
+    typeof window !== 'undefined' && window.innerWidth < 768
+      ? Math.max(1, window.innerWidth - 24)
+      : MOBILE_CONTENT_W
+  );
+  useEffect(() => {
+    function update() {
+      if (window.innerWidth < 768) setMobileContainerW(Math.max(1, window.innerWidth - 24));
+    }
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+  const mobileVideoScale = mobileContainerW / MOBILE_CONTENT_W;
+  const mobileIframeH = Math.round(MOBILE_DISPLAY_H / mobileVideoScale);
+
   function bump(eventId: number) {
     setRefreshKeys(prev => {
       const next = new Map(prev);
@@ -620,12 +640,18 @@ function LeagueSection({
                   </div>
                 </div>
 
-                {/* Video */}
-                <div className="relative bg-black" style={{ height: 220 }}>
+                {/* Video — scaled to fit mobile container */}
+                <div className="relative bg-black overflow-hidden" style={{ height: MOBILE_DISPLAY_H }}>
                   <iframe
                     key={`m-${m.eventId}-${refreshKey}-${globalReloadKey}`}
                     src={videoUrl}
-                    style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                    style={{
+                      position: 'absolute', top: 0, left: 0,
+                      width: MOBILE_CONTENT_W, height: mobileIframeH,
+                      border: 'none', display: 'block',
+                      transform: `scale(${mobileVideoScale})`,
+                      transformOrigin: 'top left',
+                    }}
                     title={`${m.homeTeam} vs ${m.awayTeam}`}
                     allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                     allowFullScreen
