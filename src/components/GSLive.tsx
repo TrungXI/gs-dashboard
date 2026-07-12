@@ -606,9 +606,7 @@ function LeagueSection({
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className={`font-bold text-[15px] ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                      {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null
-                        ? `${m.h1FinalHome + m.h1Home} - ${m.h1FinalAway + m.h1Away}`
-                        : `${m.h1Home} - ${m.h1Away}`}
+                      {m.h1Home} - {m.h1Away}
                     </div>
                     {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
                       <div className="text-[10px] text-[#aaa]">H1: {m.h1FinalHome}-{m.h1FinalAway}</div>
@@ -744,9 +742,7 @@ function LeagueSection({
                     {/* Tỉ số / Phase */}
                     <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
                       <div className={`font-bold text-sm transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                        {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null
-                          ? `${m.h1FinalHome + m.h1Home} - ${m.h1FinalAway + m.h1Away}`
-                          : `${m.h1Home} - ${m.h1Away}`}
+                        {m.h1Home} - {m.h1Away}
                         {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
                       </div>
                       {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
