@@ -155,8 +155,9 @@ function buildMatch(
   const score = (ev['4'] as Record<string, number>) ?? {};
   const yellowHome = score['7'] ?? 0;
   const yellowAway = score['8'] ?? 0;
-  const redHome = score['11'] ?? 0;
-  const redAway = score['12'] ?? 0;
+  // score['2'] = red cards home, score['3'] = red cards away (verified live vs user observation)
+  const redHome = score['2'] ?? 0;
+  const redAway = score['3'] ?? 0;
   const cornersHome = score['5'] ?? 0;
   const cornersAway = score['6'] ?? 0;
   const odds = parse1x2(ev['7']);
