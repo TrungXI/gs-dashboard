@@ -36,6 +36,8 @@ interface GsLiveMatch {
   redAway: number;
   cornersHome: number;
   cornersAway: number;
+  h1FinalHome: number | null;
+  h1FinalAway: number | null;
 }
 
 type Signal =
@@ -604,8 +606,13 @@ function LeagueSection({
                   </div>
                   <div className="text-right flex-shrink-0">
                     <div className={`font-bold text-[15px] ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                      {m.h1Home} - {m.h1Away}
+                      {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null
+                        ? `${m.h1FinalHome + m.h1Home} - ${m.h1FinalAway + m.h1Away}`
+                        : `${m.h1Home} - ${m.h1Away}`}
                     </div>
+                    {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
+                      <div className="text-[10px] text-[#aaa]">H1: {m.h1FinalHome}-{m.h1FinalAway}</div>
+                    )}
                     <div className="text-[10px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </div>
                 </div>
@@ -737,9 +744,14 @@ function LeagueSection({
                     {/* Tỉ số / Phase */}
                     <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
                       <div className={`font-bold text-sm transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                        {m.h1Home} - {m.h1Away}
+                        {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null
+                          ? `${m.h1FinalHome + m.h1Home} - ${m.h1FinalAway + m.h1Away}`
+                          : `${m.h1Home} - ${m.h1Away}`}
                         {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
                       </div>
+                      {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
+                        <div className="mt-0.5 text-[10px] text-[#aaa]">H1: {m.h1FinalHome}-{m.h1FinalAway}</div>
+                      )}
                       <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                     </td>
                     {/* Kèo Chấp TT */}

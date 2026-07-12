@@ -43,13 +43,18 @@ export interface GsLiveMatch {
   // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
   ouLines: { line: string | null; over: string | null; under: string | null }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
-  // Cards & corners from score object: '7'=yellow home, '8'=yellow away, '11'=red home, '12'=red away
+  // Cards & corners from score object: '7'=yellow home, '8'=yellow away, '2'=red home, '3'=red away
   yellowHome: number;
   yellowAway: number;
   redHome: number;
   redAway: number;
   cornersHome: number;
   cornersAway: number;
+  // H1 final goals — present only when period=8 (H2). score['11']=H1 home, score['12']=H1 away.
+  // During H1, h1Home/h1Away is the running H1 score. In H2, h1Home/h1Away is the H2 running score
+  // and h1FinalHome/h1FinalAway holds the locked H1 result.
+  h1FinalHome: number | null;
+  h1FinalAway: number | null;
 }
 
 /** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
@@ -210,6 +215,8 @@ function buildMatch(
     redAway,
     cornersHome,
     cornersAway,
+    h1FinalHome: typeof score['11'] === 'number' ? score['11'] : null,
+    h1FinalAway: typeof score['12'] === 'number' ? score['12'] : null,
   };
 }
 
