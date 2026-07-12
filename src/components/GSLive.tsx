@@ -525,7 +525,7 @@ function LeagueSection({
 
   // Mobile video scale: content inside det.zenandfe.com has a fixed internal width.
   // We render the iframe at MOBILE_CONTENT_W then CSS-scale it down to fit the card.
-  const MOBILE_CONTENT_W = 480;
+  const MOBILE_CONTENT_W = 160; // zoom in ~3x (480/3): scale = containerW/160 ≈ 2.3x
   const MOBILE_DISPLAY_H = 220;
   const [mobileContainerW, setMobileContainerW] = useState(() =>
     typeof window !== 'undefined' && window.innerWidth < 768
