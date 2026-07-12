@@ -186,12 +186,24 @@ export default function GSLive() {
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
   const fetchingRef = useRef<Set<number>>(new Set());
   const [loadTs] = useState(() => Date.now());
+  // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('gs_token');
-    if (saved && saved !== GS_STREAM_TOKEN) setTokenVal(saved);
+    if (saved) setTokenVal(saved);
   }, []);
+
+  function applyToken(raw: string) {
+    const tok = extractToken(raw);
+    if (tok && tok !== GS_STREAM_TOKEN) {
+      localStorage.setItem('gs_token', tok);
+      setTokenVal(tok);
+    } else {
+      localStorage.removeItem('gs_token');
+      setTokenVal('');
+    }
+  }
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -265,7 +277,7 @@ export default function GSLive() {
     };
   }, []);
 
-  const activeToken = tokenVal ? extractToken(tokenVal) : (localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN);
+  const activeToken = tokenVal || GS_STREAM_TOKEN;
 
   return (
     <>
@@ -285,25 +297,10 @@ export default function GSLive() {
         <input
           type="text"
           value={tokenVal}
-          onChange={(e) => {
-            const tok = extractToken(e.target.value);
-            setTokenVal(tok);
-            if (tok && tok !== GS_STREAM_TOKEN) {
-              localStorage.setItem('gs_token', tok);
-            } else {
-              localStorage.removeItem('gs_token');
-            }
-          }}
+          onChange={(e) => applyToken(e.target.value)}
           onPaste={(e) => {
             e.preventDefault();
-            const pasted = e.clipboardData.getData('text');
-            const tok = extractToken(pasted);
-            setTokenVal(tok);
-            if (tok && tok !== GS_STREAM_TOKEN) {
-              localStorage.setItem('gs_token', tok);
-            } else {
-              localStorage.removeItem('gs_token');
-            }
+            applyToken(e.clipboardData.getData('text'));
           }}
           placeholder="Dán token hoặc link (để xem video live)…"
           className="flex-1 max-w-[480px] rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-1.5 text-[12px] text-white placeholder:text-[#444] outline-none focus:border-[#17a2b8] transition-colors"
