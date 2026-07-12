@@ -577,7 +577,7 @@ function LeagueSection({
             const scored = scoredIds.has(m.eventId);
             const agentId = activeToken.split('-')[0] || '69';
             const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-            const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+            const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
             return (
               <div
                 key={m.eventId}
@@ -679,7 +679,7 @@ function LeagueSection({
                 const scored = scoredIds.has(m.eventId);
                 const agentId = activeToken.split('-')[0] || '69';
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-                const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+                const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
                 return (
                   <tr
                     key={m.eventId}
@@ -728,7 +728,7 @@ function LeagueSection({
                     <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                       <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                     </td>
-                    {/* Video — zenandfe.com match detail (gamePart=2) */}
+                    {/* Video — det.zenandfe.com route=3 */}
                     <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
                       <div className="relative bg-black" style={{ height: 500 }}>
                         <iframe
