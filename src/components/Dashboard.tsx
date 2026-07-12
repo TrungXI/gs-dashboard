@@ -50,7 +50,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
   const theme = 'dark';
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-  const [autoRefreshGS, setAutoRefreshGS] = useState(false);
+  const [autoRefreshGS, setAutoRefreshGS] = useState(true);
   const [gsCountdown, setGsCountdown] = useState<number | null>(null); // seconds to next auto-fetch
   const autoRefreshGSRef = useRef(false);
   const quickFetchGSRef = useRef<() => Promise<void>>(() => Promise.resolve());
