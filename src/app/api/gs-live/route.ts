@@ -34,11 +34,9 @@ export interface GsLiveMatch {
   malayAway: string | null;
   malayDraw: string | null;
   // Kèo Chấp (Asian Handicap) — market '5' TT, '15' H1. 2 lines. Values in Malay format.
-  // NOTE: 'home'/'away' here match the visual display (home team on top). In the raw API the
-  // 'h' selection suffix corresponds to the AWAY team odds and 'a' to the HOME team odds —
-  // they are swapped here so callers get the correct team mapping.
-  hcLines: { line: string | null; home: string | null; away: string | null }[];
-  hcH1Lines: { line: string | null; home: string | null; away: string | null }[];
+  // homeGives=true → home team gives handicap (line shown in home row); false → away gives.
+  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
+  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
   ouLines: { line: string | null; over: string | null; under: string | null }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
@@ -87,17 +85,19 @@ function parse1x2(
 
 /**
  * Parse one entry from an Asian market (HC or O/U).
- * Entry format: "LINE VAL*SELIDh VAL*SELIDa ..."
+ * Entry format: "LINE VAL*SELIDh VAL*SELIDa INDICATOR ..."
+ * INDICATOR is a standalone 'h' or 'a' token (no '*') that encodes which team gives handicap.
  * Values are already in Malay format.
  * LINE can look like "0", "0.25", "0-0.5", "2.5", "2.5-3".
  */
 function parseAsianEntry(raw: string): {
-  line: string | null; h: string | null; a: string | null; suspended: boolean;
+  line: string | null; h: string | null; a: string | null; suspended: boolean; indicator: 'h' | 'a' | null;
 } {
   const tokens = raw.trim().split(/\s+/);
   let line: string | null = null;
   let h: string | null = null;
   let a: string | null = null;
+  let indicator: 'h' | 'a' | null = null;
   // Last token '1' = market suspended/locked by bookmaker
   const suspended = tokens[tokens.length - 1] === '1';
 
@@ -109,31 +109,31 @@ function parseAsianEntry(raw: string): {
       const side = sel.slice(-1);
       if (side === 'h' && h == null) h = val;
       else if (side === 'a' && a == null) a = val;
+    } else if (token === 'h' || token === 'a') {
+      // Standalone 'h'/'a' = which team gives handicap
+      if (indicator == null) indicator = token as 'h' | 'a';
     } else if (line == null && /^-?[\d.]+([-][\d.]+)?$/.test(token)) {
       line = token;
     }
   }
-  return { line, h, a, suspended };
+  return { line, h, a, suspended, indicator };
 }
 
-/** Parse up to 2 lines from an Asian market (HC or O/U) by market key.
- *  swapHA=true corrects the h/a suffix mapping for HC markets where 'a' = home team odds. */
+/** Parse up to 2 lines from an Asian market (HC or O/U) by market key. */
 function parseAsianMarket(
   market7: unknown,
   key: string,
-  swapHA = false,
-): { line: string | null; home: string | null; away: string | null; suspended: boolean }[] {
+): { line: string | null; home: string | null; away: string | null; suspended: boolean; homeGives: boolean }[] {
   if (!market7 || typeof market7 !== 'object') return [];
   const raw = (market7 as Record<string, unknown>)[key];
   if (raw == null) return [];
 
   const entries = Array.isArray(raw) ? (raw as unknown[]).map(String) : [String(raw)];
   return entries.slice(0, 2).map((e) => {
-    const { line, h, a, suspended } = parseAsianEntry(e);
-    // HC markets: 'a' suffix = home team odds, 'h' suffix = away team odds (confirmed by live data)
-    return swapHA
-      ? { line, home: a, away: h, suspended }
-      : { line, home: h, away: a, suspended };
+    const { line, h, a, suspended, indicator } = parseAsianEntry(e);
+    // indicator 'h' = home gives, 'a' = away gives. Fall back to positive-line = home gives.
+    const homeGives = indicator != null ? indicator === 'h' : (line == null || parseFloat(line) >= 0);
+    return { line, home: h, away: a, suspended, homeGives };
   });
 }
 
@@ -173,8 +173,8 @@ function buildMatch(
     malayHome: odds.home != null ? decToMalay(odds.home) : null,
     malayAway: odds.away != null ? decToMalay(odds.away) : null,
     malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,
-    hcLines: hcRaw.map(({ line, home, away }) => ({ line, home, away })),
-    hcH1Lines: hcH1Raw.map(({ line, home, away }) => ({ line, home, away })),
+    hcLines: hcRaw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
+    hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
     ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
     ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
   };

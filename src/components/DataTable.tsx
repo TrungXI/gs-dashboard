@@ -14,7 +14,7 @@ function ScoreCell({ my, opp }: { my: string; opp: string }) {
   return <span className={`font-bold ${cls}`}>{my}</span>;
 }
 
-function DataTable({ matches }: { matches: Match[] }) {
+function DataTable({ matches, highlightTeam }: { matches: Match[]; highlightTeam?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -32,7 +32,7 @@ function DataTable({ matches }: { matches: Match[] }) {
     items.length > 0 ? totalHeight - items[items.length - 1].end : 0;
 
   return (
-    <div className="rounded-lg border border-[#2a2a2a] overflow-hidden">
+    <div className="gs-data-table rounded-lg border border-[#2a2a2a] overflow-hidden">
       <div
         ref={containerRef}
         style={{ height: 'calc(100vh - 220px)', overflowY: 'auto', overflowX: 'auto' }}
@@ -80,10 +80,14 @@ function DataTable({ matches }: { matches: Match[] }) {
                     <TypeBadge type={m.matchType} />
                   </td>
                   <td className="border-b border-[#222] px-2.5 py-2">
-                    <TeamBadge name={m.homeTeam} />
+                    <span className={highlightTeam && m.homeTeam === highlightTeam ? 'inline-block rounded px-1.5 py-0.5 bg-[#ffedd5] text-[#b91c1c] font-bold text-[11px]' : ''}>
+                      <TeamBadge name={m.homeTeam} />
+                    </span>
                   </td>
                   <td className="border-b border-[#222] px-2.5 py-2">
-                    <TeamBadge name={m.awayTeam} />
+                    <span className={highlightTeam && m.awayTeam === highlightTeam ? 'inline-block rounded px-1.5 py-0.5 bg-[#ffedd5] text-[#b91c1c] font-bold text-[11px]' : ''}>
+                      <TeamBadge name={m.awayTeam} />
+                    </span>
                   </td>
                   <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center">
                     <ScoreCell my={m.h1Home} opp={m.h1Away} /> –{' '}

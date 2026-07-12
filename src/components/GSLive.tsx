@@ -24,8 +24,8 @@ interface GsLiveMatch {
   malayAway: string | null;
   malayDraw: string | null;
   suspended: boolean;
-  hcLines: { line: string | null; home: string | null; away: string | null }[];
-  hcH1Lines: { line: string | null; home: string | null; away: string | null }[];
+  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
+  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   ouLines: { line: string | null; over: string | null; under: string | null }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
 }
@@ -338,7 +338,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp H2', 'Tài Xỉu H2', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Tín hiệu'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Tín hiệu'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -379,8 +379,8 @@ const SUSPENDED_CELL = <span className="font-semibold text-[10px] text-[#555]">�
 function HcCell({
   lines, prevLines, suspended,
 }: {
-  lines: { line: string | null; home: string | null; away: string | null }[];
-  prevLines?: { line: string | null; home: string | null; away: string | null }[];
+  lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
+  prevLines?: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   suspended?: boolean;
 }) {
   if (lines.length === 0) return <span className="text-[#555]">—</span>;
@@ -389,10 +389,7 @@ function HcCell({
     <div className="flex flex-col gap-1">
       {lines.map((row, idx) => {
         const p = prevLines?.[idx];
-        const lineNum = row.line != null ? parseFloat(row.line) : NaN;
-        // positive (or 0) → Home gives handicap; negative → Away gives handicap
-        const homeGives = isNaN(lineNum) || lineNum >= 0;
-        const absLineStr = !isNaN(lineNum) ? String(Math.abs(lineNum)) : (row.line ?? '');
+        const { homeGives } = row;
         return (
           <div key={idx} className={`flex flex-col gap-[3px]${idx > 0 ? ' mt-1.5 pt-1.5 border-t border-[#2a2a2a]' : ''}`}>
             <div className="flex items-center gap-1.5">
@@ -406,7 +403,7 @@ function HcCell({
             <div className="flex items-center gap-1.5">
               <AwayBox>
                 <span className="inline-block shrink-0 w-[28px] text-right text-[9px] text-[#888] pr-0.5">
-                  {!homeGives ? absLineStr : ''}
+                  {!homeGives ? (row.line ?? '') : ''}
                 </span>
                 <RawVal val={row.away} /><Tri cur={row.away} prev={p?.away ?? null} />
               </AwayBox>
