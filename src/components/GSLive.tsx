@@ -176,8 +176,11 @@ export default function GSLive() {
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
+  const [streamLoading, setStreamLoading] = useState<Set<number>>(new Set());
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  // Track which eventIds we've already attempted (so we don't re-request on every 2s poll)
+  const streamAttempted = useRef<Set<number>>(new Set());
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -235,8 +238,10 @@ export default function GSLive() {
     };
   }, []);
 
-  async function fetchStream(eventId: number, leagueId: number) {
-    if (streamUrls[eventId]) return;
+  async function fetchStream(eventId: number, leagueId: number, force = false) {
+    if (!force && (streamUrls[eventId] || streamAttempted.current.has(eventId))) return;
+    streamAttempted.current.add(eventId);
+    setStreamLoading((s) => new Set(s).add(eventId));
     try {
       const token = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
       const res = await fetch(
@@ -247,9 +252,35 @@ export default function GSLive() {
         setStreamUrls((prev) => ({ ...prev, [eventId]: data.streamUrl! }));
       }
     } catch {
-      // stream unavailable
+      // stream unavailable — will retry via the 30s effect
+    } finally {
+      setStreamLoading((s) => { const n = new Set(s); n.delete(eventId); return n; });
     }
   }
+
+  // Auto-fetch streams for all live matches. Re-attempt every 30s for matches without a URL.
+  useEffect(() => {
+    if (matches.length === 0) return;
+    const pending = matches.filter((m) => !streamUrls[m.eventId]);
+    pending.forEach((m, i) => {
+      setTimeout(() => fetchStream(m.eventId, m.leagueId), i * 400);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches.map((m) => m.eventId).join(',')]);
+
+  // Retry every 30s for matches that still have no stream URL
+  useEffect(() => {
+    const id = setInterval(() => {
+      const pending = matches.filter((m) => !streamUrls[m.eventId]);
+      // Reset attempted so they're re-tried
+      pending.forEach((m) => streamAttempted.current.delete(m.eventId));
+      pending.forEach((m, i) => {
+        setTimeout(() => fetchStream(m.eventId, m.leagueId), i * 400);
+      });
+    }, 30_000);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches, streamUrls]);
 
   return (
     <>
@@ -282,6 +313,7 @@ export default function GSLive() {
             matches={matches.filter((m) => m.leagueId === 2140)}
             prevMap={prevMap}
             streamUrls={streamUrls}
+            streamLoading={streamLoading}
             scoredIds={scoredIds}
             nowMs={nowMs}
             fetchStream={fetchStream}
@@ -291,6 +323,7 @@ export default function GSLive() {
             matches={matches.filter((m) => m.leagueId === 2125)}
             prevMap={prevMap}
             streamUrls={streamUrls}
+            streamLoading={streamLoading}
             scoredIds={scoredIds}
             nowMs={nowMs}
             fetchStream={fetchStream}
@@ -419,6 +452,7 @@ function LeagueSection({
   matches,
   prevMap,
   streamUrls,
+  streamLoading,
   scoredIds,
   nowMs,
   fetchStream,
@@ -427,17 +461,17 @@ function LeagueSection({
   matches: GsLiveMatch[];
   prevMap: Map<number, GsLiveMatch>;
   streamUrls: Record<number, string>;
+  streamLoading: Set<number>;
   scoredIds: Set<number>;
   nowMs: number;
-  fetchStream: (eventId: number, leagueId: number) => void;
+  fetchStream: (eventId: number, leagueId: number, force?: boolean) => void;
 }) {
   if (matches.length === 0) return null;
-  const COL_COUNT = TABLE_HEADERS.length;
   return (
     <div className="mb-5">
       <div className="mb-2 flex items-center gap-2 flex-wrap">
         <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
-        <span className="text-[11px] text-[#555]">{matches.length} trận · nhấn ▶ để xem stream</span>
+        <span className="text-[11px] text-[#555]">{matches.length} trận</span>
       </div>
       <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
         <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
@@ -535,14 +569,20 @@ function LeagueSection({
                         </a>
                       </div>
                     ) : (
-                      <div className="flex h-full items-center justify-center" style={{ height: 200 }}>
-                        <button
-                          onClick={() => fetchStream(m.eventId, m.leagueId)}
-                          className="flex flex-col items-center gap-1 rounded-lg px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] text-[#555] hover:text-[#4ade80] hover:border-[#4ade80]/40 transition-colors"
-                        >
-                          <span className="text-2xl">▶</span>
-                          <span className="text-[10px]">Xem live</span>
-                        </button>
+                      <div className="flex h-full flex-col items-center justify-center gap-2" style={{ height: 200 }}>
+                        {streamLoading.has(m.eventId) ? (
+                          <span className="text-[11px] text-[#555] animate-pulse">⟳ Đang tải stream…</span>
+                        ) : (
+                          <>
+                            <span className="text-[11px] text-[#444]">Chưa có stream</span>
+                            <button
+                              onClick={() => fetchStream(m.eventId, m.leagueId, true)}
+                              className="rounded px-2 py-1 text-[10px] text-[#555] border border-[#2a2a2a] hover:text-[#4ade80] hover:border-[#4ade80]/40 transition-colors"
+                            >
+                              ↺ Thử lại
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </td>
