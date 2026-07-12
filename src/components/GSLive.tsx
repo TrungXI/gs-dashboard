@@ -181,12 +181,14 @@ export default function GSLive() {
   const [loading, setLoading] = useState(false);
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
-  const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
-  const [streamLoading, setStreamLoading] = useState<Set<number>>(new Set());
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
-  // Track which eventIds we've already attempted (so we don't re-request on every 2s poll)
-  const streamAttempted = useRef<Set<number>>(new Set());
+  const [token, setToken] = useState(GS_STREAM_TOKEN);
+
+  useEffect(() => {
+    const stored = localStorage.getItem('gs_token');
+    if (stored) setToken(stored);
+  }, []);
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -200,8 +202,8 @@ export default function GSLive() {
     async function poll() {
       setLoading(true);
       try {
-        const token = localStorage.getItem('gs_token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
-        const res = await fetch(`/api/gs-live?token=${encodeURIComponent(token)}`, {
+        const t = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
+        const res = await fetch(`/api/gs-live?token=${encodeURIComponent(t)}`, {
           cache: 'no-store',
         });
         const json = (await res.json()) as { ok: boolean; matches?: GsLiveMatch[]; error?: string };
@@ -210,10 +212,8 @@ export default function GSLive() {
           setError(json.error ?? 'Lỗi tải dữ liệu');
         } else {
           setError(null);
-          // Snapshot the previous list before replacing it.
           setPrevMap(new Map(prevRef.current));
           const next = json.matches ?? [];
-          // Detect score changes for flash animation
           const newScored = new Set<number>();
           for (const nm of next) {
             const pm = prevRef.current.get(nm.eventId);
@@ -244,49 +244,10 @@ export default function GSLive() {
     };
   }, []);
 
-  async function fetchStream(eventId: number, leagueId: number, force = false) {
-    if (!force && (streamUrls[eventId] || streamAttempted.current.has(eventId))) return;
-    streamAttempted.current.add(eventId);
-    setStreamLoading((s) => new Set(s).add(eventId));
-    try {
-      const token = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
-      const res = await fetch(
-        `/api/gs-stream?eventId=${eventId}&leagueId=${leagueId}&token=${encodeURIComponent(token)}`
-      );
-      const data = (await res.json()) as { ok: boolean; streamUrl?: string };
-      if (data.ok && data.streamUrl) {
-        setStreamUrls((prev) => ({ ...prev, [eventId]: data.streamUrl! }));
-      }
-    } catch {
-      // stream unavailable — will retry via the 30s effect
-    } finally {
-      setStreamLoading((s) => { const n = new Set(s); n.delete(eventId); return n; });
-    }
+  function buildStreamUrl(eventId: number): string {
+    const agentId = token.split('-')[0] ?? '69';
+    return `https://det.zenandfe.com/?token=${encodeURIComponent(token)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${eventId}&brand=`;
   }
-
-  // Auto-fetch streams for all live matches. Re-attempt every 30s for matches without a URL.
-  useEffect(() => {
-    if (matches.length === 0) return;
-    const pending = matches.filter((m) => !streamUrls[m.eventId]);
-    pending.forEach((m, i) => {
-      setTimeout(() => fetchStream(m.eventId, m.leagueId), i * 400);
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matches.map((m) => m.eventId).join(',')]);
-
-  // Retry every 30s for matches that still have no stream URL
-  useEffect(() => {
-    const id = setInterval(() => {
-      const pending = matches.filter((m) => !streamUrls[m.eventId]);
-      // Reset attempted so they're re-tried
-      pending.forEach((m) => streamAttempted.current.delete(m.eventId));
-      pending.forEach((m, i) => {
-        setTimeout(() => fetchStream(m.eventId, m.leagueId), i * 400);
-      });
-    }, 30_000);
-    return () => clearInterval(id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matches, streamUrls]);
 
   return (
     <>
@@ -318,21 +279,17 @@ export default function GSLive() {
             title="Giao Hữu Châu Á GS (Ảo) 16 Phút"
             matches={matches.filter((m) => m.leagueId === 2140)}
             prevMap={prevMap}
-            streamUrls={streamUrls}
-            streamLoading={streamLoading}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            fetchStream={fetchStream}
+            buildStreamUrl={buildStreamUrl}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
             matches={matches.filter((m) => m.leagueId === 2125)}
             prevMap={prevMap}
-            streamUrls={streamUrls}
-            streamLoading={streamLoading}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            fetchStream={fetchStream}
+            buildStreamUrl={buildStreamUrl}
           />
         </>
       )}
@@ -477,20 +434,16 @@ function LeagueSection({
   title,
   matches,
   prevMap,
-  streamUrls,
-  streamLoading,
   scoredIds,
   nowMs,
-  fetchStream,
+  buildStreamUrl,
 }: {
   title: string;
   matches: GsLiveMatch[];
   prevMap: Map<number, GsLiveMatch>;
-  streamUrls: Record<number, string>;
-  streamLoading: Set<number>;
   scoredIds: Set<number>;
   nowMs: number;
-  fetchStream: (eventId: number, leagueId: number, force?: boolean) => void;
+  buildStreamUrl: (eventId: number) => string;
 }) {
   if (matches.length === 0) return null;
   return (
@@ -531,7 +484,7 @@ function LeagueSection({
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
               const scored = scoredIds.has(m.eventId);
-              const streamUrl = streamUrls[m.eventId];
+              const streamUrl = buildStreamUrl(m.eventId);
               return (
                 <tr
                   key={m.eventId}
@@ -580,43 +533,25 @@ function LeagueSection({
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
-                  {/* Video inline */}
+                  {/* Video inline — embed det.zenandfe.com match detail directly */}
                   <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 320 }}>
-                    {streamUrl ? (
-                      <div className="relative h-full" style={{ height: 200 }}>
-                        <iframe
-                          src={streamUrl}
-                          style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
-                          title={`${m.homeTeam} vs ${m.awayTeam}`}
-                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                        />
-                        <a
-                          href={streamUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          ↗
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="flex h-full flex-col items-center justify-center gap-2" style={{ height: 200 }}>
-                        {streamLoading.has(m.eventId) ? (
-                          <span className="text-[11px] text-[#555] animate-pulse">⟳ Đang tải stream…</span>
-                        ) : (
-                          <>
-                            <span className="text-[11px] text-[#444]">Chưa có stream</span>
-                            <button
-                              onClick={() => fetchStream(m.eventId, m.leagueId, true)}
-                              className="rounded px-2 py-1 text-[10px] text-[#555] border border-[#2a2a2a] hover:text-[#4ade80] hover:border-[#4ade80]/40 transition-colors"
-                            >
-                              ↺ Thử lại
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    <div className="relative" style={{ height: 200 }}>
+                      <iframe
+                        src={streamUrl}
+                        style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
+                        title={`${m.homeTeam} vs ${m.awayTeam}`}
+                        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                      />
+                      <a
+                        href={streamUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ↗
+                      </a>
+                    </div>
                   </td>
                 </tr>
               );
