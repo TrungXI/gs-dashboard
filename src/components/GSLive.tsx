@@ -186,11 +186,20 @@ export default function GSLive() {
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
+  const [globalReloadKey, setGlobalReloadKey] = useState(0);
 
   // Disable page scroll while GS Live is mounted (videos take full row height)
+  // — but only on desktop; mobile card list must scroll vertically.
   useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
+    const lock = () => {
+      document.body.style.overflow = window.innerWidth >= 768 ? 'hidden' : '';
+    };
+    lock();
+    window.addEventListener('resize', lock);
+    return () => {
+      window.removeEventListener('resize', lock);
+      document.body.style.overflow = '';
+    };
   }, []);
 
   useEffect(() => {
@@ -279,7 +288,7 @@ export default function GSLive() {
       </div>
 
       {/* Token input — paste raw token or full link */}
-      <div className="mb-4 flex items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <input
           type="text"
           value={tokenVal}
@@ -289,13 +298,21 @@ export default function GSLive() {
             applyToken(e.clipboardData.getData('text'));
           }}
           placeholder="Dán token hoặc link (để xem video live)…"
-          className="flex-1 max-w-[480px] rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-1.5 text-[12px] text-white placeholder:text-[#444] outline-none focus:border-[#17a2b8] transition-colors"
+          className="w-full md:flex-1 md:max-w-[480px] rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-1.5 text-[12px] text-white placeholder:text-[#444] outline-none focus:border-[#17a2b8] transition-colors"
         />
         {tokenVal && tokenVal !== GS_STREAM_TOKEN ? (
           <span className="text-[11px] text-[#4ade80]">✓ Token tùy chỉnh</span>
         ) : (
           <span className="text-[11px] text-[#555]">Token mặc định</span>
         )}
+        <button
+          type="button"
+          onClick={() => setGlobalReloadKey(k => k + 1)}
+          className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-[12px] text-[#aaa] hover:text-white hover:border-[#444] transition-colors"
+          title="Reload tất cả video"
+        >
+          ↺ Reload All
+        </button>
       </div>
 
       {error && (
@@ -319,6 +336,7 @@ export default function GSLive() {
             nowMs={nowMs}
             loadTs={loadTs}
             activeToken={activeToken}
+            globalReloadKey={globalReloadKey}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -328,6 +346,7 @@ export default function GSLive() {
             nowMs={nowMs}
             loadTs={loadTs}
             activeToken={activeToken}
+            globalReloadKey={globalReloadKey}
           />
         </>
       )}
@@ -488,6 +507,7 @@ function LeagueSection({
   nowMs,
   loadTs,
   activeToken,
+  globalReloadKey,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -496,6 +516,7 @@ function LeagueSection({
   nowMs: number;
   loadTs: number;
   activeToken: string;
+  globalReloadKey: number;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -546,10 +567,85 @@ function LeagueSection({
     <>
       <div className="mb-5">
         <div className="mb-2 flex items-center gap-2 flex-wrap">
-          <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
+          <span className="text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">{title}</span>
           <span className="text-[11px] text-[#555]">{matches.length} trận</span>
         </div>
-        <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
+        {/* Mobile card list */}
+        <div className="flex flex-col gap-3 md:hidden">
+          {matches.map((m, i) => {
+            const prev = prevMap.get(m.eventId);
+            const scored = scoredIds.has(m.eventId);
+            const agentId = activeToken.split('-')[0] || '69';
+            const refreshKey = refreshKeys.get(m.eventId) ?? 0;
+            const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+            return (
+              <div
+                key={m.eventId}
+                className={`rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden ${scored ? '!bg-[#16a34a]/10' : ''}`}
+              >
+                {/* Header: teams + score + phase */}
+                <div className="flex items-start gap-2 px-3 py-2 border-b border-[#222]">
+                  <span className="text-[11px] text-[#555] mt-0.5 w-4 flex-shrink-0">{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</span>
+                      <CardBadges yellow={m.yellowHome} red={m.redHome} />
+                    </div>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className="text-[12px] text-[#888] truncate">{m.awayTeam}</span>
+                      <CardBadges yellow={m.yellowAway} red={m.redAway} />
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className={`font-bold text-[15px] ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
+                      {m.h1Home} - {m.h1Away}
+                    </div>
+                    <div className="text-[10px] text-[#888]">{phaseLabel(m, nowMs)}</div>
+                  </div>
+                </div>
+
+                {/* Odds: TT only (Kèo Chấp TT + Tài Xỉu TT) */}
+                <div className="flex flex-col gap-2 px-3 py-2 border-b border-[#222]">
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] text-[#666] w-14 flex-shrink-0 mt-0.5">Kèo TT</span>
+                    <div className="text-xs">
+                      <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-[10px] text-[#666] w-14 flex-shrink-0 mt-0.5">Tài Xỉu</span>
+                    <div className="text-xs">
+                      <OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Video */}
+                <div className="relative bg-black" style={{ height: 220 }}>
+                  <iframe
+                    key={`m-${m.eventId}-${refreshKey}-${globalReloadKey}`}
+                    src={videoUrl}
+                    style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                    title={`${m.homeTeam} vs ${m.awayTeam}`}
+                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                    allowFullScreen
+                  />
+                  <button type="button" onClick={() => setExpandedId(m.eventId)}
+                    className="absolute top-1 right-[54px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                    title="Xem fullscreen">⛶</button>
+                  <button type="button" onClick={() => bump(m.eventId)}
+                    className="absolute top-1 right-[28px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                    title="Reload video">↺</button>
+                  <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+                    className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                    onClick={(e) => e.stopPropagation()}>↗</a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="gs-league-table hidden md:block overflow-x-auto rounded-lg border border-[#2a2a2a]">
           <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
             <thead>
               {/* Group row */}
@@ -583,7 +679,7 @@ function LeagueSection({
                 const scored = scoredIds.has(m.eventId);
                 const agentId = activeToken.split('-')[0] || '69';
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-                const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
+                const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
                 return (
                   <tr
                     key={m.eventId}
@@ -636,7 +732,7 @@ function LeagueSection({
                     <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
                       <div className="relative bg-black" style={{ height: 500 }}>
                         <iframe
-                          key={`${m.eventId}-${refreshKey}`}
+                          key={`${m.eventId}-${refreshKey}-${globalReloadKey}`}
                           src={videoUrl}
                           style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                           title={`${m.homeTeam} vs ${m.awayTeam}`}

@@ -354,7 +354,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
         {/* Sidebar */}
         <aside
-          className={`gs-sidebar flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[48px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}
+          className={`gs-sidebar hidden md:flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[48px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}
           onMouseEnter={() => setSidebarCollapsed(false)}
           onMouseLeave={() => setSidebarCollapsed(true)}
         >
@@ -504,7 +504,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
         </aside>
 
         {/* Main */}
-        <main className={`gs-main flex-1 overflow-y-auto p-6 ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
+        <main className={`gs-main flex-1 overflow-y-auto p-3 pb-[72px] md:p-6 md:pb-6 ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
           {view === 'volta' ? (
             <>
               <div className="mb-5 flex items-baseline gap-3 flex-wrap">
@@ -640,6 +640,31 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             </>
           )}
         </main>
+
+        {/* Bottom nav — mobile only */}
+        <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 md:hidden border-t border-[#2a2a2a] bg-[#111]">
+          {(
+            [
+              ['data', '📋', 'Dữ liệu'],
+              ['gs-live', '🔴', 'Live'],
+              ['report', '📊', 'Phân tích'],
+              ['volta', '⚡', 'Volta'],
+              ['volta-analysis', '🔍', 'Volta PT'],
+            ] as [View, string, string][]
+          ).map(([v, icon, label]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[16px] transition-colors ${
+                view === v ? 'text-[#17a2b8]' : 'text-white/50'
+              }`}
+            >
+              <span className="leading-none">{icon}</span>
+              <span className="text-[9px] font-semibold leading-none">{label}</span>
+            </button>
+          ))}
+        </nav>
       </div>
 
       {/* GS Update Drawer */}
