@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type React from 'react';
 
 interface GsLiveMatch {
@@ -499,8 +499,6 @@ function LeagueSection({
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
-  const cropRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   function bump(eventId: number) {
     setRefreshKeys(prev => {
@@ -509,27 +507,6 @@ function LeagueSection({
       return next;
     });
   }
-
-  // Crop fullscreen iframe to approximately the .visibility section.
-  // zenandfe.com estimate: left sidebar ~220px, header+odds above video ~340px.
-  useLayoutEffect(() => {
-    if (expandedId == null || !cropRef.current || !iframeRef.current) return;
-    const { offsetWidth: W, offsetHeight: H } = cropRef.current;
-    const RENDER_W = 1440;
-    const CROP_LEFT = 220;
-    const CROP_TOP = 340;
-    const scale = W / RENDER_W;
-    iframeRef.current.style.cssText = [
-      'position:absolute',
-      `width:${RENDER_W}px`,
-      `height:${Math.round(H / scale + CROP_TOP)}px`,
-      `top:${Math.round(-CROP_TOP * scale)}px`,
-      `left:${Math.round(-CROP_LEFT * scale)}px`,
-      `transform:scale(${scale})`,
-      'transform-origin:top left',
-      'border:none',
-    ].join(';');
-  }, [expandedId]);
 
   const expandedMatch = expandedId != null ? (matches.find(m => m.eventId === expandedId) ?? null) : null;
 
@@ -579,9 +556,8 @@ function LeagueSection({
               {matches.map((m, i) => {
                 const prev = prevMap.get(m.eventId);
                 const scored = scoredIds.has(m.eventId);
-                const agentId = activeToken.split('-')[0] || '69';
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-                const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+                const videoUrl = `/api/gs-proxy?token=${encodeURIComponent(activeToken)}&eventId=${m.eventId}&leagueId=${m.leagueId}&t=${loadTs}`;
                 return (
                   <tr
                     key={m.eventId}
@@ -665,9 +641,8 @@ function LeagueSection({
       {/* Fullscreen overlay — CSS-crops iframe to approximately .visibility section */}
       {expandedMatch != null && (() => {
         const m = expandedMatch;
-        const agentId = activeToken.split('-')[0] || '69';
         const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-        const eUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+        const eUrl = `/api/gs-proxy?token=${encodeURIComponent(activeToken)}&eventId=${m.eventId}&leagueId=${m.leagueId}&t=${loadTs}`;
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: '#111', borderBottom: '1px solid #222', flexShrink: 0, height: 32 }}>
@@ -678,11 +653,11 @@ function LeagueSection({
                 <button type="button" onClick={() => setExpandedId(null)} style={{ ...overlayBtn, color: '#f87171' }}>✕</button>
               </div>
             </div>
-            <div ref={cropRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
               <iframe
-                ref={iframeRef}
                 key={`expanded-${m.eventId}-${refreshKey}`}
                 src={eUrl}
+                style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                 title={`${m.homeTeam} vs ${m.awayTeam}`}
                 allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                 allowFullScreen
