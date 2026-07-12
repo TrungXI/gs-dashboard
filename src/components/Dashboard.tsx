@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback, useRef, startTransition, useLayoutEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef, startTransition } from 'react';
 import type { Match } from '../types/match';
 import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
@@ -48,8 +48,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [fTeam, setFTeam] = useState('all');
   const uiRestored = useRef(false);
 
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const theme = 'dark';
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   const [autoRefreshGS, setAutoRefreshGS] = useState(false);
   const [gsCountdown, setGsCountdown] = useState<number | null>(null); // seconds to next auto-fetch
   const autoRefreshGSRef = useRef(false);
@@ -57,15 +57,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const gsAutoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gsCountdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Sync theme to html element and localStorage
-  useLayoutEffect(() => {
-    const saved = localStorage.getItem('gs_theme') as 'dark' | 'light' | null;
-    if (saved) setTheme(saved);
-  }, []);
-
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('gs_theme', theme);
+    document.documentElement.setAttribute('data-theme', 'dark');
   }, [theme]);
 
   // Persist UI state — debounced to avoid writing on every keystroke
@@ -328,7 +321,11 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     <>
       <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
         {/* Sidebar */}
-        <aside className={`gs-sidebar flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[48px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
+        <aside
+          className={`gs-sidebar flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[48px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}
+          onMouseEnter={() => setSidebarCollapsed(false)}
+          onMouseLeave={() => setSidebarCollapsed(true)}
+        >
           {sidebarCollapsed ? (
             /* Icon-only collapsed mode */
             <div className="flex flex-col h-full items-center py-2 gap-0.5">
@@ -354,20 +351,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 </button>
               ))}
               <div className="flex-1" />
-              <button
-                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
-                className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-colors ${theme === 'dark' ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white' : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'}`}
-              >
-                {theme === 'dark' ? '☀️' : '🌙'}
-              </button>
-              <button
-                onClick={() => setSidebarCollapsed(false)}
-                title="Mở rộng menu"
-                className={`w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold transition-colors mb-1 ${theme === 'dark' ? 'text-white/40 hover:bg-white/[.08] hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'}`}
-              >
-                ›
-              </button>
             </div>
           ) : (
             /* Expanded full sidebar */
@@ -482,34 +465,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 )}
               </div>
 
-              {/* Theme toggle */}
-              <div className={`border-t px-4 py-2 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-                <button
-                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                  className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
-                    theme === 'dark'
-                      ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white'
-                      : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'
-                  }`}
-                >
-                  {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
-                </button>
-              </div>
-
-              {/* Collapse button */}
-              <div className={`border-t px-4 py-2 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-                <button
-                  onClick={() => setSidebarCollapsed(true)}
-                  title="Thu gọn menu"
-                  className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
-                    theme === 'dark'
-                      ? 'bg-white/[.04] text-white/40 hover:bg-white/[.08] hover:text-white/70'
-                      : 'bg-black/[.03] text-gray-400 hover:bg-black/[.07] hover:text-gray-600'
-                  }`}
-                >
-                  ‹ Thu gọn
-                </button>
-              </div>
             </div>
           )}
         </aside>
