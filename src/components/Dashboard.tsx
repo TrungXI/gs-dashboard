@@ -497,59 +497,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                     </div>
                   </div>
                 )}
-                {view === 'report' && (
-                  <div className="px-4 pt-3.5">
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                      Chọn đội phân tích
-                    </div>
-                    <div className="mb-0.5 text-[11px] text-white/45">Đội 1</div>
-                    <SearchDropdown
-                      options={reportTeamOptions}
-                      value={r1}
-                      onChange={setR1}
-                      placeholder="-- Chọn đội 1 --"
-                    />
-                    <div className="mb-0.5 mt-2.5 text-[11px] text-white/45">Đội 2</div>
-                    <SearchDropdown
-                      options={reportTeamOptions}
-                      value={r2}
-                      onChange={setR2}
-                      placeholder="-- Chọn đội 2 --"
-                    />
-                    <div className="mt-4 border-t border-white/10 pt-4">
-                      <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                        Lọc tỉ số H1
-                      </div>
-                      <select
-                        value={h1Filter}
-                        onChange={(e) => setH1Filter(e.target.value)}
-                        className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-                      >
-                        <option value="all" className="bg-[#111] text-white">
-                          Tất cả tỉ số H1
-                        </option>
-                        {h1Options.map((o) => (
-                          <option key={o.value} value={o.value} className="bg-[#111] text-white">
-                            {o.label}
-                          </option>
-                        ))}
-                      </select>
-                      {h1Filter !== 'all' && (
-                        <div className="mt-2 flex items-center justify-between">
-                          <span className="text-[11px] text-[#fbbf24]">
-                            H1 {h1Filter} → {analysisMatches.length} trận
-                          </span>
-                          <button
-                            onClick={() => setH1Filter('all')}
-                            className="text-[10px] text-[#17a2b8] hover:text-white"
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
               </div>
 
             </div>
@@ -637,20 +584,57 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
                 <span className="text-[13px] text-[#666]">
                   {dates.length > 0 ? `${dates[dates.length - 1]}–${dates[0]}` : 'Dữ liệu'}
                 </span>
+              </div>
+
+              {/* Filters inline in body */}
+              <div className="mb-5 flex flex-wrap items-end gap-4 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3.5">
+                <div className="min-w-[180px] flex-1">
+                  <div className="mb-1 text-[11px] text-white/45">Đội 1</div>
+                  <SearchDropdown
+                    options={reportTeamOptions}
+                    value={r1}
+                    onChange={setR1}
+                    placeholder="-- Chọn đội 1 --"
+                  />
+                </div>
+                <div className="min-w-[180px] flex-1">
+                  <div className="mb-1 text-[11px] text-white/45">Đội 2</div>
+                  <SearchDropdown
+                    options={reportTeamOptions}
+                    value={r2}
+                    onChange={setR2}
+                    placeholder="-- Chọn đội 2 --"
+                  />
+                </div>
+                <div className="min-w-[160px]">
+                  <div className="mb-1 text-[11px] text-white/45">Lọc tỉ số H1</div>
+                  <select
+                    value={h1Filter}
+                    onChange={(e) => setH1Filter(e.target.value)}
+                    className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
+                  >
+                    <option value="all" className="bg-[#111] text-white">Tất cả</option>
+                    {h1Options.map((o) => (
+                      <option key={o.value} value={o.value} className="bg-[#111] text-white">{o.label}</option>
+                    ))}
+                  </select>
+                </div>
                 {h1Filter !== 'all' && (
-                  <span className="rounded-md bg-[#fbbf24]/15 px-2 py-0.5 text-[12px] font-semibold text-[#fbbf24]">
-                    H1 = {h1Filter}
-                  </span>
+                  <div className="flex items-center gap-2 self-end pb-0.5">
+                    <span className="rounded-md bg-[#fbbf24]/15 px-2 py-0.5 text-[12px] font-semibold text-[#fbbf24]">
+                      H1 = {h1Filter} · {analysisMatches.length} trận
+                    </span>
+                    <button onClick={() => setH1Filter('all')} className="text-[10px] text-[#17a2b8] hover:text-white">Xóa</button>
+                  </div>
                 )}
               </div>
+
               {r1 && r2 && r1 !== r2 ? (
                 <Analysis matches={analysisMatches} t1={r1} t2={r2} />
               ) : (
-                <div className="flex h-[300px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
-                  <div className="mb-4 text-5xl">📊</div>
-                  <div className="text-[15px] text-[#888]">
-                    Chọn 2 đội ở menu bên trái để xem thống kê
-                  </div>
+                <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
+                  <div className="mb-3 text-4xl">📊</div>
+                  <div className="text-[14px] text-[#888]">Chọn 2 đội bên trên để xem thống kê</div>
                 </div>
               )}
             </>
