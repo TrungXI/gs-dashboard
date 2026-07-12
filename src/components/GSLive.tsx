@@ -615,31 +615,33 @@ function LeagueSection({
                   {/* TT segment */}
                   <div>
                     <div className="text-[9px] font-bold text-[#4ade80] mb-1 uppercase tracking-wide">TT</div>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-start gap-3">
+                    <div className="flex gap-3">
+                      <div className="flex flex-col gap-1 flex-1">
                         <div className="text-xs"><HcCell lines={m.hcLines.slice(0,1)} prevLines={prev?.hcLines?.slice(0,1)} suspended={m.suspended} /></div>
-                        <div className="text-xs"><OuCell lines={m.ouLines.slice(0,1)} prevLines={prev?.ouLines?.slice(0,1)} suspended={m.suspended} /></div>
-                      </div>
-                      <div className="flex items-start gap-3">
                         <div className="text-xs"><HcCell lines={m.hcLines.slice(1,2)} prevLines={prev?.hcLines?.slice(1,2)} suspended={m.suspended} /></div>
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1">
+                        <div className="text-xs"><OuCell lines={m.ouLines.slice(0,1)} prevLines={prev?.ouLines?.slice(0,1)} suspended={m.suspended} /></div>
                         <div className="text-xs"><OuCell lines={m.ouLines.slice(1,2)} prevLines={prev?.ouLines?.slice(1,2)} suspended={m.suspended} /></div>
                       </div>
                     </div>
                   </div>
-                  {/* H1 segment */}
-                  <div className="border-t border-[#2a2a2a] pt-2">
-                    <div className="text-[9px] font-bold text-[#60a5fa] mb-1 uppercase tracking-wide">H1</div>
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-start gap-3">
-                        <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(0,1)} prevLines={prev?.hcH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
-                        <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(0,1)} prevLines={prev?.ouH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
-                      </div>
-                      <div className="flex items-start gap-3">
-                        <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(1,2)} prevLines={prev?.hcH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
-                        <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(1,2)} prevLines={prev?.ouH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
+                  {/* H1 segment — ẩn khi không có kèo */}
+                  {(m.hcH1Lines.length > 0 || m.ouH1Lines.length > 0) && (
+                    <div className="border-t border-[#2a2a2a] pt-2">
+                      <div className="text-[9px] font-bold text-[#60a5fa] mb-1 uppercase tracking-wide">H1</div>
+                      <div className="flex gap-3">
+                        <div className="flex flex-col gap-1 flex-1">
+                          <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(0,1)} prevLines={prev?.hcH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
+                          <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(1,2)} prevLines={prev?.hcH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
+                        </div>
+                        <div className="flex flex-col gap-1 flex-1">
+                          <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(0,1)} prevLines={prev?.ouH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
+                          <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(1,2)} prevLines={prev?.ouH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Video — scaled to fit mobile container */}
