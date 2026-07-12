@@ -624,15 +624,23 @@ function LeagueSection({
                   </div>
                 </div>
 
-                {/* Odds: 2 rows, no labels — TT line + H1 line */}
+                {/* Odds: 4 rows — TT kèo 1 / TT kèo 2 / H1 kèo 1 / H1 kèo 2 */}
                 <div className="flex flex-col gap-1.5 px-3 py-2 border-b border-[#222]">
                   <div className="flex items-start gap-3">
-                    <div className="text-xs"><HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} /></div>
-                    <div className="text-xs"><OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} /></div>
+                    <div className="text-xs"><HcCell lines={m.hcLines.slice(0,1)} prevLines={prev?.hcLines?.slice(0,1)} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouLines.slice(0,1)} prevLines={prev?.ouLines?.slice(0,1)} suspended={m.suspended} /></div>
                   </div>
                   <div className="flex items-start gap-3">
-                    <div className="text-xs"><HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} /></div>
-                    <div className="text-xs"><OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} /></div>
+                    <div className="text-xs"><HcCell lines={m.hcLines.slice(1,2)} prevLines={prev?.hcLines?.slice(1,2)} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouLines.slice(1,2)} prevLines={prev?.ouLines?.slice(1,2)} suspended={m.suspended} /></div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(0,1)} prevLines={prev?.hcH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(0,1)} prevLines={prev?.ouH1Lines?.slice(0,1)} suspended={m.suspended} /></div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="text-xs"><HcCell lines={m.hcH1Lines.slice(1,2)} prevLines={prev?.hcH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouH1Lines.slice(1,2)} prevLines={prev?.ouH1Lines?.slice(1,2)} suspended={m.suspended} /></div>
                   </div>
                 </div>
 
