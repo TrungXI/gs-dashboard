@@ -189,6 +189,7 @@ export default function GSLive() {
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(true);
 
   // Disable page scroll while GS Live is mounted (videos take full row height)
   // — but only on desktop; mobile card list must scroll vertically.
@@ -266,13 +267,14 @@ export default function GSLive() {
       }
     }
 
+    if (!autoRefresh) return () => { alive = false; };
     poll();
     const id = setInterval(poll, 2000);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, []);
+  }, [autoRefresh]);
 
   const activeToken = tokenVal || GS_STREAM_TOKEN;
 
@@ -281,10 +283,18 @@ export default function GSLive() {
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-white">🔴 GS Live — Odds Tracker</h1>
         <span className="text-[13px] text-[#666]">{matches.length} trận live</span>
-        {loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
+        {autoRefresh && loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
+        <button
+          type="button"
+          onClick={() => setAutoRefresh(r => !r)}
+          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${autoRefresh ? 'border-[#4ade80]/40 text-[#4ade80] bg-[#4ade80]/10 hover:bg-[#4ade80]/20' : 'border-[#f87171]/40 text-[#f87171] bg-[#f87171]/10 hover:bg-[#f87171]/20'}`}
+          title={autoRefresh ? 'Tạm dừng cập nhật tự động' : 'Bật cập nhật tự động'}
+        >
+          {autoRefresh ? '⏸ Auto' : '▶ Auto'}
+        </button>
         {updatedAt && (
           <span className="ml-auto text-[12px] text-[#4ade80]/70">
-            ⟳ 2s · {updatedAt}
+            {autoRefresh ? `⟳ 2s · ${updatedAt}` : `⏸ dừng · ${updatedAt}`}
           </span>
         )}
       </div>
@@ -585,7 +595,7 @@ function LeagueSection({
             const scored = scoredIds.has(m.eventId);
             const agentId = activeToken.split('-')[0] || '69';
             const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-            const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
+            const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
             return (
               <div
                 key={m.eventId}
@@ -714,7 +724,7 @@ function LeagueSection({
                 const scored = scoredIds.has(m.eventId);
                 const agentId = activeToken.split('-')[0] || '69';
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-                const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
+                const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
                 return (
                   <tr
                     key={m.eventId}
@@ -803,7 +813,7 @@ function LeagueSection({
         const m = expandedMatch;
         const agentId = activeToken.split('-')[0] || '69';
         const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-        const eUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
+        const eUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: '#111', borderBottom: '1px solid #222', flexShrink: 0, height: 32 }}>
