@@ -5,7 +5,6 @@ import type { Match } from '../types/match';
 import type { VoltaMatch } from '../types/voltaMatch';
 import SearchDropdown from './SearchDropdown';
 import DataTable from './DataTable';
-import Analysis from './Analysis';
 import UpdateDrawer from './UpdateDrawer';
 import VoltaTable from './VoltaTable';
 import VoltaUpdateDrawer from './VoltaUpdateDrawer';
@@ -14,7 +13,7 @@ import GSLive from './GSLive';
 import { ALL_VOLTA_MATCHES, apiToVoltaRow } from '../lib/processVoltaData';
 import { apiToRow, sortMatchesDesc, vnTodayIso } from '../lib/matchUtils';
 
-type View = 'data' | 'report' | 'gs-live' | 'volta' | 'volta-analysis';
+type View = 'data' | 'gs-live' | 'volta' | 'volta-analysis';
 type FType = 'all' | '20p' | '16p';
 
 const LS_MATCHES = 'gs_matches';
@@ -28,7 +27,6 @@ function loadUiState() {
     if (!s) return null;
     return JSON.parse(s) as {
       view?: View; fType?: FType; fDate?: string; fTeam?: string;
-      r1?: string; r2?: string; h1Filter?: string;
     };
   } catch { return null; }
 }
@@ -48,9 +46,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all');
   const [fTeam, setFTeam] = useState('all');
-  const [r1, setR1] = useState('');
-  const [r2, setR2] = useState('');
-  const [h1Filter, setH1Filter] = useState('all');
   const uiRestored = useRef(false);
 
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -79,10 +74,10 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     if (!uiRestored.current) return;
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam }));
     }, 300);
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
+  }, [view, fType, fDate, fTeam]);
 
   // Load cached data from localStorage on mount
   useEffect(() => {
@@ -93,9 +88,6 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
-      if (ui.r1 != null) setR1(ui.r1);
-      if (ui.r2 != null) setR2(ui.r2);
-      if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
     uiRestored.current = true;
     // Version 3: renamed team suffixes (V)→(20), (S)→(16)
@@ -323,35 +315,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     });
   }, [matches, fType, fDate, fTeam]);
 
-  // H1 score options derived from actual data, sorted by frequency
-  const h1Options = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const m of matches) {
-      const key = `${m.h1Home}–${m.h1Away}`;
-      counts[key] = (counts[key] || 0) + 1;
-    }
-    return Object.entries(counts)
-      .sort((a, b) => {
-        // sort by total goals desc, then frequency desc
-        const [aH, aA] = a[0].split('–').map(Number);
-        const [bH, bA] = b[0].split('–').map(Number);
-        const aTot = aH + aA, bTot = bH + bA;
-        if (aTot !== bTot) return aTot - bTot;
-        return b[1] - a[1];
-      })
-      .map(([score, count]) => ({ value: score, label: `${score}  (${count} trận)` }));
-  }, [matches]);
-
-  // Matches filtered by H1 score for the analysis/report view
-  const analysisMatches = useMemo(() => {
-    if (h1Filter === 'all') return matches;
-    const [h1H, h1A] = h1Filter.split('–');
-    return matches.filter((m) => m.h1Home === h1H && m.h1Away === h1A);
-  }, [matches, h1Filter]);
-
   const teamOptions = teams.map((t) => ({ value: t, label: t }));
   const dataTeamOptions = [{ value: 'all', label: '-- Tất cả đội --' }, ...teamOptions];
-  const reportTeamOptions = [{ value: '', label: '-- Chọn đội --' }, ...teamOptions];
 
   const typeChips: [FType, string][] = [
     ['all', 'Tất cả'],
@@ -363,196 +328,190 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     <>
       <div className={`flex h-screen overflow-hidden ${theme === 'dark' ? 'bg-[#0d0d0d]' : 'bg-gray-100'}`}>
         {/* Sidebar */}
-        <aside className={`gs-sidebar relative flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[12px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
-          {/* Collapse handle — right border strip */}
-          <button
-            onClick={() => setSidebarCollapsed(c => !c)}
-            className={`absolute right-0 top-0 bottom-0 z-20 w-[12px] flex items-center justify-center cursor-pointer transition-colors ${theme === 'dark' ? 'hover:bg-white/10 border-r border-white/10' : 'hover:bg-black/5 border-r border-gray-200'}`}
-            title={sidebarCollapsed ? 'Mở rộng menu' : 'Thu gọn menu'}
-          >
-            <span className="text-[9px] text-[#555] select-none">{sidebarCollapsed ? '›' : '‹'}</span>
-          </button>
-          {/* Sidebar content — hidden when collapsed */}
-          <div className={`flex flex-col flex-1 overflow-hidden transition-opacity duration-150 ${sidebarCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          {/* Logo */}
-          <div className={`flex items-center gap-3 border-b px-4 pb-3.5 pt-[18px] ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-            <div className="text-2xl">⚽</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-base font-bold">GS Matches</div>
-              <div className="mt-0.5 text-[11px] text-white/40 truncate">
-                {dates.length > 0
-                  ? `${dates[dates.length - 1]}–${dates[0]} · ${matches.length} trận`
-                  : `${matches.length} trận`}
-              </div>
+        <aside className={`gs-sidebar flex flex-shrink-0 flex-col overflow-hidden transition-all duration-200 ${sidebarCollapsed ? 'w-[48px]' : 'w-[260px]'} ${theme === 'dark' ? 'bg-[#111] text-white' : 'bg-white text-gray-900 border-r border-gray-200'}`}>
+          {sidebarCollapsed ? (
+            /* Icon-only collapsed mode */
+            <div className="flex flex-col h-full items-center py-2 gap-0.5">
+              {(
+                [
+                  ['data', '📋', 'GS Dữ liệu'],
+                  ['gs-live', '🔴', 'GS Live'],
+                  ['volta', '⚡', 'Volta'],
+                  ['volta-analysis', '🔍', 'Volta Phân tích'],
+                ] as [View, string, string][]
+              ).map(([v, icon, label]) => (
+                <button
+                  key={v}
+                  onClick={() => setView(v)}
+                  title={label}
+                  className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-all ${
+                    view === v
+                      ? theme === 'dark' ? 'bg-white/[.15] text-white' : 'bg-[#17a2b8]/15 text-[#17a2b8]'
+                      : theme === 'dark' ? 'text-white/50 hover:bg-white/[.08] hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'
+                  }`}
+                >
+                  {icon}
+                </button>
+              ))}
+              <div className="flex-1" />
+              <button
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                title={theme === 'dark' ? 'Light mode' : 'Dark mode'}
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-colors ${theme === 'dark' ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white' : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'}`}
+              >
+                {theme === 'dark' ? '☀️' : '🌙'}
+              </button>
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                title="Mở rộng menu"
+                className={`w-10 h-10 rounded-lg flex items-center justify-center text-base font-bold transition-colors mb-1 ${theme === 'dark' ? 'text-white/40 hover:bg-white/[.08] hover:text-white' : 'text-gray-400 hover:bg-gray-100 hover:text-gray-700'}`}
+              >
+                ›
+              </button>
             </div>
-            {/* Quick fetch today */}
-            <button
-              onClick={quickFetchGS}
-              disabled={quickFetching}
-              className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors disabled:opacity-40 hover:text-[#4ade80] hover:bg-[#4ade80]/20 ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
-              title="Cập nhật nhanh hôm nay"
-            >
-              {quickFetching ? '…' : '⚡'}
-            </button>
-            {/* Update drawer */}
-            <button
-              onClick={() => setDrawerOpen(true)}
-              className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-[#17a2b8]/20 hover:text-[#17a2b8] ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
-              title="Chọn ngày cập nhật"
-            >
-              ↻
-            </button>
-          </div>
+          ) : (
+            /* Expanded full sidebar */
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {/* Logo */}
+              <div className={`flex items-center gap-3 border-b px-4 pb-3.5 pt-[18px] ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+                <div className="text-2xl">⚽</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-base font-bold">GS Matches</div>
+                  <div className="mt-0.5 text-[11px] text-white/40 truncate">
+                    {dates.length > 0
+                      ? `${dates[dates.length - 1]}–${dates[0]} · ${matches.length} trận`
+                      : `${matches.length} trận`}
+                  </div>
+                </div>
+                <button
+                  onClick={quickFetchGS}
+                  disabled={quickFetching}
+                  className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors disabled:opacity-40 hover:text-[#4ade80] hover:bg-[#4ade80]/20 ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
+                  title="Cập nhật nhanh hôm nay"
+                >
+                  {quickFetching ? '…' : '⚡'}
+                </button>
+                <button
+                  onClick={() => setDrawerOpen(true)}
+                  className={`flex-shrink-0 rounded-md px-2 py-1.5 text-[11px] transition-colors hover:bg-[#17a2b8]/20 hover:text-[#17a2b8] ${theme === 'dark' ? 'bg-white/[.08] text-white/60' : 'bg-black/[.06] text-gray-500'}`}
+                  title="Chọn ngày cập nhật"
+                >
+                  ↻
+                </button>
+              </div>
 
-          {/* Updated at + auto-refresh status */}
-          <div className={`border-b px-4 py-1.5 flex items-center gap-2 ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
-            {updatedAt && (
-              <span className="text-[10px] text-[#4ade80]/70 flex-1 truncate">
-                ✓ {updatedAt}
-                {autoRefreshGS && gsCountdown != null && (
-                  <span className="text-[#fbbf24]/70 ml-1">
-                    · {Math.floor(gsCountdown / 60)}:{String(gsCountdown % 60).padStart(2, '0')}
+              {/* Updated at + auto-refresh status */}
+              <div className={`border-b px-4 py-1.5 flex items-center gap-2 ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
+                {updatedAt && (
+                  <span className="text-[10px] text-[#4ade80]/70 flex-1 truncate">
+                    ✓ {updatedAt}
+                    {autoRefreshGS && gsCountdown != null && (
+                      <span className="text-[#fbbf24]/70 ml-1">
+                        · {Math.floor(gsCountdown / 60)}:{String(gsCountdown % 60).padStart(2, '0')}
+                      </span>
+                    )}
                   </span>
                 )}
-              </span>
-            )}
-            {/* Auto-refresh toggle */}
-            <button
-              onClick={() => setAutoRefreshGS(v => !v)}
-              title={autoRefreshGS ? 'Tắt tự động cập nhật (mỗi 5p)' : 'Bật tự động cập nhật mỗi 5 phút'}
-              className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                autoRefreshGS
-                  ? 'bg-[#4ade80]/20 text-[#4ade80]'
-                  : theme === 'dark' ? 'bg-white/[.06] text-white/40 hover:text-white/60' : 'bg-black/[.05] text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              {autoRefreshGS ? '⏱ ON' : '⏱ OFF'}
-            </button>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex flex-col">
-            {(
-              [
-                ['data', '📋', 'GS Dữ liệu'],
-                ['report', '📊', 'GS Phân tích'],
-                ['gs-live', '🔴', 'GS Live'],
-                ['volta', '⚡', 'Volta'],
-                ['volta-analysis', '🔍', 'Volta Phân tích'],
-              ] as [View, string, string][]
-            ).map(([v, icon, label]) => (
-              <div
-                key={v}
-                onClick={() => setView(v)}
-                className={`flex cursor-pointer items-center gap-2 border-l-[3px] px-5 py-2.5 text-[13px] font-semibold transition-all ${
-                  view === v
-                    ? theme === 'dark'
-                      ? 'border-[#17a2b8] bg-white/[.12] text-white'
-                      : 'border-[#17a2b8] bg-[#17a2b8]/10 text-[#17a2b8]'
-                    : theme === 'dark'
-                      ? 'border-transparent text-white/60 hover:bg-white/[.08] hover:text-white'
-                      : 'border-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900'
-                }`}
-              >
-                <span>{icon}</span> {label}
+                <button
+                  onClick={() => setAutoRefreshGS(v => !v)}
+                  title={autoRefreshGS ? 'Tắt tự động cập nhật (mỗi 5p)' : 'Bật tự động cập nhật mỗi 5 phút'}
+                  className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                    autoRefreshGS
+                      ? 'bg-[#4ade80]/20 text-[#4ade80]'
+                      : theme === 'dark' ? 'bg-white/[.06] text-white/40 hover:text-white/60' : 'bg-black/[.05] text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {autoRefreshGS ? '⏱ ON' : '⏱ OFF'}
+                </button>
               </div>
-            ))}
-          </nav>
 
-          {/* Filters */}
-          <div className="flex-1 overflow-y-auto pb-4">
-            {view === 'volta' || view === 'volta-analysis' ? (
-              <div className="px-4 pt-3.5">
-                <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] text-white/50">
-                  <div className="text-[#4ade80] font-bold mb-1">⚡ {voltaMatches.length} trận</div>
-                  {voltaUpdatedAt && (
-                    <div className="text-[10px] text-[#4ade80]/60">✓ Cập nhật {voltaUpdatedAt}</div>
-                  )}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={quickFetchVolta}
-                    disabled={voltaQuickFetching}
-                    className="flex-1 rounded-lg bg-[#4ade80]/10 px-3 py-2 text-[12px] font-semibold text-[#4ade80] hover:bg-[#4ade80]/20 transition-colors disabled:opacity-40"
+              {/* Nav */}
+              <nav className="flex flex-col">
+                {(
+                  [
+                    ['data', '📋', 'GS Dữ liệu'],
+                    ['gs-live', '🔴', 'GS Live'],
+                    ['volta', '⚡', 'Volta'],
+                    ['volta-analysis', '🔍', 'Volta Phân tích'],
+                  ] as [View, string, string][]
+                ).map(([v, icon, label]) => (
+                  <div
+                    key={v}
+                    onClick={() => setView(v)}
+                    className={`flex cursor-pointer items-center gap-2 border-l-[3px] px-5 py-2.5 text-[13px] font-semibold transition-all ${
+                      view === v
+                        ? theme === 'dark'
+                          ? 'border-[#17a2b8] bg-white/[.12] text-white'
+                          : 'border-[#17a2b8] bg-[#17a2b8]/10 text-[#17a2b8]'
+                        : theme === 'dark'
+                          ? 'border-transparent text-white/60 hover:bg-white/[.08] hover:text-white'
+                          : 'border-transparent text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
                   >
-                    {voltaQuickFetching ? '…' : '⚡ Nhanh'}
-                  </button>
-                  <button
-                    onClick={() => setVoltaDrawerOpen(true)}
-                    className="flex-1 rounded-lg bg-[#17a2b8]/20 px-3 py-2 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
-                  >
-                    ↻ Chọn
-                  </button>
-                </div>
-              </div>
-            ) : view === 'report' ? (
-              <div className="px-4 pt-3.5">
-                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                  Chọn đội phân tích
-                </div>
-                <div className="mb-0.5 text-[11px] text-white/45">Đội 1</div>
-                <SearchDropdown
-                  options={reportTeamOptions}
-                  value={r1}
-                  onChange={setR1}
-                  placeholder="-- Chọn đội 1 --"
-                />
-                <div className="mb-0.5 mt-2.5 text-[11px] text-white/45">Đội 2</div>
-                <SearchDropdown
-                  options={reportTeamOptions}
-                  value={r2}
-                  onChange={setR2}
-                  placeholder="-- Chọn đội 2 --"
-                />
-                <div className="mt-4 border-t border-white/10 pt-4">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-white/35">
-                    Lọc tỉ số H1
+                    <span>{icon}</span> {label}
                   </div>
-                  <select
-                    value={h1Filter}
-                    onChange={(e) => setH1Filter(e.target.value)}
-                    className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="all" className="bg-[#111] text-white">
-                      Tất cả tỉ số H1
-                    </option>
-                    {h1Options.map((o) => (
-                      <option key={o.value} value={o.value} className="bg-[#111] text-white">
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                  {h1Filter !== 'all' && (
-                    <div className="mt-2 flex items-center justify-between">
-                      <span className="text-[11px] text-[#fbbf24]">
-                        H1 {h1Filter} → {analysisMatches.length} trận
-                      </span>
+                ))}
+              </nav>
+
+              {/* Filters */}
+              <div className="flex-1 overflow-y-auto pb-4">
+                {(view === 'volta' || view === 'volta-analysis') && (
+                  <div className="px-4 pt-3.5">
+                    <div className="rounded-lg bg-white/[.04] px-3.5 py-3 text-[12px] text-white/50">
+                      <div className="text-[#4ade80] font-bold mb-1">⚡ {voltaMatches.length} trận</div>
+                      {voltaUpdatedAt && (
+                        <div className="text-[10px] text-[#4ade80]/60">✓ Cập nhật {voltaUpdatedAt}</div>
+                      )}
+                    </div>
+                    <div className="mt-3 flex gap-2">
                       <button
-                        onClick={() => setH1Filter('all')}
-                        className="text-[10px] text-[#17a2b8] hover:text-white"
+                        onClick={quickFetchVolta}
+                        disabled={voltaQuickFetching}
+                        className="flex-1 rounded-lg bg-[#4ade80]/10 px-3 py-2 text-[12px] font-semibold text-[#4ade80] hover:bg-[#4ade80]/20 transition-colors disabled:opacity-40"
                       >
-                        Xóa
+                        {voltaQuickFetching ? '…' : '⚡ Nhanh'}
+                      </button>
+                      <button
+                        onClick={() => setVoltaDrawerOpen(true)}
+                        className="flex-1 rounded-lg bg-[#17a2b8]/20 px-3 py-2 text-[12px] font-semibold text-[#17a2b8] hover:bg-[#17a2b8]/30 transition-colors"
+                      >
+                        ↻ Chọn
                       </button>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
-            ) : null}
-          </div>
-          {/* Theme toggle */}
-          <div className={`border-t px-4 py-3 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
-                theme === 'dark'
-                  ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white'
-                  : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'
-              }`}
-            >
-              {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
-            </button>
-          </div>
-          </div>{/* end sidebar content */}
+
+              {/* Theme toggle */}
+              <div className={`border-t px-4 py-2 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                  className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-white/[.06] text-white/60 hover:bg-white/[.10] hover:text-white'
+                      : 'bg-black/[.05] text-gray-500 hover:bg-black/[.09] hover:text-gray-900'
+                  }`}
+                >
+                  {theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}
+                </button>
+              </div>
+
+              {/* Collapse button */}
+              <div className={`border-t px-4 py-2 ${theme === 'dark' ? 'border-white/10' : 'border-gray-200'}`}>
+                <button
+                  onClick={() => setSidebarCollapsed(true)}
+                  title="Thu gọn menu"
+                  className={`w-full flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[12px] font-semibold transition-colors ${
+                    theme === 'dark'
+                      ? 'bg-white/[.04] text-white/40 hover:bg-white/[.08] hover:text-white/70'
+                      : 'bg-black/[.03] text-gray-400 hover:bg-black/[.07] hover:text-gray-600'
+                  }`}
+                >
+                  ‹ Thu gọn
+                </button>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* Main */}
@@ -626,32 +585,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </div>
               <DataTable matches={filtered} highlightTeam={fTeam !== 'all' ? fTeam : undefined} />
             </>
-          ) : view === 'gs-live' ? (
-            <GSLive />
           ) : (
-            <>
-              <div className="mb-5 flex items-baseline gap-3 flex-wrap">
-                <h1 className="text-xl font-bold text-white">Phân tích đối đầu &amp; Form</h1>
-                <span className="text-[13px] text-[#666]">
-                  {dates.length > 0 ? `${dates[dates.length - 1]}–${dates[0]}` : 'Dữ liệu'}
-                </span>
-                {h1Filter !== 'all' && (
-                  <span className="rounded-md bg-[#fbbf24]/15 px-2 py-0.5 text-[12px] font-semibold text-[#fbbf24]">
-                    H1 = {h1Filter}
-                  </span>
-                )}
-              </div>
-              {r1 && r2 && r1 !== r2 ? (
-                <Analysis matches={analysisMatches} t1={r1} t2={r2} />
-              ) : (
-                <div className="flex h-[300px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
-                  <div className="mb-4 text-5xl">📊</div>
-                  <div className="text-[15px] text-[#888]">
-                    Chọn 2 đội ở menu bên trái để xem thống kê
-                  </div>
-                </div>
-              )}
-            </>
+            <GSLive />
           )}
         </main>
       </div>
