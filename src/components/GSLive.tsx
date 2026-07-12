@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 
 interface GsLiveMatch {
@@ -499,6 +499,8 @@ function LeagueSection({
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const cropContainerRef = useRef<HTMLDivElement>(null);
+  const cropIframeRef = useRef<HTMLIFrameElement>(null);
 
   function bump(eventId: number) {
     setRefreshKeys(prev => {
@@ -507,6 +509,29 @@ function LeagueSection({
       return next;
     });
   }
+
+  // CSS transform crop: renders zenandfe.com at 1440px then clips to the .visibility section.
+  // IFRAME_W=1440, CROP_LEFT=210 (sidebar), CROP_TOP=320 (header+odds+match-header).
+  // scale = containerW / (IFRAME_W - CROP_LEFT) so the video content fills the overlay width.
+  // Left/top offsets shift the iframe so x=CROP_LEFT,y=CROP_TOP aligns to (0,0) in container.
+  useLayoutEffect(() => {
+    if (!expandedId || !cropContainerRef.current || !cropIframeRef.current) return;
+    const W = cropContainerRef.current.offsetWidth;
+    const H = cropContainerRef.current.offsetHeight;
+    const IFRAME_W = 1440;
+    const CROP_LEFT = 210;
+    const CROP_TOP = 320;
+    const scale = W / (IFRAME_W - CROP_LEFT);
+    const f = cropIframeRef.current;
+    f.style.width = `${IFRAME_W}px`;
+    f.style.height = `${Math.ceil(H / scale + CROP_TOP)}px`;
+    f.style.position = 'absolute';
+    f.style.left = `${Math.round(-CROP_LEFT * scale)}px`;
+    f.style.top = `${Math.round(-CROP_TOP * scale)}px`;
+    f.style.transform = `scale(${scale})`;
+    f.style.transformOrigin = 'top left';
+    f.style.border = 'none';
+  }, [expandedId]);
 
   const expandedMatch = expandedId != null ? (matches.find(m => m.eventId === expandedId) ?? null) : null;
 
@@ -556,8 +581,9 @@ function LeagueSection({
               {matches.map((m, i) => {
                 const prev = prevMap.get(m.eventId);
                 const scored = scoredIds.has(m.eventId);
+                const agentId = activeToken.split('-')[0] || '69';
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-                const videoUrl = `/api/gs-proxy?token=${encodeURIComponent(activeToken)}&eventId=${m.eventId}&leagueId=${m.leagueId}&t=${loadTs}`;
+                const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
                 return (
                   <tr
                     key={m.eventId}
@@ -641,8 +667,9 @@ function LeagueSection({
       {/* Fullscreen overlay — CSS-crops iframe to approximately .visibility section */}
       {expandedMatch != null && (() => {
         const m = expandedMatch;
+        const agentId = activeToken.split('-')[0] || '69';
         const refreshKey = refreshKeys.get(m.eventId) ?? 0;
-        const eUrl = `/api/gs-proxy?token=${encodeURIComponent(activeToken)}&eventId=${m.eventId}&leagueId=${m.leagueId}&t=${loadTs}`;
+        const eUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=`;
         return (
           <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: '#111', borderBottom: '1px solid #222', flexShrink: 0, height: 32 }}>
@@ -653,8 +680,9 @@ function LeagueSection({
                 <button type="button" onClick={() => setExpandedId(null)} style={{ ...overlayBtn, color: '#f87171' }}>✕</button>
               </div>
             </div>
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+            <div ref={cropContainerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
               <iframe
+                ref={cropIframeRef}
                 key={`expanded-${m.eventId}-${refreshKey}`}
                 src={eUrl}
                 style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
