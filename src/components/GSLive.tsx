@@ -16,6 +16,7 @@ interface GsLiveMatch {
   minuteElapsed: number | null;
   secondsElapsed: number | null;
   bettingOpen: boolean;
+  period: number;
   isH2: boolean;
   isLive: boolean;
   oddsHome: number | null;
@@ -157,14 +158,11 @@ function RawVal({ val }: { val: string | null }) {
 }
 
 function phaseLabel(m: GsLiveMatch, nowMs: number): string {
-  if (m.secondsElapsed != null) {
-    const half = m.isH2 ? '2H' : '1H';
-    return `${half} ${m.secondsElapsed}s`;
-  }
   if (!m.isLive) {
     return nowMs < new Date(m.startTime).getTime() ? 'Chờ' : 'KT';
   }
-  // minuteElapsed = halfDuration - ev['5'] (elapsed virtual minutes in current half)
+  // period: 2=H1 live, 4=Halftime, 8=H2 live (ev['10'])
+  if (m.period === 4) return 'Nghỉ HT';
   const min = m.minuteElapsed ?? 0;
   if (m.isH2) return `2H ${min}'`;
   return `1H ${min}'`;

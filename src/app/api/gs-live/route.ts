@@ -10,11 +10,6 @@ const MATCH_TYPE: Record<number, MatchType> = {
   2125: '20p',
 };
 
-// ev['5'] counts DOWN from half duration (remaining virtual minutes)
-const HALF_DURATION: Record<number, number> = {
-  2125: 20, // 20p format — 20 virtual minutes per half
-  2140: 16, // 16p format — 16 virtual minutes per half
-};
 
 export interface GsLiveMatch {
   leagueId: number;
@@ -29,7 +24,8 @@ export interface GsLiveMatch {
   minuteElapsed: number | null;
   secondsElapsed: number | null; // e-sports: ms elapsed in current period → seconds
   bettingOpen: boolean;
-  isH2: boolean;           // true = second half underway (ev['15'] at event level)
+  period: number;          // ev['10']: 2=H1, 4=Halftime, 8=H2
+  isH2: boolean;           // true = second half underway (ev['10']===8)
   suspended: boolean;     // true = market locked, show --- for all odds
   isLive: boolean;
   // 1X2 odds (decimal). null when the market is unavailable.
@@ -157,13 +153,15 @@ function buildMatch(
   const hcH1Raw = parseAsianMarket(ev['7'], '6');
   const ouH1Raw = parseAsianMarket(ev['7'], '4');
   const suspended = hcRaw.length > 0 ? hcRaw[0].suspended : false;
-  const isEsports = leagueId === 1203 || leagueId === 1204;
 
-  // ev['5'] counts DOWN (remaining virtual minutes in current half).
-  // Convert to elapsed = halfDuration - remaining.
-  const halfDur = HALF_DURATION[leagueId] ?? 10;
-  const remaining = typeof ev['5'] === 'number' ? (ev['5'] as number) : null;
-  const minuteElapsed = remaining !== null ? Math.max(0, halfDur - remaining) : null;
+  // ev['6'] = elapsed virtual game clock in ms, resets to 0 at each half start.
+  // ceil(ev[6] / 60000) = current virtual minute within the half.
+  const ev6ms = typeof ev['6'] === 'number' ? (ev['6'] as number) : null;
+  const minuteElapsed = ev6ms !== null ? Math.ceil(ev6ms / 60000) : null;
+
+  // ev['10'] encodes the current period: 2 = H1 live, 8 = H2 live.
+  // ev['15'] is NOT reliable for H2 detection (observed to stay false even in H2).
+  const isH2 = ev['10'] === 8;
 
   return {
     leagueId,
@@ -176,10 +174,10 @@ function buildMatch(
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
     minuteElapsed,
-    secondsElapsed:
-      isEsports && typeof ev['6'] === 'number' ? Math.floor((ev['6'] as number) / 1000) : null,
+    secondsElapsed: null,
     bettingOpen: ev['11'] !== true,
-    isH2: ev['15'] === true,
+    period: typeof ev['10'] === 'number' ? (ev['10'] as number) : 0,
+    isH2,
     suspended,
     isLive: ev['1'] === true,
     oddsHome: odds.home,
