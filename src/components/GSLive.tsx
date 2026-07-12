@@ -16,6 +16,7 @@ interface GsLiveMatch {
   minuteElapsed: number | null;
   secondsElapsed: number | null;
   bettingOpen: boolean;
+  isH2: boolean;
   isLive: boolean;
   oddsHome: number | null;
   oddsAway: number | null;
@@ -157,18 +158,16 @@ function RawVal({ val }: { val: string | null }) {
 
 function phaseLabel(m: GsLiveMatch, nowMs: number): string {
   if (m.secondsElapsed != null) {
-    const half = m.bettingOpen ? '1H' : '2H';
+    const half = m.isH2 ? '2H' : '1H';
     return `${half} ${m.secondsElapsed}s`;
   }
-  const halfMins = m.matchType === '20p' ? 10 : m.matchType === '12p' ? 6 : m.matchType === '8p' ? 4 : 8;
-  // Prefer server-provided minute if available, otherwise derive from startTime
-  const elapsedMin = m.minuteElapsed != null
-    ? m.minuteElapsed
-    : Math.floor((nowMs - new Date(m.startTime).getTime()) / 60000);
-  if (elapsedMin < 0) return 'Chờ';
-  if (elapsedMin >= halfMins * 2) return 'KT';
-  if (elapsedMin < halfMins) return `1H ${elapsedMin}'`;
-  return `2H ${elapsedMin - halfMins}'`;
+  // ev['5'] resets to 0 at H2 start; use ev['15'] (isH2) to detect which half
+  if (!m.isLive) {
+    return nowMs < new Date(m.startTime).getTime() ? 'Chờ' : 'KT';
+  }
+  const min = m.minuteElapsed ?? 0;
+  if (m.isH2) return `2H ${min}'`;
+  return `1H ${min}'`;
 }
 
 export default function GSLive() {
@@ -232,7 +231,7 @@ export default function GSLive() {
     }
 
     poll();
-    const id = setInterval(poll, 5000);
+    const id = setInterval(poll, 2000);
     return () => {
       alive = false;
       clearInterval(id);
@@ -290,7 +289,7 @@ export default function GSLive() {
         {loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
         {updatedAt && (
           <span className="ml-auto text-[12px] text-[#4ade80]/70">
-            ⟳ 5s · {updatedAt}
+            ⟳ 2s · {updatedAt}
           </span>
         )}
       </div>

@@ -22,7 +22,8 @@ export interface GsLiveMatch {
   h1Away: number;
   minuteElapsed: number | null;
   secondsElapsed: number | null; // e-sports: ms elapsed in current period → seconds
-  bettingOpen: boolean;   // false = H2 underway / locked
+  bettingOpen: boolean;
+  isH2: boolean;           // true = second half underway (ev['15'] at event level)
   suspended: boolean;     // true = market locked, show --- for all odds
   isLive: boolean;
   // 1X2 odds (decimal). null when the market is unavailable.
@@ -165,6 +166,7 @@ function buildMatch(
     secondsElapsed:
       isEsports && typeof ev['6'] === 'number' ? Math.floor((ev['6'] as number) / 1000) : null,
     bettingOpen: ev['11'] !== true,
+    isH2: ev['15'] === true,
     suspended,
     isLive: ev['1'] === true,
     oddsHome: odds.home,
