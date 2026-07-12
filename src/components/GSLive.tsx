@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 
 interface GsLiveMatch {
@@ -186,6 +186,12 @@ export default function GSLive() {
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
+
+  // Disable page scroll while GS Live is mounted (videos take full row height)
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('gs_token');
@@ -491,123 +497,200 @@ function LeagueSection({
   loadTs: number;
   activeToken: string;
 }) {
+  const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const cropRef = useRef<HTMLDivElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  function bump(eventId: number) {
+    setRefreshKeys(prev => {
+      const next = new Map(prev);
+      next.set(eventId, (prev.get(eventId) ?? 0) + 1);
+      return next;
+    });
+  }
+
+  // Crop fullscreen iframe to approximately the .visibility section.
+  // zenandfe.com estimate: left sidebar ~220px, header+odds above video ~340px.
+  useLayoutEffect(() => {
+    if (expandedId == null || !cropRef.current || !iframeRef.current) return;
+    const { offsetWidth: W, offsetHeight: H } = cropRef.current;
+    const RENDER_W = 1440;
+    const CROP_LEFT = 220;
+    const CROP_TOP = 340;
+    const scale = W / RENDER_W;
+    iframeRef.current.style.cssText = [
+      'position:absolute',
+      `width:${RENDER_W}px`,
+      `height:${Math.round(H / scale + CROP_TOP)}px`,
+      `top:${Math.round(-CROP_TOP * scale)}px`,
+      `left:${Math.round(-CROP_LEFT * scale)}px`,
+      `transform:scale(${scale})`,
+      'transform-origin:top left',
+      'border:none',
+    ].join(';');
+  }, [expandedId]);
+
+  const expandedMatch = expandedId != null ? (matches.find(m => m.eventId === expandedId) ?? null) : null;
+
   if (matches.length === 0) return null;
+
+  const overlayBtn: React.CSSProperties = {
+    background: 'transparent', border: '1px solid #444', color: '#aaa',
+    borderRadius: 4, padding: '2px 6px', fontSize: 11, cursor: 'pointer',
+  };
+
   return (
-    <div className="mb-5">
-      <div className="mb-2 flex items-center gap-2 flex-wrap">
-        <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
-        <span className="text-[11px] text-[#555]">{matches.length} trận</span>
-      </div>
-      <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
-        <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
-          <thead>
-            {/* Group row */}
-            <tr>
-              <th colSpan={3} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
-              <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
-                Toàn Trận
-              </th>
-              <th colSpan={2} className="bg-[#1e2d3a] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#60a5fa] text-center border-l border-r border-[#2a2a2a]">
-                Hiệp 1
-              </th>
-              <th className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
-            </tr>
-            {/* Column row */}
-            <tr>
-              {TABLE_HEADERS.map((h, i) => (
-                <th
-                  key={h}
-                  className={`bg-[#1a1a1a] px-2.5 py-2 text-xs font-semibold text-[#aaa] ${
-                    i === 0 || i === 2 || i === 3 ? 'text-center' : 'text-left'
-                  }`}
-                >
-                  {h}
+    <>
+      <div className="mb-5">
+        <div className="mb-2 flex items-center gap-2 flex-wrap">
+          <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
+          <span className="text-[11px] text-[#555]">{matches.length} trận</span>
+        </div>
+        <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
+          <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
+            <thead>
+              {/* Group row */}
+              <tr>
+                <th colSpan={3} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+                <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
+                  Toàn Trận
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {matches.map((m, i) => {
-              const prev = prevMap.get(m.eventId);
-              const scored = scoredIds.has(m.eventId);
-              const agentId = activeToken.split('-')[0] || '69';
-              const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
-              return (
-                <tr
-                  key={m.eventId}
-                  className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
-                    scored ? '!bg-[#16a34a]/10' : ''
-                  }`}
-                  style={{ height: 500 }}
-                >
-                  {/* # */}
-                  <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
-                    {i + 1}
-                  </td>
-                  {/* Trận đấu — 2 dòng, compact */}
-                  <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[12px] font-semibold text-white leading-tight truncate">{m.homeTeam}</span>
-                      <CardBadges yellow={m.yellowHome} red={m.redHome} />
-                    </div>
-                    <div className="mt-1 flex items-center gap-1">
-                      <span className="text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</span>
-                      <CardBadges yellow={m.yellowAway} red={m.redAway} />
-                    </div>
-                    {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
-                  </td>
-                  {/* Tỉ số / Phase */}
-                  <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
-                    <div className={`font-bold text-sm transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                      {m.h1Home} - {m.h1Away}
-                      {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
-                  </td>
-                  {/* Kèo Chấp TT */}
-                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
-                    <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
-                  </td>
-                  {/* Tài Xỉu TT */}
-                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
-                    <OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} />
-                  </td>
-                  {/* Kèo Chấp H1 */}
-                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
-                    <HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} />
-                  </td>
-                  {/* Tài Xỉu H1 */}
-                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
-                    <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
-                  </td>
-                  {/* Video — zenandfe.com match detail (gamePart=2) */}
-                  <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
-                    <div className="relative bg-black" style={{ height: 500 }}>
-                      <iframe
-                        key={videoUrl}
-                        src={videoUrl}
-                        style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                        title={`${m.homeTeam} vs ${m.awayTeam}`}
-                        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                        allowFullScreen
-                      />
-                      <a
-                        href={videoUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        ↗
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                <th colSpan={2} className="bg-[#1e2d3a] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#60a5fa] text-center border-l border-r border-[#2a2a2a]">
+                  Hiệp 1
+                </th>
+                <th className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+              </tr>
+              {/* Column row */}
+              <tr>
+                {TABLE_HEADERS.map((h, i) => (
+                  <th
+                    key={h}
+                    className={`bg-[#1a1a1a] px-2.5 py-2 text-xs font-semibold text-[#aaa] ${
+                      i === 0 || i === 2 || i === 3 ? 'text-center' : 'text-left'
+                    }`}
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {matches.map((m, i) => {
+                const prev = prevMap.get(m.eventId);
+                const scored = scoredIds.has(m.eventId);
+                const agentId = activeToken.split('-')[0] || '69';
+                const refreshKey = refreshKeys.get(m.eventId) ?? 0;
+                const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+                return (
+                  <tr
+                    key={m.eventId}
+                    className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
+                      scored ? '!bg-[#16a34a]/10' : ''
+                    }`}
+                    style={{ height: 500 }}
+                  >
+                    {/* # */}
+                    <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
+                      {i + 1}
+                    </td>
+                    {/* Trận đấu — 2 dòng, compact */}
+                    <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[12px] font-semibold text-white leading-tight truncate">{m.homeTeam}</span>
+                        <CardBadges yellow={m.yellowHome} red={m.redHome} />
+                      </div>
+                      <div className="mt-1 flex items-center gap-1">
+                        <span className="text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</span>
+                        <CardBadges yellow={m.yellowAway} red={m.redAway} />
+                      </div>
+                      {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
+                    </td>
+                    {/* Tỉ số / Phase */}
+                    <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
+                      <div className={`font-bold text-sm transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
+                        {m.h1Home} - {m.h1Away}
+                        {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
+                    </td>
+                    {/* Kèo Chấp TT */}
+                    <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                      <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
+                    </td>
+                    {/* Tài Xỉu TT */}
+                    <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                      <OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} />
+                    </td>
+                    {/* Kèo Chấp H1 */}
+                    <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                      <HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} />
+                    </td>
+                    {/* Tài Xỉu H1 */}
+                    <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                      <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
+                    </td>
+                    {/* Video — zenandfe.com match detail (gamePart=2) */}
+                    <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
+                      <div className="relative bg-black" style={{ height: 500 }}>
+                        <iframe
+                          key={`${m.eventId}-${refreshKey}`}
+                          src={videoUrl}
+                          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+                          title={`${m.homeTeam} vs ${m.awayTeam}`}
+                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                          allowFullScreen
+                        />
+                        {/* Expand to fullscreen (crops to .visibility section) */}
+                        <button type="button" onClick={() => setExpandedId(m.eventId)}
+                          className="absolute top-1 right-[54px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                          title="Xem fullscreen">⛶</button>
+                        {/* Reload iframe when video goes black */}
+                        <button type="button" onClick={() => bump(m.eventId)}
+                          className="absolute top-1 right-[28px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                          title="Reload video">↺</button>
+                        <a href={videoUrl} target="_blank" rel="noopener noreferrer"
+                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                          onClick={(e) => e.stopPropagation()}>↗</a>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+
+      {/* Fullscreen overlay — CSS-crops iframe to approximately .visibility section */}
+      {expandedMatch != null && (() => {
+        const m = expandedMatch;
+        const agentId = activeToken.split('-')[0] || '69';
+        const refreshKey = refreshKeys.get(m.eventId) ?? 0;
+        const eUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+        return (
+          <div style={{ position: 'fixed', inset: 0, zIndex: 9999, background: '#000', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: '#111', borderBottom: '1px solid #222', flexShrink: 0, height: 32 }}>
+              <span style={{ color: '#aaa', fontSize: 11, fontWeight: 600 }}>{m.homeTeam} vs {m.awayTeam}</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+                <button type="button" onClick={() => bump(m.eventId)} style={overlayBtn} title="Reload video">↺</button>
+                <a href={eUrl} target="_blank" rel="noopener noreferrer" style={{ ...overlayBtn, textDecoration: 'none' }}>↗</a>
+                <button type="button" onClick={() => setExpandedId(null)} style={{ ...overlayBtn, color: '#f87171' }}>✕</button>
+              </div>
+            </div>
+            <div ref={cropRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+              <iframe
+                ref={iframeRef}
+                key={`expanded-${m.eventId}-${refreshKey}`}
+                src={eUrl}
+                title={`${m.homeTeam} vs ${m.awayTeam}`}
+                allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                allowFullScreen
+              />
+            </div>
+          </div>
+        );
+      })()}
+    </>
   );
 }
