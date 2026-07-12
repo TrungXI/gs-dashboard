@@ -30,6 +30,12 @@ interface GsLiveMatch {
   hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   ouLines: { line: string | null; over: string | null; under: string | null }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
+  yellowHome: number;
+  yellowAway: number;
+  redHome: number;
+  redAway: number;
+  cornersHome: number;
+  cornersAway: number;
 }
 
 type Signal =
@@ -447,6 +453,26 @@ function OuCell({
 
 const GS_STREAM_TOKEN = '69-940214f0e803120fcfc9183ee4df89d5';
 
+function CardBadges({ yellow, red }: { yellow: number; red: number }) {
+  if (!yellow && !red) return null;
+  return (
+    <span className="inline-flex items-center gap-0.5 flex-shrink-0">
+      {yellow > 0 && (
+        <span className="inline-flex items-center gap-[2px] rounded px-[3px] py-[1px] bg-yellow-500/20 border border-yellow-500/40">
+          <span className="text-[9px] text-yellow-400 leading-none">🟨</span>
+          <span className="text-[9px] font-bold text-yellow-400 leading-none">{yellow}</span>
+        </span>
+      )}
+      {red > 0 && (
+        <span className="inline-flex items-center gap-[2px] rounded px-[3px] py-[1px] bg-red-500/20 border border-red-500/40">
+          <span className="text-[9px] text-red-400 leading-none">🟥</span>
+          <span className="text-[9px] font-bold text-red-400 leading-none">{red}</span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 function LeagueSection({
   title,
   matches,
@@ -519,9 +545,15 @@ function LeagueSection({
                     {i + 1}
                   </td>
                   {/* Trận đấu — 2 dòng, compact */}
-                  <td className="border-b border-[#222] px-2 py-2 align-top w-[130px] max-w-[130px]">
-                    <div className="text-[12px] font-semibold text-white leading-tight truncate">{m.homeTeam}</div>
-                    <div className="mt-1 text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</div>
+                  <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[12px] font-semibold text-white leading-tight truncate">{m.homeTeam}</span>
+                      <CardBadges yellow={m.yellowHome} red={m.redHome} />
+                    </div>
+                    <div className="mt-1 flex items-center gap-1">
+                      <span className="text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</span>
+                      <CardBadges yellow={m.yellowAway} red={m.redAway} />
+                    </div>
                     {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
                   </td>
                   {/* Tỉ số / Phase */}

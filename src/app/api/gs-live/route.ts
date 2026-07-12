@@ -43,6 +43,13 @@ export interface GsLiveMatch {
   // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
   ouLines: { line: string | null; over: string | null; under: string | null }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
+  // Cards & corners from score object: '7'=yellow home, '8'=yellow away, '11'=red home, '12'=red away
+  yellowHome: number;
+  yellowAway: number;
+  redHome: number;
+  redAway: number;
+  cornersHome: number;
+  cornersAway: number;
 }
 
 /** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
@@ -146,6 +153,12 @@ function buildMatch(
   ev: Record<string, unknown>,
 ): GsLiveMatch {
   const score = (ev['4'] as Record<string, number>) ?? {};
+  const yellowHome = score['7'] ?? 0;
+  const yellowAway = score['8'] ?? 0;
+  const redHome = score['11'] ?? 0;
+  const redAway = score['12'] ?? 0;
+  const cornersHome = score['5'] ?? 0;
+  const cornersAway = score['6'] ?? 0;
   const odds = parse1x2(ev['7']);
   const hcRaw = parseAsianMarket(ev['7'], '5');
   const ouRaw = parseAsianMarket(ev['7'], '3');
@@ -190,6 +203,12 @@ function buildMatch(
     hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
     ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
     ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
+    yellowHome,
+    yellowAway,
+    redHome,
+    redAway,
+    cornersHome,
+    cornersAway,
   };
 }
 
