@@ -55,6 +55,12 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
 
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [autoRefreshGS, setAutoRefreshGS] = useState(false);
+  const [gsCountdown, setGsCountdown] = useState<number | null>(null); // seconds to next auto-fetch
+  const autoRefreshGSRef = useRef(false);
+  const quickFetchGSRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const gsAutoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const gsCountdownTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Sync theme to html element and localStorage
   useLayoutEffect(() => {
@@ -190,6 +196,27 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     setVoltaUpdatedAt(localStorage.getItem(LS_VOLTA_AT));
   }, []);
 
+  const scheduleGsAutoRefresh = useCallback(() => {
+    if (gsAutoTimer.current) clearTimeout(gsAutoTimer.current);
+    if (gsCountdownTimer.current) clearInterval(gsCountdownTimer.current);
+    if (!autoRefreshGSRef.current) { setGsCountdown(null); return; }
+
+    const SECS = 5 * 60;
+    setGsCountdown(SECS);
+    let remaining = SECS;
+    gsCountdownTimer.current = setInterval(() => {
+      remaining -= 1;
+      setGsCountdown(remaining > 0 ? remaining : 0);
+    }, 1000);
+
+    gsAutoTimer.current = setTimeout(async () => {
+      if (gsCountdownTimer.current) clearInterval(gsCountdownTimer.current);
+      await quickFetchGSRef.current();
+      // reschedule if still active
+      if (autoRefreshGSRef.current) scheduleGsAutoRefresh();
+    }, SECS * 1000);
+  }, []);
+
   const quickFetchGS = useCallback(async () => {
     if (quickFetching) return;
     setQuickFetching(true);
@@ -221,6 +248,25 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       setQuickFetching(false);
     }
   }, [quickFetching]);
+
+  // Keep refs in sync
+  useEffect(() => { quickFetchGSRef.current = quickFetchGS; }, [quickFetchGS]);
+  useEffect(() => { autoRefreshGSRef.current = autoRefreshGS; }, [autoRefreshGS]);
+
+  // Toggle auto-refresh: start or stop the schedule
+  useEffect(() => {
+    if (autoRefreshGS) {
+      scheduleGsAutoRefresh();
+    } else {
+      if (gsAutoTimer.current) clearTimeout(gsAutoTimer.current);
+      if (gsCountdownTimer.current) clearInterval(gsCountdownTimer.current);
+      setGsCountdown(null);
+    }
+    return () => {
+      if (gsAutoTimer.current) clearTimeout(gsAutoTimer.current);
+      if (gsCountdownTimer.current) clearInterval(gsCountdownTimer.current);
+    };
+  }, [autoRefreshGS, scheduleGsAutoRefresh]);
 
   const quickFetchVolta = useCallback(async () => {
     if (voltaQuickFetching) return;
@@ -358,12 +404,31 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             </button>
           </div>
 
-          {/* Updated at indicator */}
-          {updatedAt && (
-            <div className={`border-b px-4 py-1.5 text-[10px] text-[#4ade80]/70 ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
-              ✓ Cập nhật {updatedAt}
-            </div>
-          )}
+          {/* Updated at + auto-refresh status */}
+          <div className={`border-b px-4 py-1.5 flex items-center gap-2 ${theme === 'dark' ? 'border-white/5' : 'border-gray-100'}`}>
+            {updatedAt && (
+              <span className="text-[10px] text-[#4ade80]/70 flex-1 truncate">
+                ✓ {updatedAt}
+                {autoRefreshGS && gsCountdown != null && (
+                  <span className="text-[#fbbf24]/70 ml-1">
+                    · {Math.floor(gsCountdown / 60)}:{String(gsCountdown % 60).padStart(2, '0')}
+                  </span>
+                )}
+              </span>
+            )}
+            {/* Auto-refresh toggle */}
+            <button
+              onClick={() => setAutoRefreshGS(v => !v)}
+              title={autoRefreshGS ? 'Tắt tự động cập nhật (mỗi 5p)' : 'Bật tự động cập nhật mỗi 5 phút'}
+              className={`flex-shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                autoRefreshGS
+                  ? 'bg-[#4ade80]/20 text-[#4ade80]'
+                  : theme === 'dark' ? 'bg-white/[.06] text-white/40 hover:text-white/60' : 'bg-black/[.05] text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              {autoRefreshGS ? '⏱ ON' : '⏱ OFF'}
+            </button>
+          </div>
 
           {/* Nav */}
           <nav className="flex flex-col">
