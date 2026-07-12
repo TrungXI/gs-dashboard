@@ -185,6 +185,7 @@ export default function GSLive() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
   const fetchingRef = useRef<Set<number>>(new Set());
+  const [loadTs] = useState(() => Date.now());
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -291,6 +292,7 @@ export default function GSLive() {
             scoredIds={scoredIds}
             nowMs={nowMs}
             streamUrls={streamUrls}
+            loadTs={loadTs}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -299,6 +301,7 @@ export default function GSLive() {
             scoredIds={scoredIds}
             nowMs={nowMs}
             streamUrls={streamUrls}
+            loadTs={loadTs}
           />
         </>
       )}
@@ -446,6 +449,7 @@ function LeagueSection({
   scoredIds,
   nowMs,
   streamUrls,
+  loadTs,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -453,6 +457,7 @@ function LeagueSection({
   scoredIds: Set<number>;
   nowMs: number;
   streamUrls: Record<number, string>;
+  loadTs: number;
 }) {
   if (matches.length === 0) return null;
   return (
@@ -493,7 +498,10 @@ function LeagueSection({
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
               const scored = scoredIds.has(m.eventId);
+              // Primary: glivestreaming.com via /api/gs-stream proxy
+              // Fallback: zenandfe.com?gamePart=2 (no geo-block, CSS-cropped)
               const streamUrl = streamUrls[m.eventId];
+              const fallbackUrl = `https://zenandfe.com/?token=${encodeURIComponent(GS_STREAM_TOKEN)}&agentId=69&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
               return (
                 <tr
                   key={m.eventId}
@@ -560,31 +568,36 @@ function LeagueSection({
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
-                  {/* Video — glivestreaming.com player via /api/gs-stream proxy */}
-                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 320 }}>
-                    {streamUrl ? (
-                      <div className="relative" style={{ height: 200 }}>
-                        <iframe
-                          src={streamUrl}
-                          style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
-                          title={`${m.homeTeam} vs ${m.awayTeam}`}
-                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                        />
-                        <a
-                          href={streamUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          ↗
-                        </a>
-                      </div>
-                    ) : (
-                      <div className="flex h-full items-center justify-center" style={{ height: 200 }}>
-                        <span className="text-[11px] text-[#555] animate-pulse">⟳ Đang tải stream…</span>
-                      </div>
-                    )}
+                  {/* Video: glivestreaming.com (primary) or zenandfe.com CSS-cropped (fallback) */}
+                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 360 }}>
+                    <div className="relative overflow-hidden bg-black" style={{ height: 200, width: 360 }}>
+                      <iframe
+                        key={streamUrl ?? fallbackUrl}
+                        src={streamUrl ?? fallbackUrl}
+                        style={{
+                          width: streamUrl ? '100%' : '480px',
+                          height: streamUrl ? 200 : 520,
+                          border: 'none',
+                          display: 'block',
+                          // CSS crop for zenandfe: shift up to hide header/nav, left to hide sidepanel
+                          marginTop: streamUrl ? 0 : -52,
+                          marginLeft: streamUrl ? 0 : -60,
+                          transform: streamUrl ? 'none' : 'scale(0.82)',
+                          transformOrigin: 'top left',
+                        }}
+                        title={`${m.homeTeam} vs ${m.awayTeam}`}
+                        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                      />
+                      <a
+                        href={streamUrl ?? fallbackUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        ↗
+                      </a>
+                    </div>
                   </td>
                 </tr>
               );
