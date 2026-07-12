@@ -301,7 +301,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -444,7 +444,7 @@ function LeagueSection({
           <thead>
             {/* Group row */}
             <tr>
-              <th colSpan={4} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+              <th colSpan={3} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
               <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
                 Toàn Trận
               </th>
@@ -490,16 +490,13 @@ function LeagueSection({
                     <div className="mt-1 text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</div>
                     {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
                   </td>
-                  {/* Tỉ số */}
-                  <td className={`border-b border-[#222] px-2 py-2 text-center font-bold align-top w-12 transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                    <div>{m.h1Home}</div>
-                    <div className="text-[10px] text-[#555]">—</div>
-                    <div>{m.h1Away}</div>
-                    {scored && <span className="text-[10px] animate-bounce">⚽</span>}
-                  </td>
-                  {/* Phase */}
-                  <td className="border-b border-[#222] px-2 py-2 text-center text-xs text-[#888] align-top w-14 whitespace-nowrap">
-                    {phaseLabel(m, nowMs)}
+                  {/* Tỉ số / Phase */}
+                  <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
+                    <div className={`font-bold text-sm transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
+                      {m.h1Home} - {m.h1Away}
+                      {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
+                    </div>
+                    <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </td>
                   {/* Kèo Chấp TT */}
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
