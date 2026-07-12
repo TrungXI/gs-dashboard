@@ -523,25 +523,11 @@ function LeagueSection({
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const cropIframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Mobile video scale: content inside det.zenandfe.com has a fixed internal width.
-  // We render the iframe at MOBILE_CONTENT_W then CSS-scale it down to fit the card.
-  const MOBILE_CONTENT_W = 1440; // scale ≈ 0.25 at 390px screen (zoom out 25%)
+  // Mobile video: hardcoded scale (no SSR/state dependency).
+  const MOBILE_CONTENT_W = 1440;
+  const MOBILE_SCALE = 0.5;
   const MOBILE_DISPLAY_H = 280;
-  const [mobileContainerW, setMobileContainerW] = useState(() =>
-    typeof window !== 'undefined' && window.innerWidth < 768
-      ? Math.max(1, window.innerWidth - 24)
-      : MOBILE_CONTENT_W
-  );
-  useEffect(() => {
-    function update() {
-      if (window.innerWidth < 768) setMobileContainerW(Math.max(1, window.innerWidth - 24));
-    }
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, []);
-  const mobileVideoScale = mobileContainerW / MOBILE_CONTENT_W;
-  const mobileIframeH = Math.round(MOBILE_DISPLAY_H / mobileVideoScale);
+  const mobileIframeH = Math.round(MOBILE_DISPLAY_H / MOBILE_SCALE);
 
   function bump(eventId: number) {
     setRefreshKeys(prev => {
@@ -665,7 +651,7 @@ function LeagueSection({
                       position: 'absolute', top: 0, left: 0,
                       width: MOBILE_CONTENT_W, height: mobileIframeH,
                       border: 'none', display: 'block',
-                      transform: `scale(${mobileVideoScale})`,
+                      transform: `scale(${MOBILE_SCALE})`,
                       transformOrigin: 'top left',
                     }}
                     title={`${m.homeTeam} vs ${m.awayTeam}`}
