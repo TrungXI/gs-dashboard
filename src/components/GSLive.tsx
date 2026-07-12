@@ -525,7 +525,7 @@ function LeagueSection({
 
   // Mobile video: hardcoded scale (no SSR/state dependency).
   const MOBILE_CONTENT_W = 1440;
-  const MOBILE_SCALE = 0.5;
+  const MOBILE_SCALE = 0.3;
   const MOBILE_DISPLAY_H = 280;
   const mobileIframeH = Math.round(MOBILE_DISPLAY_H / MOBILE_SCALE);
 
