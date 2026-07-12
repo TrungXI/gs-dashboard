@@ -183,8 +183,6 @@ export default function GSLive() {
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
-  const fetchingRef = useRef<Set<number>>(new Set());
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
@@ -203,9 +201,6 @@ export default function GSLive() {
       localStorage.setItem('gs_token', tok);
       setTokenVal(tok);
     }
-    // Clear cached stream URLs so they re-fetch with the new token
-    setStreamUrls({});
-    fetchingRef.current.clear();
   }
 
   // Tick every 30s so phaseLabel stays current without server round-trip
@@ -246,24 +241,6 @@ export default function GSLive() {
           prevRef.current = new Map(next.map((m) => [m.eventId, m]));
           setMatches(next);
           setUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
-          // Kick off stream fetch for any new event IDs
-          for (const m of next) {
-            if (!streamUrls[m.eventId] && !fetchingRef.current.has(m.eventId)) {
-              fetchingRef.current.add(m.eventId);
-              const tok = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
-              fetch(`/api/gs-stream?eventId=${m.eventId}&token=${encodeURIComponent(tok)}`, { cache: 'no-store' })
-                .then((r) => r.json())
-                .then((d: { ok: boolean; streamUrl?: string }) => {
-                  if (d.ok && d.streamUrl) {
-                    setStreamUrls((prev) => ({ ...prev, [m.eventId]: d.streamUrl! }));
-                  } else {
-                    // retry after 15s if no stream yet
-                    setTimeout(() => { fetchingRef.current.delete(m.eventId); }, 15_000);
-                  }
-                })
-                .catch(() => { fetchingRef.current.delete(m.eventId); });
-            }
-          }
         }
       } catch (e) {
         if (alive) setError(String(e));
@@ -334,7 +311,6 @@ export default function GSLive() {
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            streamUrls={streamUrls}
             loadTs={loadTs}
             activeToken={activeToken}
           />
@@ -344,7 +320,6 @@ export default function GSLive() {
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            streamUrls={streamUrls}
             loadTs={loadTs}
             activeToken={activeToken}
           />
@@ -505,7 +480,6 @@ function LeagueSection({
   prevMap,
   scoredIds,
   nowMs,
-  streamUrls,
   loadTs,
   activeToken,
 }: {
@@ -514,7 +488,6 @@ function LeagueSection({
   prevMap: Map<number, GsLiveMatch>;
   scoredIds: Set<number>;
   nowMs: number;
-  streamUrls: Record<number, string>;
   loadTs: number;
   activeToken: string;
 }) {
@@ -557,10 +530,8 @@ function LeagueSection({
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
               const scored = scoredIds.has(m.eventId);
-              // Primary: glivestreaming.com via /api/gs-stream proxy
-              // Fallback: zenandfe.com?gamePart=2 (no geo-block, CSS-cropped)
-              const streamUrl = streamUrls[m.eventId];
-              const fallbackUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=69&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
+              const agentId = activeToken.split('-')[0] || '69';
+              const videoUrl = `https://zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&eventId=${m.eventId}&leagueId=${m.leagueId}&sportId=1&loginUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DLOGIN&registerUrl=https%3A%2F%2Fhdbet.pub%2F%3Fmodal%3DSIGN_UP&gamePart=2&t=${loadTs}`;
               return (
                 <tr
                   key={m.eventId}
@@ -609,19 +580,19 @@ function LeagueSection({
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
-                  {/* Video */}
+                  {/* Video — zenandfe.com match detail (gamePart=2) */}
                   <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
                     <div className="relative bg-black" style={{ height: 500 }}>
                       <iframe
-                        key={streamUrl ?? fallbackUrl}
-                        src={streamUrl ?? fallbackUrl}
+                        key={videoUrl}
+                        src={videoUrl}
                         style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
                         title={`${m.homeTeam} vs ${m.awayTeam}`}
                         allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
                         allowFullScreen
                       />
                       <a
-                        href={streamUrl ?? fallbackUrl}
+                        href={videoUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
