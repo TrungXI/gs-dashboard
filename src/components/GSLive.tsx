@@ -306,7 +306,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Phân Tích', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -466,7 +466,7 @@ function LeagueSection({
           <thead>
             {/* Group row */}
             <tr>
-              <th colSpan={3} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
+              <th colSpan={4} className="bg-[#1a1a1a] border-b border-[#2a2a2a]" />
               <th colSpan={2} className="bg-[#1e3a2f] border-b border-[#2a2a2a] px-2 py-1 text-[11px] font-bold text-[#4ade80] text-center border-l border-r border-[#2a2a2a]">
                 Toàn Trận
               </th>
@@ -526,6 +526,24 @@ function LeagueSection({
                     </div>
                     <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </td>
+                  {/* Phân Tích */}
+                  {(() => {
+                    const sig = classifySignals(m, prev);
+                    return (
+                      <td className="border-b border-[#222] px-2 py-2 text-center align-middle w-20">
+                        {sig ? (
+                          <span
+                            className="inline-block rounded px-2 py-1 text-[11px] font-bold leading-tight"
+                            style={{ background: `${sig.color}22`, color: sig.color, border: `1px solid ${sig.color}55` }}
+                          >
+                            {sig.label}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-[#333]">—</span>
+                        )}
+                      </td>
+                    );
+                  })()}
                   {/* Kèo Chấp TT */}
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
