@@ -624,13 +624,15 @@ function LeagueSection({
                   </div>
                 </div>
 
-                {/* Odds: Kèo TT only on mobile (flex-row), Tài Xỉu hidden */}
-                <div className="flex flex-row gap-2 px-3 py-2 border-b border-[#222]">
-                  <div className="flex items-start gap-2">
-                    <span className="text-[10px] text-[#666] w-14 flex-shrink-0 mt-0.5">Kèo TT</span>
-                    <div className="text-xs">
-                      <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
-                    </div>
+                {/* Odds: 2 rows, no labels — TT line + H1 line */}
+                <div className="flex flex-col gap-1.5 px-3 py-2 border-b border-[#222]">
+                  <div className="flex items-start gap-3">
+                    <div className="text-xs"><HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} /></div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div className="text-xs"><HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} /></div>
+                    <div className="text-xs"><OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} /></div>
                   </div>
                 </div>
 
