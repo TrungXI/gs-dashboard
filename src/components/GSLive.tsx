@@ -195,14 +195,14 @@ export default function GSLive() {
   }, []);
 
   function applyToken(raw: string) {
-    const tok = extractToken(raw);
-    if (tok && tok !== GS_STREAM_TOKEN) {
-      localStorage.setItem('gs_token', tok);
-      setTokenVal(tok);
-    } else {
+    if (!raw.trim()) {
       localStorage.removeItem('gs_token');
       setTokenVal('');
+      return;
     }
+    const tok = extractToken(raw);
+    localStorage.setItem('gs_token', tok);
+    setTokenVal(tok);
   }
 
   // Tick every 30s so phaseLabel stays current without server round-trip
