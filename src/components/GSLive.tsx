@@ -177,7 +177,6 @@ export default function GSLive() {
   const [loading, setLoading] = useState(false);
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
-  const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -254,33 +253,6 @@ export default function GSLive() {
     }
   }
 
-  async function handleRowClick(eventId: number, leagueId: number) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(eventId)) { next.delete(eventId); return next; }
-      next.add(eventId);
-      return next;
-    });
-    fetchStream(eventId, leagueId);
-  }
-
-  function handleExpandAll(allIds: { eventId: number; leagueId: number }[]) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      for (const { eventId } of allIds) next.add(eventId);
-      return next;
-    });
-    for (const { eventId, leagueId } of allIds) fetchStream(eventId, leagueId);
-  }
-
-  function handleCollapseAll(allIds: number[]) {
-    setExpandedIds((prev) => {
-      const next = new Set(prev);
-      for (const id of allIds) next.delete(id);
-      return next;
-    });
-  }
-
   return (
     <>
       <div className="mb-4 flex items-center gap-3 flex-wrap">
@@ -311,25 +283,19 @@ export default function GSLive() {
             title="Giao Hữu Châu Á GS (Ảo) 16 Phút"
             matches={matches.filter((m) => m.leagueId === 2140)}
             prevMap={prevMap}
-            expandedIds={expandedIds}
-            onRowClick={(id) => handleRowClick(id, 2140)}
-            onExpandAll={(ids) => handleExpandAll(ids.map((id) => ({ eventId: id, leagueId: 2140 })))}
-            onCollapseAll={handleCollapseAll}
             streamUrls={streamUrls}
             scoredIds={scoredIds}
             nowMs={nowMs}
+            fetchStream={fetchStream}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
             matches={matches.filter((m) => m.leagueId === 2125)}
             prevMap={prevMap}
-            expandedIds={expandedIds}
-            onRowClick={(id) => handleRowClick(id, 2125)}
-            onExpandAll={(ids) => handleExpandAll(ids.map((id) => ({ eventId: id, leagueId: 2125 })))}
-            onCollapseAll={handleCollapseAll}
             streamUrls={streamUrls}
             scoredIds={scoredIds}
             nowMs={nowMs}
+            fetchStream={fetchStream}
           />
         </>
       )}
@@ -337,7 +303,7 @@ export default function GSLive() {
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Tín hiệu'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số', 'Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Tín hiệu', 'Video'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -454,46 +420,26 @@ function LeagueSection({
   title,
   matches,
   prevMap,
-  expandedIds,
-  onRowClick,
-  onExpandAll,
-  onCollapseAll,
   streamUrls,
   scoredIds,
   nowMs,
+  fetchStream,
 }: {
   title: string;
   matches: GsLiveMatch[];
   prevMap: Map<number, GsLiveMatch>;
-  expandedIds: Set<number>;
-  onRowClick: (id: number) => void;
-  onExpandAll: (ids: number[]) => void;
-  onCollapseAll: (ids: number[]) => void;
   streamUrls: Record<number, string>;
   scoredIds: Set<number>;
   nowMs: number;
+  fetchStream: (eventId: number, leagueId: number) => void;
 }) {
   if (matches.length === 0) return null;
   const COL_COUNT = TABLE_HEADERS.length;
-  const allIds = matches.map((m) => m.eventId);
-  const allOpen = allIds.every((id) => expandedIds.has(id));
   return (
     <div className="mb-5">
       <div className="mb-2 flex items-center gap-2 flex-wrap">
         <span className="text-[13px] font-semibold text-[#fbbf24]">{title}</span>
-        <span className="text-[11px] text-[#555]">{matches.length} trận · click dòng để xem/ẩn stream</span>
-        <div className="ml-auto flex gap-1">
-          <button
-            onClick={() => allOpen ? onCollapseAll(allIds) : onExpandAll(allIds)}
-            className="rounded px-2 py-0.5 text-[11px] font-semibold border transition-colors"
-            style={allOpen
-              ? { borderColor: '#f87171', color: '#f87171', background: '#f8717120' }
-              : { borderColor: '#4ade80', color: '#4ade80', background: '#4ade8020' }
-            }
-          >
-            {allOpen ? '▲ Tắt tất cả' : '▼ Mở tất cả'}
-          </button>
-        </div>
+        <span className="text-[11px] text-[#555]">{matches.length} trận · nhấn ▶ để xem stream</span>
       </div>
       <div className="gs-league-table overflow-x-auto rounded-lg border border-[#2a2a2a]">
         <table className="w-full min-w-[1200px] border-collapse bg-[#141414] text-sm">
@@ -515,95 +461,97 @@ function LeagueSection({
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
               const signal = m.suspended ? null : classifySignals(m, prev);
-              const isExpanded = expandedIds.has(m.eventId);
               const scored = scoredIds.has(m.eventId);
               const streamUrl = streamUrls[m.eventId];
               return (
-                <>
-                  <tr
-                    key={m.eventId}
-                    onClick={() => onRowClick(m.eventId)}
-                    className={`cursor-pointer odd:bg-[#141414] even:bg-[#181818] hover:bg-[#222] transition-colors ${
-                      scored ? '!bg-[#16a34a]/10' : ''
-                    } ${isExpanded ? '!bg-[#1e2a1e] border-l-2 border-[#4ade80]' : ''}`}
-                  >
-                    <td className="border-b border-[#222] px-2.5 py-2 text-center text-[11px] text-[#555]">
-                      {i + 1}
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2">
-                      <span className="text-white">{m.homeTeam}</span>
-                      <span className="mx-1.5 text-[#555]">vs</span>
-                      <span className="text-white">{m.awayTeam}</span>
-                      {isExpanded && <span className="ml-2 text-[10px] text-[#4ade80]">▼ live</span>}
-                    </td>
-                    <td className={`whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center font-bold transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
-                      {m.h1Home}-{m.h1Away}
-                      {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
-                    </td>
-                    <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center text-xs text-[#888]">
-                      {phaseLabel(m, nowMs)}
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2.5 text-xs align-top">
-                      <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2.5 text-xs align-top">
-                      <OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} />
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2.5 text-xs align-top">
-                      <HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} />
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2.5 text-xs align-top">
-                      <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
-                    </td>
-                    <td className="border-b border-[#222] px-2.5 py-2 align-top">
-                      {signal && (
-                        <span
-                          className="block rounded-md px-2 py-0.5 text-[11px] font-bold"
-                          style={{ color: signal.color, backgroundColor: `${signal.color}22` }}
+                <tr
+                  key={m.eventId}
+                  className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
+                    scored ? '!bg-[#16a34a]/10' : ''
+                  }`}
+                  style={{ height: 200 }}
+                >
+                  {/* # */}
+                  <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
+                    {i + 1}
+                  </td>
+                  {/* Trận đấu — 2 dòng, compact */}
+                  <td className="border-b border-[#222] px-2 py-2 align-top w-[130px] max-w-[130px]">
+                    <div className="text-[12px] font-semibold text-white leading-tight truncate">{m.homeTeam}</div>
+                    <div className="mt-1 text-[11px] text-[#888] leading-tight truncate">{m.awayTeam}</div>
+                    {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
+                  </td>
+                  {/* Tỉ số */}
+                  <td className={`border-b border-[#222] px-2 py-2 text-center font-bold align-top w-12 transition-colors ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
+                    <div>{m.h1Home}</div>
+                    <div className="text-[10px] text-[#555]">—</div>
+                    <div>{m.h1Away}</div>
+                    {scored && <span className="text-[10px] animate-bounce">⚽</span>}
+                  </td>
+                  {/* Phase */}
+                  <td className="border-b border-[#222] px-2 py-2 text-center text-xs text-[#888] align-top w-14 whitespace-nowrap">
+                    {phaseLabel(m, nowMs)}
+                  </td>
+                  {/* Kèo Chấp TT */}
+                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                    <HcCell lines={m.hcLines} prevLines={prev?.hcLines} suspended={m.suspended} />
+                  </td>
+                  {/* Tài Xỉu TT */}
+                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                    <OuCell lines={m.ouLines} prevLines={prev?.ouLines} suspended={m.suspended} />
+                  </td>
+                  {/* Kèo Chấp H1 */}
+                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                    <HcCell lines={m.hcH1Lines} prevLines={prev?.hcH1Lines} suspended={m.suspended} />
+                  </td>
+                  {/* Tài Xỉu H1 */}
+                  <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
+                    <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
+                  </td>
+                  {/* Tín hiệu */}
+                  <td className="border-b border-[#222] px-2 py-2 align-top w-16">
+                    {signal && (
+                      <span
+                        className="block rounded-md px-1.5 py-0.5 text-[10px] font-bold whitespace-nowrap"
+                        style={{ color: signal.color, backgroundColor: `${signal.color}22` }}
+                      >
+                        {signal.label}
+                      </span>
+                    )}
+                  </td>
+                  {/* Video inline */}
+                  <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 320 }}>
+                    {streamUrl ? (
+                      <div className="relative h-full" style={{ height: 200 }}>
+                        <iframe
+                          src={streamUrl}
+                          style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
+                          title={`${m.homeTeam} vs ${m.awayTeam}`}
+                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                        />
+                        <a
+                          href={streamUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
+                          onClick={(e) => e.stopPropagation()}
                         >
-                          {signal.label}
-                        </span>
-                      )}
-                      {scored && (
-                        <span className="mt-1 block text-[10px] font-bold text-[#22c55e] animate-pulse">
-                          ⚽ GÀN!
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                  {isExpanded && (
-                    <tr key={`stream-${m.eventId}`}>
-                      <td colSpan={COL_COUNT} className="border-b border-[#333] bg-[#0a0a0a] p-0">
-                        {streamUrl ? (
-                          <div className="relative">
-                            <div className="absolute top-2 right-2 z-10 flex gap-1">
-                              <a
-                                href={streamUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="rounded px-2 py-1 text-[11px] font-semibold bg-[#1a1a1a]/90 border border-[#444] text-[#aaa] hover:text-white hover:border-[#666]"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                ↗ Mở tab mới
-                              </a>
-                            </div>
-                            <iframe
-                              src={streamUrl}
-                              className="w-full"
-                              style={{ height: 520, border: 'none', display: 'block' }}
-                              title={`${m.homeTeam} vs ${m.awayTeam}`}
-                              allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                            />
-                          </div>
-                        ) : (
-                          <div className="flex h-16 items-center justify-center text-[12px] text-[#555]">
-                            Đang tải stream…
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  )}
-                </>
+                          ↗
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center" style={{ height: 200 }}>
+                        <button
+                          onClick={() => fetchStream(m.eventId, m.leagueId)}
+                          className="flex flex-col items-center gap-1 rounded-lg px-4 py-3 bg-[#1a1a1a] border border-[#2a2a2a] text-[#555] hover:text-[#4ade80] hover:border-[#4ade80]/40 transition-colors"
+                        >
+                          <span className="text-2xl">▶</span>
+                          <span className="text-[10px]">Xem live</span>
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
               );
             })}
           </tbody>
