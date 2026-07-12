@@ -183,12 +183,8 @@ export default function GSLive() {
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [token, setToken] = useState(GS_STREAM_TOKEN);
-
-  useEffect(() => {
-    const stored = localStorage.getItem('gs_token');
-    if (stored) setToken(stored);
-  }, []);
+  const [streamUrls, setStreamUrls] = useState<Record<number, string>>({});
+  const fetchingRef = useRef<Set<number>>(new Set());
 
   // Tick every 30s so phaseLabel stays current without server round-trip
   useEffect(() => {
@@ -228,6 +224,24 @@ export default function GSLive() {
           prevRef.current = new Map(next.map((m) => [m.eventId, m]));
           setMatches(next);
           setUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
+          // Kick off stream fetch for any new event IDs
+          for (const m of next) {
+            if (!streamUrls[m.eventId] && !fetchingRef.current.has(m.eventId)) {
+              fetchingRef.current.add(m.eventId);
+              const tok = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
+              fetch(`/api/gs-stream?eventId=${m.eventId}&token=${encodeURIComponent(tok)}`, { cache: 'no-store' })
+                .then((r) => r.json())
+                .then((d: { ok: boolean; streamUrl?: string }) => {
+                  if (d.ok && d.streamUrl) {
+                    setStreamUrls((prev) => ({ ...prev, [m.eventId]: d.streamUrl! }));
+                  } else {
+                    // retry after 15s if no stream yet
+                    setTimeout(() => { fetchingRef.current.delete(m.eventId); }, 15_000);
+                  }
+                })
+                .catch(() => { fetchingRef.current.delete(m.eventId); });
+            }
+          }
         }
       } catch (e) {
         if (alive) setError(String(e));
@@ -243,11 +257,6 @@ export default function GSLive() {
       clearInterval(id);
     };
   }, []);
-
-  function buildStreamUrl(eventId: number): string {
-    const agentId = token.split('-')[0] ?? '69';
-    return `https://det.zenandfe.com/?token=${encodeURIComponent(token)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${eventId}&brand=`;
-  }
 
   return (
     <>
@@ -281,7 +290,7 @@ export default function GSLive() {
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            buildStreamUrl={buildStreamUrl}
+            streamUrls={streamUrls}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -289,7 +298,7 @@ export default function GSLive() {
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
-            buildStreamUrl={buildStreamUrl}
+            streamUrls={streamUrls}
           />
         </>
       )}
@@ -436,14 +445,14 @@ function LeagueSection({
   prevMap,
   scoredIds,
   nowMs,
-  buildStreamUrl,
+  streamUrls,
 }: {
   title: string;
   matches: GsLiveMatch[];
   prevMap: Map<number, GsLiveMatch>;
   scoredIds: Set<number>;
   nowMs: number;
-  buildStreamUrl: (eventId: number) => string;
+  streamUrls: Record<number, string>;
 }) {
   if (matches.length === 0) return null;
   return (
@@ -484,7 +493,7 @@ function LeagueSection({
             {matches.map((m, i) => {
               const prev = prevMap.get(m.eventId);
               const scored = scoredIds.has(m.eventId);
-              const streamUrl = buildStreamUrl(m.eventId);
+              const streamUrl = streamUrls[m.eventId];
               return (
                 <tr
                   key={m.eventId}
@@ -533,25 +542,31 @@ function LeagueSection({
                   <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                     <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                   </td>
-                  {/* Video inline — embed det.zenandfe.com match detail directly */}
+                  {/* Video — glivestreaming.com player via /api/gs-stream proxy */}
                   <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: 320 }}>
-                    <div className="relative" style={{ height: 200 }}>
-                      <iframe
-                        src={streamUrl}
-                        style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
-                        title={`${m.homeTeam} vs ${m.awayTeam}`}
-                        allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                      />
-                      <a
-                        href={streamUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        ↗
-                      </a>
-                    </div>
+                    {streamUrl ? (
+                      <div className="relative" style={{ height: 200 }}>
+                        <iframe
+                          src={streamUrl}
+                          style={{ width: '100%', height: 200, border: 'none', display: 'block' }}
+                          title={`${m.homeTeam} vs ${m.awayTeam}`}
+                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+                        />
+                        <a
+                          href={streamUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          ↗
+                        </a>
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center" style={{ height: 200 }}>
+                        <span className="text-[11px] text-[#555] animate-pulse">⟳ Đang tải stream…</span>
+                      </div>
+                    )}
                   </td>
                 </tr>
               );
