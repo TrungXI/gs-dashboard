@@ -1424,33 +1424,52 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   }, [activeTab, matches]);
 
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
+    const { best, worst } = bestAndWorstDay(stats);
     const t = todayStats(stats);
-    return (
-      <div className="flex items-center gap-2">
-        <div className="w-[52px] flex-shrink-0">
-          <div className="text-[10px] font-semibold text-[#aaa] truncate leading-tight">{team}</div>
-          {t && t.n > 0 && (
-            <div className={`text-[10px] font-bold ${t.winRate >= 50 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>{t.winRate}%</div>
+
+    const cells = stats.map((s) => {
+      const isToday = s.day === today;
+      const bg = s.n === 0 ? '#1e1e1e' : s.winRate >= 65 ? '#16a34a' : s.winRate >= 50 ? '#d97706' : '#dc2626';
+      const fg = s.n === 0 ? '#555' : s.winRate >= 65 ? '#4ade80' : s.winRate >= 50 ? '#fbbf24' : '#f87171';
+      return (
+        <div
+          key={s.day}
+          className={`flex flex-col items-center justify-center rounded text-center ${isToday ? 'ring-1 md:ring-2 ring-white' : ''}`}
+          style={{ background: bg, color: fg }}
+        >
+          <span className="text-[8px] md:text-[9px] font-bold opacity-80">{s.label}</span>
+          {s.n === 0 ? <span className="text-[9px] md:text-[10px]">—</span> : (
+            <>
+              <span className="text-[9px] md:text-[10px] font-bold">{s.winRate}%</span>
+              <span className="hidden md:block text-[8px] opacity-60">n={s.n}</span>
+            </>
           )}
         </div>
-        <div className="flex-1 grid grid-cols-7 gap-0.5">
-          {stats.map((s) => {
-            const isToday = s.day === today;
-            const bg = s.n === 0 ? '#1e1e1e' : s.winRate >= 65 ? '#16a34a' : s.winRate >= 50 ? '#d97706' : '#dc2626';
-            const fg = s.n === 0 ? '#444' : s.winRate >= 65 ? '#4ade80' : s.winRate >= 50 ? '#fbbf24' : '#f87171';
-            return (
-              <div
-                key={s.day}
-                className={`flex flex-col items-center justify-center rounded py-0.5 text-center ${isToday ? 'ring-1 ring-white' : ''}`}
-                style={{ background: bg, color: fg }}
-              >
-                <span className="text-[8px] font-bold opacity-70">{s.label}</span>
-                {s.n === 0 ? <span className="text-[9px]">—</span> : (
-                  <span className="text-[9px] font-bold">{s.winRate}%</span>
-                )}
-              </div>
-            );
-          })}
+      );
+    });
+
+    return (
+      <div>
+        {/* Mobile: compact inline */}
+        <div className="flex items-center gap-2 md:hidden">
+          <div className="w-[56px] flex-shrink-0">
+            <div className="text-[10px] font-semibold text-[#aaa] truncate leading-tight">{team}</div>
+            {t && t.n > 0 && (
+              <div className={`text-[10px] font-bold leading-tight ${t.winRate >= 50 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>{t.winRate}%</div>
+            )}
+          </div>
+          <div className="flex-1 grid grid-cols-7 gap-0.5">{cells}</div>
+        </div>
+
+        {/* Desktop: stacked with summary */}
+        <div className="hidden md:block">
+          <div className="mb-1 text-[11px] font-semibold text-[#aaa] truncate">{team}</div>
+          <div className="grid grid-cols-7 gap-0.5 py-0.5">{cells}</div>
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+            {best && <span className="text-[#4ade80]">★ {best.label} {best.winRate}%</span>}
+            {worst && <span className="text-[#f87171]">✗ {worst.label} {worst.winRate}%</span>}
+            {t && t.n > 0 && <span className="text-[#aaa]">Hôm nay: {t.winRate}% {t.winRate >= 50 ? '↑' : '↓'}</span>}
+          </div>
         </div>
       </div>
     );
@@ -1459,7 +1478,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   function FormList({ recentMatches, team }: { recentMatches: Match[]; team: string }) {
     if (!recentMatches.length) return <div className="text-[11px] text-[#555] py-1">Không có dữ liệu</div>;
     return (
-      <div className="flex flex-col divide-y divide-[#1a1a1a]">
+      <div className="flex flex-col divide-y divide-[#1e1e1e]">
         {recentMatches.map((m, i) => {
           const isHome = m.homeTeam === team;
           const opp = isHome ? m.awayTeam : m.homeTeam;
@@ -1467,10 +1486,10 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           const myTT = isHome ? m.ttHome : m.ttAway;
           const opTT = isHome ? m.ttAway : m.ttHome;
           return (
-            <div key={i} className="py-1 flex items-center gap-1">
-              <span className="text-[9px] text-[#444] flex-shrink-0">{isHome ? '🏠' : '✈️'}</span>
-              <span className="text-[11px] text-[#aaa] truncate flex-1 min-w-0">{opp}</span>
-              <span className="text-[11px] font-bold text-white flex-shrink-0 tabular-nums">{myTT}-{opTT}</span>
+            <div key={i} className="py-1 md:py-1.5 flex items-center gap-1">
+              <span className="text-[9px] text-[#555] flex-shrink-0">{isHome ? '🏠' : '✈️'}</span>
+              <span className="text-[10px] md:text-[10px] text-[#bbb] truncate flex-1 min-w-0">{opp}</span>
+              <span className="text-[10px] font-bold text-white flex-shrink-0 tabular-nums">{myTT}-{opTT}</span>
               <ResultTag result={res} />
             </div>
           );
@@ -1482,23 +1501,25 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   function H2HList({ h2h }: { h2h: Match[] }) {
     if (!h2h.length) return <div className="text-[11px] text-[#555]">Chưa có dữ liệu đối đầu</div>;
     return (
-      <div className="flex flex-col divide-y divide-[#1a1a1a]">
+      <div className="flex flex-col divide-y divide-[#1e1e1e]">
         {h2h.map((m, i) => {
           const ih = m.homeTeam === homeDbName;
           const homeScore = +m.ttHome;
           const awayScore = +m.ttAway;
           const winner = homeScore > awayScore ? m.homeTeam : awayScore > homeScore ? m.awayTeam : null;
-          const wCls = winner === homeDbName ? 'text-[#4ade80]' : winner === awayDbName ? 'text-[#f87171]' : 'text-[#fbbf24]';
+          // H/A relative to the H2H match itself (home/away of displayed row), color relative to live match
+          const h2hLabel = winner === null ? 'D' : winner === m.homeTeam ? 'H' : 'A';
+          const wCls = winner === homeDbName ? 'text-[#4ade80]' : winner === awayDbName ? 'text-[#f87171]' : winner === null ? 'text-[#fbbf24]' : 'text-[#aaa]';
           return (
-            <div key={i} className="py-1 flex items-center gap-1.5">
-              <span className="text-[10px] text-[#444] flex-shrink-0">{ih ? '🏠' : '✈️'}</span>
-              <span className="text-[10px] text-[#555] flex-shrink-0 tabular-nums">{m.date}</span>
-              <span className="flex-1 min-w-0 text-[11px] text-[#aaa] truncate">
+            <div key={i} className="flex items-center gap-1.5 md:gap-2 py-1 md:py-1.5 text-[11px]">
+              <span className="w-[56px] md:w-[72px] flex-shrink-0 text-[10px] text-[#555] tabular-nums">{m.date}</span>
+              <span className="text-[10px]">{ih ? '🏠' : '✈️'}</span>
+              <span className="flex-1 min-w-0 text-[#bbb] truncate">
                 {m.homeTeam} <span className="text-[#444]">vs</span> {m.awayTeam}
               </span>
-              <span className="text-[10px] text-[#555] flex-shrink-0 tabular-nums">H1 {m.h1Home}-{m.h1Away}</span>
-              <span className="text-[11px] font-bold text-white flex-shrink-0 tabular-nums">{m.ttHome}-{m.ttAway}</span>
-              <span className={`text-[11px] font-extrabold flex-shrink-0 ${wCls}`}>{winner ? (winner === homeDbName ? 'H' : 'A') : 'D'}</span>
+              <span className="hidden md:inline text-[10px] text-[#555] tabular-nums">H1 {m.h1Home}-{m.h1Away}</span>
+              <span className="font-bold text-white tabular-nums">{m.ttHome}-{m.ttAway}</span>
+              <span className={`font-bold ${wCls}`}>{h2hLabel}</span>
               <TypeBadge type={m.matchType} />
             </div>
           );
@@ -1622,36 +1643,36 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           )}
 
           {!loading && matches !== null && activeTab === 'stats' && (
-            <div className="flex flex-col">
+            <div className="flex flex-col gap-0">
               {/* Section: Phong độ theo ngày */}
-              <div className="px-3 py-3 border-b border-[#1a1a1a]">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#444]">
-                  📅 Phong độ theo ngày · {todayLabel}
+              <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">
+                  📅 Phong độ theo ngày · Hôm nay: {todayLabel}
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 md:gap-4">
                   <DayBar stats={homeDayStats} team={homeDbName} />
                   <DayBar stats={awayDayStats} team={awayDbName} />
                 </div>
               </div>
 
               {/* Section: 5 trận — 2 col side by side */}
-              <div className="px-3 py-3 border-b border-[#1a1a1a]">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#444]">📋 5 trận gần nhất</div>
-                <div className="grid grid-cols-2 gap-2">
+              <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📋 5 trận gần nhất</div>
+                <div className="grid grid-cols-2 gap-2 md:gap-3">
                   <div>
-                    <div className="mb-1 text-[10px] font-semibold text-[#666] truncate">{homeDbName}</div>
+                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{homeDbName}</div>
                     <FormList recentMatches={homeMatches} team={homeDbName} />
                   </div>
                   <div>
-                    <div className="mb-1 text-[10px] font-semibold text-[#666] truncate">{awayDbName}</div>
+                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{awayDbName}</div>
                     <FormList recentMatches={awayMatches} team={awayDbName} />
                   </div>
                 </div>
               </div>
 
               {/* Section: H2H full width */}
-              <div className="px-3 py-3">
-                <div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-[#444]">⚔️ 5 trận đối đầu</div>
+              <div className="px-3 py-3 md:px-4 md:py-4">
+                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
                 <H2HList h2h={h2hMatches} />
               </div>
             </div>
