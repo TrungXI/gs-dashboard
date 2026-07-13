@@ -1696,43 +1696,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               {/* Shared visual card */}
               <PredictCard />
 
-              {/* Box 1 — Free */}
-              <div className="rounded-xl border border-[#1a3a4a] bg-[#0a1a20] overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a4a]">
-                  <span className="text-[12px] font-extrabold text-[#17a2b8]">🆓 Dự đoán Free</span>
-                  <span className="ml-auto text-[10px] text-[#2a5a6a] font-semibold">Công thức thống kê</span>
-                </div>
-                <div className="px-3 py-2.5 space-y-1.5 text-[13px]">
-                  <div className="flex justify-between">
-                    <span className="text-[#555]">Form {homeDbName}</span>
-                    <span className="font-bold text-white">{homeW}W {homeD}D {homeL}L</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#555]">Form {awayDbName}</span>
-                    <span className="font-bold text-white">{awayW}W {awayD}D {awayL}L</span>
-                  </div>
-                  {h2hMatches.length > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-[#555]">H2H</span>
-                      <span className="font-bold text-white">{h2hHomeW}W · {h2hDraws}D · {h2hAwayW}W</span>
-                    </div>
-                  )}
-                  {live.hcLines[0]?.line && (
-                    <div className="flex justify-between">
-                      <span className="text-[#555]">Kèo HC</span>
-                      <span className="font-bold text-[#fbbf24]">{live.hcLines[0].line} ({live.hcLines[0].home}/{live.hcLines[0].away})</span>
-                    </div>
-                  )}
-                  {live.ouLines[0]?.line && (
-                    <div className="flex justify-between">
-                      <span className="text-[#555]">Tài xỉu</span>
-                      <span className="font-bold text-[#fbbf24]">{live.ouLines[0].line}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Box 2 — Python ML */}
+              {/* Box 1 — Python ML */}
               <div className="rounded-xl border border-[#1a3a1a] bg-[#0a1a0a] overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
                   <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
