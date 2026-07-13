@@ -163,11 +163,9 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
 
   const lines: string[] = [];
 
-  // ML header — shown when ML service responded
+  // ML structured header — frontend parses this to render a visual card
   if (ml) {
-    const confEmoji = ml.confidence === 'high' ? '🟢' : ml.confidence === 'medium' ? '🟡' : '🔴';
-    lines.push(`[ML v${ml.model_version} · ${ml.n_samples} mẫu · ${confEmoji} ${ml.confidence}]`);
-    lines.push(`${homeTeam}: ${ml.home_pct}% thắng · Hòa: ${ml.draw_pct}% · ${awayTeam}: ${ml.away_pct}% thắng`);
+    lines.push(`__ML__:${ml.home_pct}:${ml.draw_pct}:${ml.away_pct}:${ml.confidence}:${ml.model_version}:${ml.n_samples}`);
     lines.push('');
   }
 

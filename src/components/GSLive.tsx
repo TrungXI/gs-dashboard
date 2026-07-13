@@ -1267,6 +1267,41 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   function renderLine(line: string, idx: number) {
     if (!line.trim()) return <div key={idx} className="h-2" />;
 
+    // ML structured card
+    if (line.startsWith('__ML__:')) {
+      const [, homePct, drawPct, awayPct, conf, ver, samples] = line.split(':');
+      const confColor = conf === 'high' ? '#4ade80' : conf === 'medium' ? '#fbbf24' : '#f87171';
+      const confLabel = conf === 'high' ? 'Cao' : conf === 'medium' ? 'Trung bình' : 'Thấp';
+      return (
+        <div key={idx} className="rounded-lg border border-[#1a3a1a] bg-[#060f06] p-3 mb-1">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="text-[11px] font-bold text-[#4ade80]">🤖 ML Model v{ver}</span>
+            <span className="text-[10px] text-[#2a4a2a]">{samples} mẫu</span>
+            <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ color: confColor, backgroundColor: confColor + '18' }}>
+              Độ tin cậy: {confLabel}
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-lg bg-[#0d2010] py-2">
+              <div className="text-[22px] font-black text-[#4ade80]">{homePct}<span className="text-[13px]">%</span></div>
+              <div className="text-[10px] text-[#555] mt-0.5 truncate px-1">{homeDbName}</div>
+              <div className="text-[10px] text-[#2a4a2a]">Thắng</div>
+            </div>
+            <div className="rounded-lg bg-[#1a1505] py-2">
+              <div className="text-[22px] font-black text-[#fbbf24]">{drawPct}<span className="text-[13px]">%</span></div>
+              <div className="text-[10px] text-[#555] mt-0.5">Hòa</div>
+              <div className="text-[10px] text-[#3a3010]">—</div>
+            </div>
+            <div className="rounded-lg bg-[#200d0d] py-2">
+              <div className="text-[22px] font-black text-[#f87171]">{awayPct}<span className="text-[13px]">%</span></div>
+              <div className="text-[10px] text-[#555] mt-0.5 truncate px-1">{awayDbName}</div>
+              <div className="text-[10px] text-[#3a1515]">Thắng</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     const isHeader = /^[⚽🔄🎯📋]/.test(line);
     const isArrow = line.trim().startsWith('→');
     const isDim = line.trim().startsWith('OU') || line.trim().startsWith('HC') || line.trim().startsWith('Đang:');
