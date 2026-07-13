@@ -1150,7 +1150,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'predict' | 'claude'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'free' | 'predict' | 'claude'>('stats');
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
   const predAbortRef = useRef<AbortController | null>(null);
@@ -1642,16 +1642,22 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             📊 Thống kê
           </button>
           <button
+            onClick={() => setActiveTab('free')}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'free' ? 'text-white border-[#17a2b8]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+          >
+            🆓 Free
+          </button>
+          <button
             onClick={() => setActiveTab('predict')}
             className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'predict' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
           >
-            🤖 Dự đoán Python
+            🤖 Python
           </button>
           <button
             onClick={() => setActiveTab('claude')}
             className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'claude' ? 'text-white border-[#a78bfa]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
           >
-            ✨ Claude AI
+            ✨ Claude
           </button>
         </div>
 
@@ -1693,6 +1699,40 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               <div className="px-4 py-4">
                 <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
                 <H2HList h2h={h2hMatches} />
+              </div>
+            </div>
+          )}
+
+          {!loading && matches !== null && activeTab === 'free' && (
+            <div className="px-4 py-4 space-y-3">
+              <PredictCard />
+              <div className="rounded-lg border border-[#1a3a4a] bg-[#0a1a20] p-3">
+                <div className="text-[12px] font-bold text-[#17a2b8] mb-2">🆓 Phân tích thống kê (free)</div>
+                <div className="text-[13px] text-[#888] leading-relaxed">
+                  Phân tích dựa trên công thức thống kê: form W/D/L, H2H, kèo HC. Không dùng AI hay ML.
+                </div>
+                <div className="mt-3 space-y-2 text-[13px] text-[#bbb]">
+                  <div className="flex justify-between">
+                    <span className="text-[#555]">Form {homeDbName}</span>
+                    <span className="font-bold">{homeW}W {homeD}D {homeL}L</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-[#555]">Form {awayDbName}</span>
+                    <span className="font-bold">{awayW}W {awayD}D {awayL}L</span>
+                  </div>
+                  {h2hMatches.length > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#555]">H2H</span>
+                      <span className="font-bold">{homeDbName} {h2hHomeW}W · {h2hDraws}D · {h2hAwayW}W {awayDbName}</span>
+                    </div>
+                  )}
+                  {live.hcLines[0]?.line && (
+                    <div className="flex justify-between">
+                      <span className="text-[#555]">Kèo HC</span>
+                      <span className="font-bold text-[#fbbf24]">{live.hcLines[0].line} ({live.hcLines[0].home}/{live.hcLines[0].away})</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
