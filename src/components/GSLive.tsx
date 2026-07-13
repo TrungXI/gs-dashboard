@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
@@ -1241,6 +1241,107 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
   const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
 
+  // Which team has scoring advantage (null = balanced)
+  const favoredTeam = useMemo<string | null>(() => {
+    const homeFormPts = homeW * 3 + homeD;
+    const awayFormPts = awayW * 3 + awayD;
+    const total = homeFormPts + awayFormPts;
+    let p = total > 0 ? homeFormPts / total : 0.5;
+    if (h2hMatches.length > 0) {
+      p = p * 0.7 + ((h2hHomeW + h2hDraws * 0.5) / h2hMatches.length) * 0.3;
+    }
+    const diff = live.h1Home - live.h1Away;
+    if (diff > 0) p -= 0.08;
+    if (diff < 0) p += 0.08;
+    const hcVal = live.hcLines[0]?.home ? parseFloat(live.hcLines[0].home) : null;
+    if (hcVal !== null && hcVal < -0.2) p += 0.05;
+    if (hcVal !== null && hcVal > 0.2) p -= 0.05;
+    p = Math.min(Math.max(p, 0.2), 0.8);
+    const homePct = Math.round(p * 100);
+    if (Math.abs(homePct - (100 - homePct)) <= 8) return null;
+    return homePct > 50 ? homeDbName : awayDbName;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeW, homeD, awayW, awayD, h2hMatches.length, h2hHomeW, h2hDraws, live.h1Home, live.h1Away, live.hcLines[0]?.home, homeDbName, awayDbName]);
+
+  // Tokenize one line: highlight team names + numbers
+  function renderLine(line: string, idx: number) {
+    if (!line.trim()) return <div key={idx} className="h-2" />;
+
+    const isHeader = /^[⚽🔄🎯📋]/.test(line);
+    const isArrow = line.trim().startsWith('→');
+    const isDim = line.trim().startsWith('OU') || line.trim().startsWith('HC') || line.trim().startsWith('Đang:');
+
+    if (isHeader) {
+      return (
+        <div key={idx} className="text-[14px] font-extrabold text-white mt-4 first:mt-0 tracking-tight">
+          {line}
+        </div>
+      );
+    }
+
+    // Tokenize: team names → colored, numbers/% → yellow
+    const otherTeam = favoredTeam === homeDbName ? awayDbName : homeDbName;
+    type Tok = { text: string; cls?: string };
+    const tokens: Tok[] = [];
+    let rem = line.trim();
+
+    // Sort by length desc so longer names match first
+    const namedPatterns: { str: string; cls: string }[] = [];
+    if (favoredTeam) namedPatterns.push({ str: favoredTeam, cls: 'font-extrabold text-[#4ade80]' });
+    if (otherTeam) namedPatterns.push({ str: otherTeam, cls: 'text-[#555] font-normal' });
+    namedPatterns.sort((a, b) => b.str.length - a.str.length);
+
+    while (rem.length > 0) {
+      let found = false;
+
+      for (const p of namedPatterns) {
+        if (rem.startsWith(p.str)) {
+          tokens.push({ text: p.str, cls: p.cls });
+          rem = rem.slice(p.str.length);
+          found = true;
+          break;
+        }
+      }
+      if (found) continue;
+
+      // Percentage
+      const pct = rem.match(/^\d+%/);
+      if (pct) {
+        tokens.push({ text: pct[0], cls: 'font-extrabold text-[#fbbf24]' });
+        rem = rem.slice(pct[0].length);
+        continue;
+      }
+
+      // Number with decimal (avg goals, kèo line)
+      const num = rem.match(/^\d+\.\d+/);
+      if (num) {
+        tokens.push({ text: num[0], cls: 'font-bold text-[#17a2b8]' });
+        rem = rem.slice(num[0].length);
+        continue;
+      }
+
+      // Append plain char
+      const last = tokens.at(-1);
+      if (last && !last.cls) last.text += rem[0];
+      else tokens.push({ text: rem[0] });
+      rem = rem.slice(1);
+    }
+
+    const wrapCls = isArrow
+      ? 'text-[13px] text-[#fbbf24] pl-3 leading-relaxed'
+      : isDim
+        ? 'text-[12px] text-[#666] pl-3 leading-relaxed'
+        : 'text-[13px] text-[#bbb] pl-3 leading-relaxed';
+
+    return (
+      <div key={idx} className={wrapCls}>
+        {tokens.map((t, ti) =>
+          t.cls ? <span key={ti} className={t.cls}>{t.text}</span> : t.text
+        )}
+      </div>
+    );
+  }
+
   async function triggerPrediction() {
     if (predAbortRef.current) predAbortRef.current.abort();
     const ctrl = new AbortController();
@@ -1608,9 +1709,14 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   <div className="text-[12px] text-[#555]">Đang tải…</div>
                 )}
                 {prediction && (
-                  <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                    {prediction}
-                    {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />}
+                  <div className="space-y-0.5">
+                    {predicting
+                      ? <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                          {prediction}
+                          <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />
+                        </div>
+                      : prediction.split('\n').map((line, i) => renderLine(line, i))
+                    }
                   </div>
                 )}
               </div>
