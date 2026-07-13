@@ -302,7 +302,7 @@ export default function GSLive() {
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away} (${matchTime})`);
+              notifyOS('goal', '⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away} (${matchTime})`);
             }
           }
           if (newScored.size > 0) {
