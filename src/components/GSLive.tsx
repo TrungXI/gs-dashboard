@@ -1150,7 +1150,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('suggest');
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
   const predAbortRef = useRef<AbortController | null>(null);
