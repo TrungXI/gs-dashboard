@@ -3,6 +3,12 @@ import type { Match } from '../types/match';
 
 let pool: Pool | null = null;
 
+// Handles both old DB format "Team (20p)" and new format "Team (V) (20p)"
+function formatTeam(name: string): string {
+  if (/ \([VS]\) \((?:20|16)p\)$/.test(name)) return name;
+  return name.replace(/ \(20p\)$/, ' (V) (20p)').replace(/ \(16p\)$/, ' (S) (16p)');
+}
+
 function getPool(): Pool {
   if (!pool) {
     pool = new Pool({ connectionString: process.env.ANALYSIS_DATABASE_URL });
@@ -32,8 +38,8 @@ export async function fetchAllMatches(): Promise<Match[]> {
       time: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
       matchType: r.match_type as '20p' | '16p',
       league: r.league as string,
-      homeTeam: r.home_team as string,
-      awayTeam: r.away_team as string,
+      homeTeam: formatTeam(r.home_team as string),
+      awayTeam: formatTeam(r.away_team as string),
       h1Home: String(r.h1_home),
       h1Away: String(r.h1_away),
       ttHome: String(r.tt_home),

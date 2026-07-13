@@ -7,7 +7,7 @@ const GS_TOKEN = process.env.GS_TOKEN || '69-4da0041e12f5643e1537a1495bb1db3d'
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 function renameTeam(name) {
-  return String(name).replace(/ \(V\)$/, ' (20p)').replace(/ \(S\)$/, ' (16p)')
+  return String(name).replace(/ \(V\)$/, ' (V) (20p)').replace(/ \(S\)$/, ' (S) (16p)')
 }
 
 function getDates(from, to) {

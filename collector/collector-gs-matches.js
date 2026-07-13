@@ -23,7 +23,7 @@ function vnTodayIso() {
 }
 
 function renameTeam(name) {
-  return String(name).replace(/ \(V\)$/, ' (20p)').replace(/ \(S\)$/, ' (16p)')
+  return String(name).replace(/ \(V\)$/, ' (V) (20p)').replace(/ \(S\)$/, ' (S) (16p)')
 }
 
 async function fetchDay(date) {
