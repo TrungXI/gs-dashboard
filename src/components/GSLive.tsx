@@ -1390,42 +1390,114 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     );
   }
 
-  function StatBar({ label, w, d, l, total }: { label: string; w: number; d: number; l: number; total: number }) {
-    const wPct = (w / total) * 100;
-    const dPct = (d / total) * 100;
-    const lPct = (l / total) * 100;
-    return (
-      <div>
-        <div className="flex justify-between mb-0.5">
-          <span className="text-[10px] text-[#aaa] truncate max-w-[70%]">{label}</span>
-          <span className="text-[10px] text-[#555]">{w}W {d}D {l}L</span>
-        </div>
-        <div className="flex rounded-sm overflow-hidden h-2">
-          <div style={{ width: `${wPct}%` }} className="bg-[#4ade80]" />
-          <div style={{ width: `${dPct}%` }} className="bg-[#fbbf24]" />
-          <div style={{ width: `${lPct}%` }} className="bg-[#f87171]" />
-        </div>
+  function PredictCard() {
+    const homeFormPts = homeW * 3 + homeD;
+    const awayFormPts = awayW * 3 + awayD;
+    const totalFormPts = homeFormPts + awayFormPts;
+
+    let homeP = totalFormPts > 0 ? homeFormPts / totalFormPts : 0.5;
+    if (h2hMatches.length > 0) {
+      const h2hRatio = (h2hHomeW + h2hDraws * 0.5) / h2hMatches.length;
+      homeP = homeP * 0.7 + h2hRatio * 0.3;
+    }
+    const scoreDiff = live.h1Home - live.h1Away;
+    if (scoreDiff > 0) homeP -= 0.08;
+    if (scoreDiff < 0) homeP += 0.08;
+    const hcVal = live.hcLines[0]?.home ? parseFloat(live.hcLines[0].home) : null;
+    if (hcVal !== null && hcVal < -0.2) homeP += 0.05;
+    if (hcVal !== null && hcVal > 0.2) homeP -= 0.05;
+    homeP = Math.min(Math.max(homeP, 0.2), 0.8);
+
+    const homePct = Math.round(homeP * 100);
+    const awayPct = 100 - homePct;
+    const homeLeads = homePct > awayPct;
+    const isBalanced = Math.abs(homePct - awayPct) <= 8;
+
+    const Dots = ({ w, d, l }: { w: number; d: number; l: number }) => (
+      <div className="flex gap-1">
+        {Array.from({ length: w }, (_, i) => <span key={`w${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
+        {Array.from({ length: d }, (_, i) => <span key={`d${i}`} className="w-2.5 h-2.5 rounded-full bg-[#fbbf24] inline-block" />)}
+        {Array.from({ length: l }, (_, i) => <span key={`l${i}`} className="w-2.5 h-2.5 rounded-full bg-[#f87171] inline-block" />)}
       </div>
     );
-  }
 
-  function H2HBar({ homeTeam, awayTeam, homeW, draws, awayW, total }: { homeTeam: string; awayTeam: string; homeW: number; draws: number; awayW: number; total: number }) {
     return (
-      <div>
-        <div className="flex justify-between mb-0.5">
-          <span className="text-[10px] text-[#4ade80] truncate max-w-[40%]">{homeTeam}</span>
-          <span className="text-[10px] text-[#555]">Đối đầu</span>
-          <span className="text-[10px] text-[#f87171] truncate max-w-[40%] text-right">{awayTeam}</span>
+      <div className="rounded-xl border border-[#2a2a2a] bg-[#161616] overflow-hidden">
+        {/* Badge header */}
+        <div className="px-3 py-2 border-b border-[#1f1f1f] flex items-center gap-2">
+          <span className="text-[11px] font-bold text-[#666] uppercase tracking-wider">⚽ Ghi bàn tiếp theo</span>
+          {isBalanced ? (
+            <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#fbbf24]/15 text-[#fbbf24]">Cân bằng</span>
+          ) : (
+            <span className={`ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full ${homeLeads ? 'bg-[#4ade80]/15 text-[#4ade80]' : 'bg-[#f87171]/15 text-[#f87171]'}`}>
+              {homeLeads ? homeDbName : awayDbName} ưu thế
+            </span>
+          )}
         </div>
-        <div className="flex rounded-sm overflow-hidden h-2">
-          <div style={{ width: `${(homeW / total) * 100}%` }} className="bg-[#4ade80]" />
-          <div style={{ width: `${(draws / total) * 100}%` }} className="bg-[#fbbf24]" />
-          <div style={{ width: `${(awayW / total) * 100}%` }} className="bg-[#f87171]" />
-        </div>
-        <div className="flex justify-between mt-0.5">
-          <span className="text-[9px] text-[#4ade80]">{homeW}W</span>
-          {draws > 0 && <span className="text-[9px] text-[#fbbf24]">{draws}D</span>}
-          <span className="text-[9px] text-[#f87171]">{awayW}W</span>
+
+        {/* Big % */}
+        <div className="px-4 pt-4 pb-3">
+          <div className="flex items-end gap-3 mb-3">
+            <div className={`flex-1 transition-opacity ${homeLeads && !isBalanced ? 'opacity-100' : 'opacity-35'}`}>
+              <div className="text-[12px] font-semibold text-white truncate mb-0.5">{homeDbName}</div>
+              <div className={`text-[36px] font-black leading-none ${homeLeads ? 'text-[#4ade80]' : 'text-white'}`}>
+                {homePct}<span className="text-[18px] font-bold">%</span>
+              </div>
+            </div>
+            <div className="text-[14px] text-[#333] font-bold flex-shrink-0 pb-2">vs</div>
+            <div className={`flex-1 text-right transition-opacity ${!homeLeads && !isBalanced ? 'opacity-100' : 'opacity-35'}`}>
+              <div className="text-[12px] font-semibold text-white truncate mb-0.5">{awayDbName}</div>
+              <div className={`text-[36px] font-black leading-none ${!homeLeads ? 'text-[#f87171]' : 'text-white'}`}>
+                {awayPct}<span className="text-[18px] font-bold">%</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="flex rounded-full overflow-hidden h-3 mb-4">
+            <div style={{ width: `${homePct}%` }} className={`transition-all duration-500 ${homeLeads ? 'bg-[#4ade80]' : 'bg-[#2d2d2d]'}`} />
+            <div style={{ width: `${awayPct}%` }} className={`transition-all duration-500 ${!homeLeads ? 'bg-[#f87171]' : 'bg-[#2d2d2d]'}`} />
+          </div>
+
+          {/* Quick stats grid */}
+          <div className="flex gap-4">
+            {/* Form */}
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">Form 5 trận</div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-1.5">
+                  <Dots w={homeW} d={homeD} l={homeL} />
+                  <span className="text-[11px] text-[#555]">{homeW}W {homeD}D {homeL}L</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Dots w={awayW} d={awayD} l={awayL} />
+                  <span className="text-[11px] text-[#555]">{awayW}W {awayD}D {awayL}L</span>
+                </div>
+              </div>
+            </div>
+
+            {/* H2H */}
+            {h2hMatches.length > 0 && (
+              <div className="flex-shrink-0 text-right">
+                <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">H2H</div>
+                <div className="flex gap-1 justify-end mb-1">
+                  {Array.from({ length: h2hHomeW }, (_, i) => <span key={`hh${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
+                  {Array.from({ length: h2hDraws }, (_, i) => <span key={`hd${i}`} className="w-2.5 h-2.5 rounded-full bg-[#fbbf24] inline-block" />)}
+                  {Array.from({ length: h2hAwayW }, (_, i) => <span key={`ha${i}`} className="w-2.5 h-2.5 rounded-full bg-[#f87171] inline-block" />)}
+                </div>
+                <div className="text-[11px] text-[#555]">{h2hHomeW}-{h2hDraws}-{h2hAwayW}</div>
+              </div>
+            )}
+
+            {/* HC */}
+            {live.hcLines[0]?.line && (
+              <div className="flex-shrink-0 text-right">
+                <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">Kèo HC</div>
+                <div className="text-[14px] font-bold text-[#fbbf24]">{live.hcLines[0].line}</div>
+                <div className="text-[11px] text-[#555]">{live.hcLines[0].home}/{live.hcLines[0].away}</div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -1510,30 +1582,24 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           )}
 
           {!loading && matches !== null && activeTab === 'predict' && (
-            <div className="px-4 py-4">
-              {/* Stat bars */}
-              <div className="mb-4 space-y-3">
-                <StatBar label={homeDbName} w={homeW} d={homeD} l={homeL} total={5} />
-                <StatBar label={awayDbName} w={awayW} d={awayD} l={awayL} total={5} />
-                {h2hMatches.length > 0 && (
-                  <H2HBar homeTeam={homeDbName} awayTeam={awayDbName} homeW={h2hHomeW} draws={h2hDraws} awayW={h2hAwayW} total={h2hMatches.length} />
-                )}
-              </div>
+            <div className="px-4 py-4 space-y-3">
+              {/* Visual next-goal card */}
+              <PredictCard />
 
-              {/* AI analysis */}
+              {/* Streaming detail */}
               <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] font-bold text-[#aaa]">🤖 Phân tích AI</span>
-                  {predicting && <span className="text-[10px] text-[#fbbf24] animate-pulse">đang phân tích…</span>}
+                  <span className="text-[12px] font-bold text-[#666]">Chi tiết phân tích</span>
+                  {predicting && <span className="text-[11px] text-[#fbbf24] animate-pulse">đang tính…</span>}
                   {!predicting && prediction && (
-                    <button onClick={triggerPrediction} className="ml-auto text-[10px] text-[#555] hover:text-white">↺ Làm mới</button>
+                    <button onClick={triggerPrediction} className="ml-auto text-[11px] text-[#555] hover:text-white">↺ Làm mới</button>
                   )}
                 </div>
                 {!prediction && !predicting && (
-                  <div className="text-[11px] text-[#555]">Đang tải phân tích…</div>
+                  <div className="text-[12px] text-[#555]">Đang tải…</div>
                 )}
                 {prediction && (
-                  <div className="text-[12px] text-[#ddd] leading-relaxed whitespace-pre-wrap">
+                  <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
                     {prediction}
                     {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />}
                   </div>
