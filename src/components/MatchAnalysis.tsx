@@ -373,9 +373,9 @@ export default function MatchAnalysis() {
   const analyzed = analyzedA !== '' && analyzedB !== '';
 
   return (
-    <div className="text-white">
-      {/* Selector card */}
-      <div className="mb-5 rounded-lg border border-[#2a2a2a] bg-[#141414] p-4">
+    <div className="text-white pt-[160px] md:pt-0">
+      {/* Selector card — fixed top on mobile, normal flow on desktop */}
+      <div className="fixed top-0 left-0 right-0 z-40 rounded-none border-b border-[#2a2a2a] bg-[#141414] p-4 md:relative md:mb-5 md:rounded-lg md:border md:border-[#2a2a2a]">
         <h1 className="mb-3 text-sm font-bold text-white">📊 Phân Tích Đối Kháng</h1>
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-[180px] flex-1">

@@ -1,6 +1,9 @@
-import { ALL_MATCHES } from '../lib/processData';
 import Dashboard from '../components/Dashboard';
+import { fetchAllMatches } from '../lib/gsMatchesDb';
 
-export default function Home() {
-  return <Dashboard initialMatches={ALL_MATCHES} />;
+export const dynamic = 'force-dynamic';
+
+export default async function Home() {
+  const matches = await fetchAllMatches().catch(() => []);
+  return <Dashboard initialMatches={matches} />;
 }

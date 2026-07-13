@@ -50,11 +50,6 @@ export interface GsLiveMatch {
   redAway: number;
   cornersHome: number;
   cornersAway: number;
-  // H1 final goals — present only when period=8 (H2). score['11']=H1 home, score['12']=H1 away.
-  // During H1, h1Home/h1Away is the running H1 score. In H2, h1Home/h1Away is the H2 running score
-  // and h1FinalHome/h1FinalAway holds the locked H1 result.
-  h1FinalHome: number | null;
-  h1FinalAway: number | null;
 }
 
 /** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
@@ -215,8 +210,6 @@ function buildMatch(
     redAway,
     cornersHome,
     cornersAway,
-    h1FinalHome: typeof score['11'] === 'number' ? score['11'] : null,
-    h1FinalAway: typeof score['12'] === 'number' ? score['12'] : null,
   };
 }
 

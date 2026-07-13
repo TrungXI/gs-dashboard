@@ -7,12 +7,10 @@ import DataTable from './DataTable';
 import GSLive from './GSLive';
 import Analysis from './Analysis';
 import MatchAnalysis from './MatchAnalysis';
-import { apiToRow, sortMatchesDesc } from '../lib/matchUtils';
 
 type View = 'data' | 'gs-live' | 'report' | 'match-analysis';
 type FType = 'all' | '20p' | '16p';
 
-const LS_MATCHES = 'gs_matches';
 const LS_UI = 'gs_ui_state';
 
 function loadUiState() {
@@ -67,44 +65,21 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
     uiRestored.current = true;
-    const DATA_VERSION = '4';
-    if (localStorage.getItem('gs_data_version') !== DATA_VERSION) {
-      localStorage.removeItem(LS_MATCHES);
-      localStorage.removeItem('gs_updated_at');
-      localStorage.setItem('gs_data_version', DATA_VERSION);
-    }
-    try {
-      const saved = localStorage.getItem(LS_MATCHES);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Match[];
-        if (parsed.length > 0) setMatches(sortMatchesDesc(parsed));
-      }
-    } catch { /* ignore */ }
+    // Clear dead keys from old versions
+    ['gs_matches', 'gs_updated_at', 'volta_matches', 'volta_updated_at', 'gs_data_version'].forEach(k => localStorage.removeItem(k));
   }, []);
 
   useEffect(() => {
-    async function loadFromSupabase() {
+    async function loadFromDb() {
       try {
-        const res = await fetch('/api/gs-cache');
-        const json = (await res.json()) as {
-          ok: boolean;
-          data?: Record<string, unknown[]>;
-          updatedAt?: string;
-        };
-        if (json.ok && json.data && Object.keys(json.data).length > 0) {
-          const rows = sortMatchesDesc(
-            Object.values(json.data)
-              .flat()
-              .map((m) => apiToRow(m as Record<string, unknown>)),
-          );
-          if (rows.length > 0) {
-            setMatches(rows);
-            localStorage.setItem(LS_MATCHES, JSON.stringify(rows));
-          }
+        const res = await fetch('/api/gs-matches');
+        const json = (await res.json()) as { ok: boolean; matches?: Match[] };
+        if (json.ok && json.matches && json.matches.length > 0) {
+          setMatches(json.matches);
         }
-      } catch { /* Supabase unavailable */ }
+      } catch { /* DB unavailable */ }
     }
-    loadFromSupabase();
+    loadFromDb();
   }, []);
 
   const teams = useMemo(
