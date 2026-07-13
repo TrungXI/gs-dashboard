@@ -224,6 +224,18 @@ export default function GSLive() {
     setAutoStream(localStorage.getItem('gs_auto_stream') === '1');
   }, []);
 
+  // Request OS notification permission on mount
+  useEffect(() => {
+    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  function notifyOS(title: string, body: string) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    new Notification(title, { body, silent: false });
+  }
+
   function applyToken(raw: string) {
     if (!raw.trim()) {
       localStorage.removeItem('gs_token');
@@ -274,10 +286,12 @@ export default function GSLive() {
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
+              notifyOS('⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam}`);
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
+              notifyOS('⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away}`);
             }
           }
           if (newScored.size > 0) {
@@ -293,6 +307,7 @@ export default function GSLive() {
                 h1FinalRef.current.set(nm.eventId, { home: pm.h1Home, away: pm.h1Away });
                 h1Changed = true;
                 pushToast('halftime', `🔔 Hết Hiệp 1 — ${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
+                notifyOS('🔔 Hết Hiệp 1', `${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
               }
             }
           }
