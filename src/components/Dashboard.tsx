@@ -80,6 +80,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       } catch { /* DB unavailable */ }
     }
     loadFromDb();
+    const id = setInterval(loadFromDb, 2 * 60 * 1000); // sync with collector poll
+    return () => clearInterval(id);
   }, []);
 
   const teams = useMemo(

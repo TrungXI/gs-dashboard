@@ -119,7 +119,7 @@ async function poll() {
   }
 }
 
-console.log('GS Matches Collector started — polling every 30min')
+console.log('GS Matches Collector started — polling every 2min')
 console.log(`DB: ${process.env.DATABASE_URL?.replace(/:\/\/.*@/, '://<hidden>@')}`)
 poll()
 setInterval(poll, POLL_MS)
