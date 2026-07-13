@@ -36,14 +36,18 @@ interface GsLiveMatch {
   redAway: number;
   cornersHome: number;
   cornersAway: number;
-  h1FinalHome: number | null;
-  h1FinalAway: number | null;
 }
 
 type Signal =
   | { kind: 'FOLLOW'; label: '◀ THEO'; color: string }
   | { kind: 'TRAP'; label: '⚠ BẪY'; color: string }
   | { kind: 'DRAW_LOCK'; label: '✓ CHỐT HÒA'; color: string };
+
+interface Toast {
+  id: number;
+  kind: 'goal' | 'halftime';
+  message: string;
+}
 
 const GREEN = '#4ade80';
 const BLUE = '#60a5fa';
@@ -183,13 +187,19 @@ export default function GSLive() {
   const [loading, setLoading] = useState(false);
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
+  // H1 final scores remembered at the H1→H2 transition (API has no dedicated H1-final field)
+  const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
+  const [h1Finals, setH1Finals] = useState<Map<number, { home: number; away: number }>>(new Map());
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const toastIdRef = useRef(0);
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
+  const [autoStream, setAutoStream] = useState(false);
 
   // Disable page scroll while GS Live is mounted (videos take full row height)
   // — but only on desktop; mobile card list must scroll vertically.
@@ -210,6 +220,10 @@ export default function GSLive() {
     if (saved) setTokenVal(saved);
   }, []);
 
+  useEffect(() => {
+    setAutoStream(localStorage.getItem('gs_auto_stream') === '1');
+  }, []);
+
   function applyToken(raw: string) {
     if (!raw.trim()) {
       localStorage.removeItem('gs_token');
@@ -219,6 +233,14 @@ export default function GSLive() {
       localStorage.setItem('gs_token', tok);
       setTokenVal(tok);
     }
+  }
+
+  function pushToast(kind: Toast['kind'], message: string) {
+    const id = ++toastIdRef.current;
+    setToasts(prev => [...prev, { id, kind, message }]);
+    setTimeout(() => {
+      setToasts(prev => prev.filter(t => t.id !== id));
+    }, kind === 'goal' ? 4000 : 6000);
   }
 
   // Tick every 30s so phaseLabel stays current without server round-trip
@@ -248,14 +270,33 @@ export default function GSLive() {
           const newScored = new Set<number>();
           for (const nm of next) {
             const pm = prevRef.current.get(nm.eventId);
-            if (pm && (nm.h1Home !== pm.h1Home || nm.h1Away !== pm.h1Away)) {
+            if (!pm) continue;
+            if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
+              pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
+            }
+            if (nm.h1Away > pm.h1Away) {
+              newScored.add(nm.eventId);
+              pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
             }
           }
           if (newScored.size > 0) {
             setScoredIds(newScored);
             setTimeout(() => setScoredIds(new Set()), 3000);
           }
+          // Detect H1→H2 transition: remember score just before H2 starts as H1 final
+          let h1Changed = false;
+          for (const nm of next) {
+            if (nm.isH2 && !h1FinalRef.current.has(nm.eventId)) {
+              const pm = prevRef.current.get(nm.eventId);
+              if (pm && !pm.isH2) {
+                h1FinalRef.current.set(nm.eventId, { home: pm.h1Home, away: pm.h1Away });
+                h1Changed = true;
+                pushToast('halftime', `🔔 Hết Hiệp 1 — ${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
+              }
+            }
+          }
+          if (h1Changed) setH1Finals(new Map(h1FinalRef.current));
           prevRef.current = new Map(next.map((m) => [m.eventId, m]));
           setMatches(next);
           setUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
@@ -278,12 +319,16 @@ export default function GSLive() {
 
   const activeToken = tokenVal || GS_STREAM_TOKEN;
 
+  function dismissToast(id: number) {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }
+
   return (
     <>
+      <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-white">🔴 GS Live — Odds Tracker</h1>
         <span className="text-[13px] text-[#666]">{matches.length} trận live</span>
-        {autoRefresh && loading && <span className="text-[12px] text-[#fbbf24]">Đang cập nhật…</span>}
         <button
           type="button"
           onClick={() => setAutoRefresh(r => !r)}
@@ -292,11 +337,21 @@ export default function GSLive() {
         >
           {autoRefresh ? '⏸ Auto' : '▶ Auto'}
         </button>
-        {updatedAt && (
-          <span className="ml-auto text-[12px] text-[#4ade80]/70">
-            {autoRefresh ? `⟳ 2s · ${updatedAt}` : `⏸ dừng · ${updatedAt}`}
-          </span>
-        )}
+        <button
+          type="button"
+          onClick={() => setAutoStream(s => { const next = !s; localStorage.setItem('gs_auto_stream', next ? '1' : '0'); return next; })}
+          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${autoStream ? 'border-[#a78bfa]/40 text-[#a78bfa] bg-[#a78bfa]/10 hover:bg-[#a78bfa]/20' : 'border-[#555] text-[#777] bg-transparent hover:border-[#a78bfa]/40 hover:text-[#a78bfa]'}`}
+          title={autoStream ? 'Tắt stream tự động (cần click ▶ thủ công)' : 'Bật stream tự động (load video ngay khi có trận)'}
+        >
+          {autoStream ? '📺 Stream tự động' : '📺 Stream thủ công'}
+        </button>
+        <span className="ml-auto text-[12px]">
+          {autoRefresh && loading
+            ? <span className="text-[#fbbf24]">⟳ Đang cập nhật…</span>
+            : updatedAt
+              ? <span className="text-[#4ade80]/70">{autoRefresh ? `⟳ 2s · ${updatedAt}` : `⏸ dừng · ${updatedAt}`}</span>
+              : null}
+        </span>
       </div>
 
       {/* Token input — paste raw token or full link */}
@@ -349,6 +404,8 @@ export default function GSLive() {
             loadTs={loadTs}
             activeToken={activeToken}
             globalReloadKey={globalReloadKey}
+            h1Finals={h1Finals}
+            autoStream={autoStream}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -359,10 +416,33 @@ export default function GSLive() {
             loadTs={loadTs}
             activeToken={activeToken}
             globalReloadKey={globalReloadKey}
+            h1Finals={h1Finals}
+            autoStream={autoStream}
           />
         </>
       )}
     </>
+  );
+}
+
+function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] flex flex-col items-center gap-2 pointer-events-none">
+      {toasts.map(t => (
+        <div
+          key={t.id}
+          className={`toast-item pointer-events-auto flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-2xl cursor-pointer select-none whitespace-nowrap ${
+            t.kind === 'goal'
+              ? 'bg-[#14532d]/95 border border-[#22c55e]/50 text-[#bbf7d0]'
+              : 'bg-[#78350f]/95 border border-[#fbbf24]/60 text-[#fef3c7]'
+          }`}
+          onClick={() => onDismiss(t.id)}
+        >
+          {t.message}
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -511,6 +591,75 @@ function CardBadges({ yellow, red }: { yellow: number; red: number }) {
   );
 }
 
+// Fix #1: click-to-load — iframe chỉ mount khi user bấm ▶
+// Fix #2: mỗi VideoCell quản lý state riêng → mobile & desktop tree không share iframe
+// Fix #3: IntersectionObserver — unload iframe khi scroll ra ngoài viewport (rootMargin 300px buffer)
+function VideoCell({
+  iframeKey, src, title, displayW, displayH, contentW, iframeH, scale, onExpand, onReload, externalUrl, autoStream,
+}: {
+  iframeKey: string; src: string; title: string;
+  displayW: number; displayH: number; contentW: number; iframeH: number; scale: number;
+  onExpand: () => void; onReload: () => void; externalUrl: string; autoStream: boolean;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (autoStream) setLoaded(true);
+  }, [autoStream]);
+
+  useEffect(() => {
+    if (!loaded || autoStream) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (!entry.isIntersecting) setLoaded(false); },
+      { rootMargin: '300px' }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [loaded, autoStream]);
+
+  return (
+    <div ref={containerRef} className="relative bg-black overflow-hidden" style={{ width: displayW, height: displayH }}>
+      {loaded ? (
+        <iframe
+          key={iframeKey}
+          src={src}
+          style={{
+            position: 'absolute', top: 0, left: 0,
+            width: contentW, height: iframeH,
+            border: 'none', display: 'block',
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+          }}
+          title={title}
+          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
+          allowFullScreen
+        />
+      ) : (
+        <button
+          type="button"
+          onClick={() => setLoaded(true)}
+          className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-[#444] hover:text-[#888] transition-colors"
+        >
+          <span className="text-3xl">▶</span>
+          <span className="text-[11px]">Xem video</span>
+        </button>
+      )}
+      <button type="button" onClick={onExpand}
+        className="absolute top-1 right-[54px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+        title="Xem fullscreen">⛶</button>
+      <button type="button" onClick={onReload}
+        className="absolute top-1 right-[28px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+        title="Reload video">↺</button>
+      <a href={externalUrl} target="_blank" rel="noopener noreferrer"
+        className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
+        onClick={(e) => e.stopPropagation()}>↗</a>
+    </div>
+  );
+}
+
 function LeagueSection({
   title,
   matches,
@@ -520,6 +669,8 @@ function LeagueSection({
   loadTs,
   activeToken,
   globalReloadKey,
+  h1Finals,
+  autoStream,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -529,17 +680,27 @@ function LeagueSection({
   loadTs: number;
   activeToken: string;
   globalReloadKey: number;
+  h1Finals: Map<number, { home: number; away: number }>;
+  autoStream: boolean;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const cropContainerRef = useRef<HTMLDivElement>(null);
   const cropIframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Mobile video: hardcoded scale (no SSR/state dependency).
+  // Mobile video: scale so iframe width fits exactly MOBILE_DISPLAY_W.
   const MOBILE_CONTENT_W = 1440;
-  const MOBILE_SCALE = 0.3;
+  const MOBILE_DISPLAY_W = 390;
   const MOBILE_DISPLAY_H = 280;
-  const mobileIframeH = Math.round(MOBILE_DISPLAY_H / MOBILE_SCALE);
+  const mobileScale = MOBILE_DISPLAY_W / MOBILE_CONTENT_W;
+  const mobileIframeH = Math.round(MOBILE_DISPLAY_H / mobileScale);
+
+  // Desktop video: scale so iframe width fits exactly DESKTOP_DISPLAY_W.
+  const DESKTOP_CONTENT_W = 1440;
+  const DESKTOP_DISPLAY_W = 500;
+  const DESKTOP_DISPLAY_H = 320;
+  const desktopScale = DESKTOP_DISPLAY_W / DESKTOP_CONTENT_W;
+  const desktopIframeH = Math.round(DESKTOP_DISPLAY_H / desktopScale);
 
   function bump(eventId: number) {
     setRefreshKeys(prev => {
@@ -574,7 +735,10 @@ function LeagueSection({
 
   const expandedMatch = expandedId != null ? (matches.find(m => m.eventId === expandedId) ?? null) : null;
 
-  if (matches.length === 0) return null;
+  // Sort by eventId for stable DOM order across polls — prevents scroll jump when API reorders
+  const sorted = [...matches].sort((a, b) => a.eventId - b.eventId);
+
+  if (sorted.length === 0) return null;
 
   const overlayBtn: React.CSSProperties = {
     background: 'transparent', border: '1px solid #444', color: '#aaa',
@@ -586,11 +750,11 @@ function LeagueSection({
       <div className="mb-5">
         <div className="mb-2 flex items-center gap-2 flex-wrap">
           <span className="text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">{title}</span>
-          <span className="text-[11px] text-[#555]">{matches.length} trận</span>
+          <span className="text-[11px] text-[#555]">{sorted.length} trận</span>
         </div>
-        {/* Mobile card list */}
-        <div className="flex flex-col gap-3 md:hidden">
-          {matches.map((m, i) => {
+        {/* Mobile card list — overflow-anchor:none prevents browser from auto-adjusting scroll on data update */}
+        <div className="flex flex-col gap-3 md:hidden" style={{ overflowAnchor: 'none' }}>
+          {sorted.map((m, i) => {
             const prev = prevMap.get(m.eventId);
             const scored = scoredIds.has(m.eventId);
             const agentId = activeToken.split('-')[0] || '69';
@@ -618,8 +782,8 @@ function LeagueSection({
                     <div className={`font-bold text-[15px] ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
                       {m.h1Home} - {m.h1Away}
                     </div>
-                    {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
-                      <div className="text-[10px] text-[#aaa]">H1: {m.h1FinalHome}-{m.h1FinalAway}</div>
+                    {m.isH2 && h1Finals.has(m.eventId) && (
+                      <div className="text-[10px] text-[#aaa]">H1: {h1Finals.get(m.eventId)!.home}-{h1Finals.get(m.eventId)!.away}</div>
                     )}
                     <div className="text-[10px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </div>
@@ -659,32 +823,20 @@ function LeagueSection({
                   )}
                 </div>
 
-                {/* Video — scaled to fit mobile container */}
-                <div className="relative bg-black overflow-hidden" style={{ height: MOBILE_DISPLAY_H }}>
-                  <iframe
-                    key={`m-${m.eventId}-${refreshKey}-${globalReloadKey}`}
-                    src={videoUrl}
-                    style={{
-                      position: 'absolute', top: 0, left: 0,
-                      width: MOBILE_CONTENT_W, height: mobileIframeH,
-                      border: 'none', display: 'block',
-                      transform: `scale(${MOBILE_SCALE})`,
-                      transformOrigin: 'top left',
-                    }}
-                    title={`${m.homeTeam} vs ${m.awayTeam}`}
-                    allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                    allowFullScreen
-                  />
-                  <button type="button" onClick={() => setExpandedId(m.eventId)}
-                    className="absolute top-1 right-[54px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                    title="Xem fullscreen">⛶</button>
-                  <button type="button" onClick={() => bump(m.eventId)}
-                    className="absolute top-1 right-[28px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                    title="Reload video">↺</button>
-                  <a href={videoUrl} target="_blank" rel="noopener noreferrer"
-                    className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                    onClick={(e) => e.stopPropagation()}>↗</a>
-                </div>
+                <VideoCell
+                  iframeKey={`m-${m.eventId}-${refreshKey}-${globalReloadKey}`}
+                  src={videoUrl}
+                  title={`${m.homeTeam} vs ${m.awayTeam}`}
+                  displayW={MOBILE_DISPLAY_W}
+                  displayH={MOBILE_DISPLAY_H}
+                  contentW={MOBILE_CONTENT_W}
+                  iframeH={mobileIframeH}
+                  scale={mobileScale}
+                  onExpand={() => setExpandedId(m.eventId)}
+                  onReload={() => bump(m.eventId)}
+                  externalUrl={videoUrl}
+                  autoStream={autoStream}
+                />
               </div>
             );
           })}
@@ -718,8 +870,8 @@ function LeagueSection({
                 ))}
               </tr>
             </thead>
-            <tbody>
-              {matches.map((m, i) => {
+            <tbody style={{ overflowAnchor: 'none' }}>
+              {sorted.map((m, i) => {
                 const prev = prevMap.get(m.eventId);
                 const scored = scoredIds.has(m.eventId);
                 const agentId = activeToken.split('-')[0] || '69';
@@ -731,7 +883,7 @@ function LeagueSection({
                     className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
                       scored ? '!bg-[#16a34a]/10' : ''
                     }`}
-                    style={{ height: 500 }}
+                    style={{ height: DESKTOP_DISPLAY_H }}
                   >
                     {/* # */}
                     <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
@@ -755,8 +907,8 @@ function LeagueSection({
                         {m.h1Home} - {m.h1Away}
                         {scored && <span className="ml-1 text-[10px] animate-bounce">⚽</span>}
                       </div>
-                      {m.isH2 && m.h1FinalHome !== null && m.h1FinalAway !== null && (
-                        <div className="mt-0.5 text-[10px] text-[#aaa]">H1: {m.h1FinalHome}-{m.h1FinalAway}</div>
+                      {m.isH2 && h1Finals.has(m.eventId) && (
+                        <div className="mt-0.5 text-[10px] text-[#aaa]">H1: {h1Finals.get(m.eventId)!.home}-{h1Finals.get(m.eventId)!.away}</div>
                       )}
                       <div className="mt-0.5 text-[11px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                     </td>
@@ -777,28 +929,21 @@ function LeagueSection({
                       <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
                     </td>
                     {/* Video — det.zenandfe.com route=3 */}
-                    <td className="border-b border-[#222] p-0 align-middle" style={{ width: '100%', minWidth: 540 }}>
-                      <div className="relative bg-black" style={{ height: 500 }}>
-                        <iframe
-                          key={`${m.eventId}-${refreshKey}-${globalReloadKey}`}
-                          src={videoUrl}
-                          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
-                          title={`${m.homeTeam} vs ${m.awayTeam}`}
-                          allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
-                          allowFullScreen
-                        />
-                        {/* Expand to fullscreen (crops to .visibility section) */}
-                        <button type="button" onClick={() => setExpandedId(m.eventId)}
-                          className="absolute top-1 right-[54px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                          title="Xem fullscreen">⛶</button>
-                        {/* Reload iframe when video goes black */}
-                        <button type="button" onClick={() => bump(m.eventId)}
-                          className="absolute top-1 right-[28px] rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                          title="Reload video">↺</button>
-                        <a href={videoUrl} target="_blank" rel="noopener noreferrer"
-                          className="absolute top-1 right-1 rounded px-1.5 py-0.5 text-[10px] bg-black/70 text-[#aaa] hover:text-white border border-[#444]/50 z-10"
-                          onClick={(e) => e.stopPropagation()}>↗</a>
-                      </div>
+                    <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: DESKTOP_DISPLAY_W, width: DESKTOP_DISPLAY_W }}>
+                      <VideoCell
+                        iframeKey={`${m.eventId}-${refreshKey}-${globalReloadKey}`}
+                        src={videoUrl}
+                        title={`${m.homeTeam} vs ${m.awayTeam}`}
+                        displayW={DESKTOP_DISPLAY_W}
+                        displayH={DESKTOP_DISPLAY_H}
+                        contentW={DESKTOP_CONTENT_W}
+                        iframeH={desktopIframeH}
+                        scale={desktopScale}
+                        onExpand={() => setExpandedId(m.eventId)}
+                        onReload={() => bump(m.eventId)}
+                        externalUrl={videoUrl}
+                        autoStream={autoStream}
+                      />
                     </td>
                   </tr>
                 );
