@@ -1150,6 +1150,11 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
+  const [activeTab, setActiveTab] = useState<'stats' | 'predict'>('stats');
+  const [prediction, setPrediction] = useState('');
+  const [predicting, setPredicting] = useState(false);
+  const predAbortRef = useRef<AbortController | null>(null);
+  const lastPredKey = useRef('');
 
   useEffect(() => {
     let alive = true;
@@ -1222,6 +1227,92 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const todayLabel = DAY_LABELS_FULL[today];
   const homeDayStats = matches ? teamDayStats(matches, homeDbName) : [];
   const awayDayStats = matches ? teamDayStats(matches, awayDbName) : [];
+
+  // Prediction stat bars — computed instantly from existing data
+  const homeW = homeMatches.filter(m => resultFor(m, homeDbName) === 'W').length;
+  const homeD = homeMatches.filter(m => resultFor(m, homeDbName) === 'D').length;
+  const homeL = homeMatches.filter(m => resultFor(m, homeDbName) === 'L').length;
+  const awayW = awayMatches.filter(m => resultFor(m, awayDbName) === 'W').length;
+  const awayD = awayMatches.filter(m => resultFor(m, awayDbName) === 'D').length;
+  const awayL = awayMatches.filter(m => resultFor(m, awayDbName) === 'L').length;
+  const h2hHomeW = h2hMatches.filter(m => {
+    const hs = +m.ttHome; const as = +m.ttAway;
+    return m.homeTeam === homeDbName ? hs > as : as > hs;
+  }).length;
+  const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
+  const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
+
+  const buildForm = (recentMatches: Match[], team: string) =>
+    recentMatches.map(m => {
+      const isHome = m.homeTeam === team;
+      const res = resultFor(m, team);
+      const myScore = isHome ? m.ttHome : m.ttAway;
+      const oppScore = isHome ? m.ttAway : m.ttHome;
+      const opp = isHome ? m.awayTeam : m.homeTeam;
+      return { opp, result: res, myScore, oppScore, isHome };
+    });
+
+  async function triggerPrediction() {
+    if (predAbortRef.current) predAbortRef.current.abort();
+    const ctrl = new AbortController();
+    predAbortRef.current = ctrl;
+    setPredicting(true);
+    setPrediction('');
+
+    const h2hData = h2hMatches.map(m => {
+      const hs = +m.ttHome, as = +m.ttAway;
+      const winner: 'home' | 'away' | 'draw' = hs > as ? 'home' : as > hs ? 'away' : 'draw';
+      return { date: m.date, homeScore: m.ttHome, awayScore: m.ttAway, winner };
+    });
+
+    const body = {
+      homeTeam: homeDbName,
+      awayTeam: awayDbName,
+      matchType: live.matchType,
+      h1Home: live.h1Home,
+      h1Away: live.h1Away,
+      isH2: live.isH2,
+      minute: live.minuteElapsed,
+      hcLine: live.hcLines[0]?.line ?? null,
+      hcHome: live.hcLines[0]?.home ?? null,
+      hcAway: live.hcLines[0]?.away ?? null,
+      ouLine: live.ouLines[0]?.line ?? null,
+      homeForm: buildForm(homeMatches, homeDbName),
+      awayForm: buildForm(awayMatches, awayDbName),
+      h2h: h2hData,
+    };
+
+    try {
+      const res = await fetch('/api/gs-predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) { setPredicting(false); return; }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        setPrediction(prev => prev + dec.decode(value));
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') setPrediction('Lỗi khi phân tích. Thử lại.');
+    } finally {
+      setPredicting(false);
+    }
+  }
+
+  const liveKey = `${live.h1Home}-${live.h1Away}-${live.minuteElapsed}-${live.isH2}-${live.hcLines[0]?.line}`;
+
+  useEffect(() => {
+    if (activeTab !== 'predict' || !matches) return;
+    if (liveKey === lastPredKey.current && prediction) return;
+    lastPredKey.current = liveKey;
+    triggerPrediction();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, liveKey, matches]);
 
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
@@ -1311,6 +1402,47 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     );
   }
 
+  function StatBar({ label, w, d, l, total }: { label: string; w: number; d: number; l: number; total: number }) {
+    const wPct = (w / total) * 100;
+    const dPct = (d / total) * 100;
+    const lPct = (l / total) * 100;
+    return (
+      <div>
+        <div className="flex justify-between mb-0.5">
+          <span className="text-[10px] text-[#aaa] truncate max-w-[70%]">{label}</span>
+          <span className="text-[10px] text-[#555]">{w}W {d}D {l}L</span>
+        </div>
+        <div className="flex rounded-sm overflow-hidden h-2">
+          <div style={{ width: `${wPct}%` }} className="bg-[#4ade80]" />
+          <div style={{ width: `${dPct}%` }} className="bg-[#fbbf24]" />
+          <div style={{ width: `${lPct}%` }} className="bg-[#f87171]" />
+        </div>
+      </div>
+    );
+  }
+
+  function H2HBar({ homeTeam, awayTeam, homeW, draws, awayW, total }: { homeTeam: string; awayTeam: string; homeW: number; draws: number; awayW: number; total: number }) {
+    return (
+      <div>
+        <div className="flex justify-between mb-0.5">
+          <span className="text-[10px] text-[#4ade80] truncate max-w-[40%]">{homeTeam}</span>
+          <span className="text-[10px] text-[#555]">Đối đầu</span>
+          <span className="text-[10px] text-[#f87171] truncate max-w-[40%] text-right">{awayTeam}</span>
+        </div>
+        <div className="flex rounded-sm overflow-hidden h-2">
+          <div style={{ width: `${(homeW / total) * 100}%` }} className="bg-[#4ade80]" />
+          <div style={{ width: `${(draws / total) * 100}%` }} className="bg-[#fbbf24]" />
+          <div style={{ width: `${(awayW / total) * 100}%` }} className="bg-[#f87171]" />
+        </div>
+        <div className="flex justify-between mt-0.5">
+          <span className="text-[9px] text-[#4ade80]">{homeW}W</span>
+          {draws > 0 && <span className="text-[9px] text-[#fbbf24]">{draws}D</span>}
+          <span className="text-[9px] text-[#f87171]">{awayW}W</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
@@ -1331,13 +1463,29 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="flex gap-1 px-4 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
+          <button
+            onClick={() => setActiveTab('stats')}
+            className={`px-3 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'stats' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+          >
+            📊 Thống kê
+          </button>
+          <button
+            onClick={() => setActiveTab('predict')}
+            className={`px-3 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'predict' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+          >
+            🤖 Dự đoán
+          </button>
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
           {loading && (
             <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải dữ liệu…</div>
           )}
 
-          {!loading && matches !== null && (
+          {!loading && matches !== null && activeTab === 'stats' && (
             <div className="flex flex-col gap-0">
               {/* Section: Phong độ theo ngày */}
               <div className="px-4 py-4 border-b border-[#1a1a1a]">
@@ -1369,6 +1517,39 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               <div className="px-4 py-4">
                 <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
                 <H2HList h2h={h2hMatches} />
+              </div>
+            </div>
+          )}
+
+          {!loading && matches !== null && activeTab === 'predict' && (
+            <div className="px-4 py-4">
+              {/* Stat bars */}
+              <div className="mb-4 space-y-3">
+                <StatBar label={homeDbName} w={homeW} d={homeD} l={homeL} total={5} />
+                <StatBar label={awayDbName} w={awayW} d={awayD} l={awayL} total={5} />
+                {h2hMatches.length > 0 && (
+                  <H2HBar homeTeam={homeDbName} awayTeam={awayDbName} homeW={h2hHomeW} draws={h2hDraws} awayW={h2hAwayW} total={h2hMatches.length} />
+                )}
+              </div>
+
+              {/* AI analysis */}
+              <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-[11px] font-bold text-[#aaa]">🤖 Phân tích AI</span>
+                  {predicting && <span className="text-[10px] text-[#fbbf24] animate-pulse">đang phân tích…</span>}
+                  {!predicting && prediction && (
+                    <button onClick={triggerPrediction} className="ml-auto text-[10px] text-[#555] hover:text-white">↺ Làm mới</button>
+                  )}
+                </div>
+                {!prediction && !predicting && (
+                  <div className="text-[11px] text-[#555]">Đang tải phân tích…</div>
+                )}
+                {prediction && (
+                  <div className="text-[12px] text-[#ddd] leading-relaxed whitespace-pre-wrap">
+                    {prediction}
+                    {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />}
+                  </div>
+                )}
               </div>
             </div>
           )}
