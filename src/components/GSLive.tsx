@@ -287,15 +287,16 @@ export default function GSLive() {
           for (const nm of next) {
             const pm = prevRef.current.get(nm.eventId);
             if (!pm) continue;
+            const matchTime = `${nm.isH2 ? '2H' : '1H'} ${nm.minuteElapsed ?? 0}'`;
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
-              pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
-              notifyOS('⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam}`);
+              pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
+              notifyOS('⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam} (${matchTime})`);
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
-              pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away}`);
-              notifyOS('⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away}`);
+              pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
+              notifyOS('⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away} (${matchTime})`);
             }
           }
           if (newScored.size > 0) {
