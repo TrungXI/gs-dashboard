@@ -1154,7 +1154,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
   const predAbortRef = useRef<AbortController | null>(null);
-  const lastPredKey = useRef('');
 
   useEffect(() => {
     let alive = true;
@@ -1292,15 +1291,25 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     }
   }
 
-  const liveKey = `${live.h1Home}-${live.h1Away}-${live.minuteElapsed}-${live.isH2}-${live.hcLines[0]?.line}`;
+  // Keep triggerPrediction reachable from effects without stale closure
+  const triggerRef = useRef<() => void>(triggerPrediction);
+  useEffect(() => { triggerRef.current = triggerPrediction; });
 
+  // Fires on: tab open, data load, score/half change, HC/OU line shift → immediate retrigger
+  const changeKey = `${live.h1Home}-${live.h1Away}-${live.isH2}-${live.redHome}-${live.redAway}-${live.hcLines[0]?.line ?? ''}-${live.hcLines[0]?.home ?? ''}-${live.ouLines[0]?.line ?? ''}`;
   useEffect(() => {
     if (activeTab !== 'predict' || !matches) return;
-    if (liveKey === lastPredKey.current && prediction) return;
-    lastPredKey.current = liveKey;
-    triggerPrediction();
+    triggerRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, liveKey, matches]);
+  }, [activeTab, matches, changeKey]);
+
+  // 2-min timer — periodic refresh even when nothing changed
+  useEffect(() => {
+    if (activeTab !== 'predict' || !matches) return;
+    const id = setInterval(() => triggerRef.current(), 2 * 60 * 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, matches]);
 
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
