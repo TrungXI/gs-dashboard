@@ -194,28 +194,17 @@ export default function GSLive() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
-  const osNotiRef = useRef(false);
+  const osNotiGoalRef = useRef(false);
+  const osNotiHTRef = useRef(false);
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
-  const [osNoti, setOsNoti] = useState(false);
+  const [osNotiGoal, setOsNotiGoal] = useState(false);
+  const [osNotiHT, setOsNotiHT] = useState(false);
 
-  // Disable page scroll while GS Live is mounted (videos take full row height)
-  // — but only on desktop; mobile card list must scroll vertically.
-  useEffect(() => {
-    const lock = () => {
-      document.body.style.overflow = window.innerWidth >= 768 ? 'hidden' : '';
-    };
-    lock();
-    window.addEventListener('resize', lock);
-    return () => {
-      window.removeEventListener('resize', lock);
-      document.body.style.overflow = '';
-    };
-  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem('gs_token');
@@ -227,15 +216,32 @@ export default function GSLive() {
   }, []);
 
   useEffect(() => {
-    const saved = localStorage.getItem('gs_os_noti') === '1';
-    setOsNoti(saved);
-    osNotiRef.current = saved;
+    const g = localStorage.getItem('gs_os_noti_goal') === '1';
+    const h = localStorage.getItem('gs_os_noti_ht') === '1';
+    setOsNotiGoal(g); osNotiGoalRef.current = g;
+    setOsNotiHT(h);   osNotiHTRef.current = h;
   }, []);
 
-  useEffect(() => { osNotiRef.current = osNoti; }, [osNoti]);
+  useEffect(() => { osNotiGoalRef.current = osNotiGoal; }, [osNotiGoal]);
+  useEffect(() => { osNotiHTRef.current = osNotiHT; }, [osNotiHT]);
 
-  function notifyOS(title: string, body: string) {
-    if (!osNotiRef.current) return;
+  async function requestAndSet(
+    key: string,
+    setter: (v: boolean) => void,
+    ref: React.MutableRefObject<boolean>,
+  ) {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') return;
+    }
+    setter(true); ref.current = true;
+    localStorage.setItem(key, '1');
+  }
+
+  function notifyOS(kind: 'goal' | 'ht', title: string, body: string) {
+    const allowed = kind === 'goal' ? osNotiGoalRef.current : osNotiHTRef.current;
+    if (!allowed) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     new Notification(title, { body, silent: false });
   }
@@ -291,7 +297,7 @@ export default function GSLive() {
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam} (${matchTime})`);
+              notifyOS('goal', '⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam} (${matchTime})`);
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
@@ -312,7 +318,7 @@ export default function GSLive() {
                 h1FinalRef.current.set(nm.eventId, { home: pm.h1Home, away: pm.h1Away });
                 h1Changed = true;
                 pushToast('halftime', `🔔 Hết Hiệp 1 — ${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
-                notifyOS('🔔 Hết Hiệp 1', `${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
+                notifyOS('ht', '🔔 Hết Hiệp 1', `${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
               }
             }
           }
@@ -403,20 +409,24 @@ export default function GSLive() {
         <button
           type="button"
           onClick={() => {
-            const next = !osNoti;
-            if (next && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
-              Notification.requestPermission().then(p => {
-                if (p === 'granted') { setOsNoti(true); localStorage.setItem('gs_os_noti', '1'); }
-              });
-            } else {
-              setOsNoti(next);
-              localStorage.setItem('gs_os_noti', next ? '1' : '0');
-            }
+            if (osNotiGoal) { setOsNotiGoal(false); osNotiGoalRef.current = false; localStorage.setItem('gs_os_noti_goal', '0'); }
+            else requestAndSet('gs_os_noti_goal', setOsNotiGoal, osNotiGoalRef);
           }}
-          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNoti ? 'border-[#fb923c]/40 text-[#fb923c] bg-[#fb923c]/10 hover:bg-[#fb923c]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
-          title={osNoti ? 'Tắt thông báo Macbook' : 'Bật thông báo Macbook (goal & hết H1)'}
+          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          title={osNotiGoal ? 'Tắt noti ghi bàn' : 'Bật noti ghi bàn ra Macbook'}
         >
-          {osNoti ? '🔔 Noti ON' : '🔕 Noti OFF'}
+          {osNotiGoal ? '⚽ Ghi bàn ON' : '⚽ Ghi bàn OFF'}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (osNotiHT) { setOsNotiHT(false); osNotiHTRef.current = false; localStorage.setItem('gs_os_noti_ht', '0'); }
+            else requestAndSet('gs_os_noti_ht', setOsNotiHT, osNotiHTRef);
+          }}
+          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          title={osNotiHT ? 'Tắt noti hết H1' : 'Bật noti hết H1 ra Macbook'}
+        >
+          {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
         </button>
       </div>
 
