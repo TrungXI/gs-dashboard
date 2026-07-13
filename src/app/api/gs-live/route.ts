@@ -1,5 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Vietnamese → English team name normalization
+// Live API sometimes sends Vietnamese names; DB stores English
+const VN_TO_EN: Record<string, string> = {
+  'Nhật Bản': 'Japan',
+  'Hàn Quốc': 'Korea Republic',
+  'Trung Quốc': 'China',
+  'Thái Lan': 'Thailand',
+  'Việt Nam': 'Vietnam',
+  'Nga': 'Russia',
+  'Đức': 'Germany',
+  'Pháp': 'France',
+  'Tây Ban Nha': 'Spain',
+  'Bồ Đào Nha': 'Portugal',
+  'Hà Lan': 'Netherlands',
+  'Bỉ': 'Belgium',
+  'Thụy Sĩ': 'Switzerland(CHE)',
+  'Thụy Điển': 'Sweden',
+  'Na Uy': 'Norway',
+  'Áo': 'Austria',
+  'Ý': 'Italy',
+  'Anh': 'England',
+  'Maroc': 'Morocco',
+  'Mỹ': 'USA',
+  'Ả Rập Xê Út': 'Saudi Arabia',
+  'Úc': 'Australia',
+  'Ấn Độ': 'India',
+  'Campuchia': 'Cambodia',
+  'Lào': 'Laos',
+};
+
+function normalizeTeam(name: string): string {
+  // Name format: "Team (V)" or "Team (S)" — translate base only
+  const m = name.match(/^(.+?)(\s+\([VS]\))?$/);
+  if (!m) return name;
+  const base = m[1].trim();
+  const suffix = m[2] ?? '';
+  return (VN_TO_EN[base] ?? base) + suffix;
+}
+
 // 2140 = GS Ảo 16p, 2125 = GS Ảo 20p
 const GS_LEAGUE_IDS = new Set([2140, 2125]);
 
@@ -183,8 +222,8 @@ function buildMatch(
     matchType: MATCH_TYPE[leagueId] ?? '16p',
     eventId: ev['8'] as number,
     startTime: ev['0'] as string,
-    homeTeam: ev['2'] as string,
-    awayTeam: ev['3'] as string,
+    homeTeam: normalizeTeam(ev['2'] as string),
+    awayTeam: normalizeTeam(ev['3'] as string),
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
     minuteElapsed,
@@ -219,7 +258,7 @@ export async function GET(req: NextRequest) {
   try {
     const res = await fetch(
       'https://be.sb21.net/api/v2/getEvent?sportType=3_1&timezoneOffset=-420',
-      { headers: { token, accept: 'application/json', lng: 'vi' }, cache: 'no-store' }
+      { headers: { token, accept: 'application/json', lng: 'en' }, cache: 'no-store' }
     );
     if (!res.ok) return NextResponse.json({ ok: false, error: `upstream ${res.status}` }, { status: 502 });
 

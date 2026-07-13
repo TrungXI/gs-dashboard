@@ -155,7 +155,7 @@ function Summary({ matches }: { matches: MatchGroup[] }) {
   );
 }
 
-function Timeline({ snapshots }: { snapshots: Snapshot[] }) {
+function Timeline({ snapshots, homeTeam, awayTeam }: { snapshots: Snapshot[]; homeTeam: string; awayTeam: string }) {
   return (
     <div className="overflow-x-auto border-t border-[#2a2a2a] bg-[#0f0f0f]">
       <table className="w-full min-w-[560px] text-left">
@@ -174,6 +174,14 @@ function Timeline({ snapshots }: { snapshots: Snapshot[] }) {
           {snapshots.map((s, i) => {
             const prev = i > 0 ? snapshots[i - 1] : null;
             const goal = isGoal(s.snapshotType);
+            // Determine which team scored by comparing scores with previous snapshot
+            let scorer: string | null = null;
+            if (goal && prev) {
+              if (s.scoreHome > prev.scoreHome) scorer = homeTeam;
+              else if (s.scoreAway > prev.scoreAway) scorer = awayTeam;
+            }
+            // H2 minutes are within-half; display on 90' scale by adding 45
+            const displayMinute = s.minute == null ? null : s.isH2 ? 45 + s.minute : s.minute;
             return (
               <tr
                 key={i}
@@ -182,10 +190,11 @@ function Timeline({ snapshots }: { snapshots: Snapshot[] }) {
                 }`}
               >
                 <td className="px-2 py-1.5 text-white/60">
-                  {s.minute == null ? '—' : `${s.minute}'`}
+                  {displayMinute == null ? '—' : `${displayMinute}'`}
                 </td>
                 <td className={`px-2 py-1.5 ${snapshotColor(s.snapshotType)}`}>
                   {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
+                  {scorer && <span className="ml-1.5 text-[10px] text-[#aaa]">· {scorer}</span>}
                 </td>
                 <td className="px-2 py-1.5 font-semibold text-white">
                   {s.scoreHome}-{s.scoreAway}
@@ -247,7 +256,7 @@ function MatchRow({ match }: { match: MatchGroup }) {
           {open ? '▲' : '▼'}
         </span>
       </button>
-      {open && <Timeline snapshots={match.snapshots} />}
+      {open && <Timeline snapshots={match.snapshots} homeTeam={match.homeTeam} awayTeam={match.awayTeam} />}
     </div>
   );
 }

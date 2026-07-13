@@ -6,8 +6,24 @@ const { Pool } = require('pg')
 const GS_TOKEN = process.env.GS_TOKEN || '69-4da0041e12f5643e1537a1495bb1db3d'
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
+const VN_TO_EN = {
+  'Nhật Bản': 'Japan', 'Hàn Quốc': 'Korea Republic', 'Trung Quốc': 'China',
+  'Thái Lan': 'Thailand', 'Việt Nam': 'Vietnam', 'Nga': 'Russia',
+  'Đức': 'Germany', 'Pháp': 'France', 'Tây Ban Nha': 'Spain',
+  'Bồ Đào Nha': 'Portugal', 'Hà Lan': 'Netherlands', 'Bỉ': 'Belgium',
+  'Thụy Sĩ': 'Switzerland(CHE)', 'Thụy Điển': 'Sweden', 'Na Uy': 'Norway',
+  'Đan Mạch': 'Denmark', 'Ba Lan': 'Poland', 'Áo': 'Austria', 'Ý': 'Italy',
+  'Anh': 'England', 'Maroc': 'Morocco', 'Mỹ': 'USA', 'Ả Rập Xê Út': 'Saudi Arabia',
+  'Úc': 'Australia', 'Ấn Độ': 'India', 'Campuchia': 'Cambodia', 'Lào': 'Laos',
+}
+
 function renameTeam(name) {
-  return String(name).replace(/ \(V\)$/, ' (V) (20p)').replace(/ \(S\)$/, ' (S) (16p)')
+  const s = String(name)
+  const m = s.match(/^(.+?)(\s+\([VS]\))?$/)
+  if (!m) return s
+  const base = m[1].trim()
+  const suffix = m[2] ?? ''
+  return (VN_TO_EN[base] ?? base) + suffix
 }
 
 function getDates(from, to) {
@@ -28,7 +44,7 @@ async function fetchDay(date) {
   const headers = {
     token: GS_TOKEN,
     accept: 'application/json',
-    lng: 'vi',
+    lng: 'en',
     'content-type': 'application/json',
   }
   const all   = []

@@ -2,6 +2,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
+import type { Match } from '../types/match';
+import { resultFor } from '../lib/stats';
+import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats, type DayOfWeek } from '../lib/dayStats';
+import { TypeBadge, ResultTag } from './badges';
 
 interface AnalysisSnapshot {
   snapshotType: string;
@@ -257,6 +261,7 @@ export default function GSLive() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
   const [similarMatch, setSimilarMatch] = useState<GsLiveMatch | null>(null);
+  const [analysisMatch, setAnalysisMatch] = useState<GsLiveMatch | null>(null);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
 
@@ -492,6 +497,7 @@ export default function GSLive() {
       </div>
 
       {similarMatch && <SimilarMatchesDrawer live={similarMatch} onClose={() => setSimilarMatch(null)} />}
+      {analysisMatch && <LiveAnalysisDrawer live={analysisMatch} onClose={() => setAnalysisMatch(null)} />}
 
       {error && (
         <div className="mb-4 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[13px] text-[#f87171]">
@@ -518,6 +524,7 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onSimilar={setSimilarMatch}
+            onAnalysis={setAnalysisMatch}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -531,6 +538,7 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onSimilar={setSimilarMatch}
+            onAnalysis={setAnalysisMatch}
           />
         </>
       )}
@@ -785,6 +793,7 @@ function LeagueSection({
   h1Finals,
   autoStream,
   onSimilar,
+  onAnalysis,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -797,6 +806,7 @@ function LeagueSection({
   h1Finals: Map<number, { home: number; away: number }>;
   autoStream: boolean;
   onSimilar: (m: GsLiveMatch) => void;
+  onAnalysis: (m: GsLiveMatch) => void;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -910,6 +920,14 @@ function LeagueSection({
                     title="Tìm trận tương tự"
                   >
                     🔍
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onAnalysis(m)}
+                    className="flex-shrink-0 rounded px-1.5 py-1 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#60a5fa] hover:border-[#444] transition-colors"
+                    title="Phân tích 2 đội"
+                  >
+                    📊
                   </button>
                 </div>
 
@@ -1034,6 +1052,14 @@ function LeagueSection({
                       >
                         🔍 Tương tự
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => onAnalysis(m)}
+                        className="mt-1 rounded px-2 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#60a5fa] hover:border-[#444] transition-colors"
+                        title="Phân tích 2 đội"
+                      >
+                        📊 Phân tích
+                      </button>
                     </td>
                     {/* Tỉ số / Phase */}
                     <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
@@ -1117,6 +1143,237 @@ function LeagueSection({
           </div>
         );
       })()}
+    </>
+  );
+}
+
+function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
+  const [loading, setLoading] = useState(true);
+  const [matches, setMatches] = useState<Match[] | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setMatches(null);
+    const url = `/api/gs-team-analysis?home=${encodeURIComponent(live.homeTeam)}&away=${encodeURIComponent(live.awayTeam)}`;
+    fetch(url)
+      .then(r => r.json())
+      .then((json: { ok: boolean; matches?: Match[] }) => {
+        if (!alive) return;
+        setMatches(json.matches ?? []);
+      })
+      .catch(() => { if (alive) setMatches([]); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [live.homeTeam, live.awayTeam]);
+
+  // Live API may send Vietnamese names ("Nhật Bản") but DB stores English ("Japan")
+  const VN_TO_EN: Record<string, string> = {
+    'Nhật Bản': 'Japan', 'Hàn Quốc': 'Korea Republic', 'Trung Quốc': 'China',
+    'Thái Lan': 'Thailand', 'Việt Nam': 'Vietnam', 'Nga': 'Russia',
+    'Đức': 'Germany', 'Pháp': 'France', 'Tây Ban Nha': 'Spain',
+    'Bồ Đào Nha': 'Portugal', 'Hà Lan': 'Netherlands', 'Bỉ': 'Belgium',
+    'Thụy Sĩ': 'Switzerland(CHE)', 'Thụy Điển': 'Sweden', 'Na Uy': 'Norway',
+    'Áo': 'Austria', 'Ý': 'Italy', 'Anh': 'England',
+    'Maroc': 'Morocco', 'Mỹ': 'USA', 'Ả Rập Xê Út': 'Saudi Arabia',
+    'Úc': 'Australia', 'Ấn Độ': 'India', 'Campuchia': 'Cambodia', 'Lào': 'Laos',
+  };
+  const resolveDbName = (liveName: string): string => {
+    if (!matches) return liveName;
+    // Exact match first
+    for (const m of matches) {
+      if (m.homeTeam === liveName) return m.homeTeam;
+      if (m.awayTeam === liveName) return m.awayTeam;
+    }
+    // Translate Vietnamese → English, then match by base + suffix
+    const rawBase = liveName.replace(/ \([VS]\)$/, '').trim();
+    const enBase = VN_TO_EN[rawBase] ?? rawBase;
+    const suffix = liveName.endsWith('(S)') ? '(S)' : liveName.endsWith('(V)') ? '(V)' : null;
+    if (suffix) {
+      for (const m of matches) {
+        if (m.homeTeam.startsWith(enBase) && m.homeTeam.endsWith(suffix)) return m.homeTeam;
+        if (m.awayTeam.startsWith(enBase) && m.awayTeam.endsWith(suffix)) return m.awayTeam;
+      }
+    }
+    return liveName;
+  };
+
+  const homeDbName = resolveDbName(live.homeTeam);
+  const awayDbName = resolveDbName(live.awayTeam);
+
+  // Form: last 5 for each team
+  const homeMatches = matches
+    ? matches.filter(m => m.homeTeam === homeDbName || m.awayTeam === homeDbName).slice(0, 5)
+    : [];
+  const awayMatches = matches
+    ? matches.filter(m => m.homeTeam === awayDbName || m.awayTeam === awayDbName).slice(0, 5)
+    : [];
+
+  // H2H: matches between both teams, last 5
+  const h2hMatches = matches
+    ? matches.filter(m =>
+        (m.homeTeam === homeDbName && m.awayTeam === awayDbName) ||
+        (m.homeTeam === awayDbName && m.awayTeam === homeDbName)
+      ).slice(0, 5)
+    : [];
+
+  // Day stats
+  const today = todayDayOfWeek();
+  const todayLabel = DAY_LABELS_FULL[today];
+  const homeDayStats = matches ? teamDayStats(matches, homeDbName) : [];
+  const awayDayStats = matches ? teamDayStats(matches, awayDbName) : [];
+
+  function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
+    const { best, worst } = bestAndWorstDay(stats);
+    const t = todayStats(stats);
+    return (
+      <div>
+        <div className="mb-1 text-[11px] font-semibold text-[#aaa] truncate">{team}</div>
+        <div className="grid grid-cols-7 gap-0.5">
+          {stats.map((s) => {
+            const isToday = s.day === today;
+            const bg = s.n === 0 ? '#1e1e1e' : s.winRate >= 65 ? '#16a34a' : s.winRate >= 50 ? '#d97706' : '#dc2626';
+            const fg = s.n === 0 ? '#555' : s.winRate >= 65 ? '#4ade80' : s.winRate >= 50 ? '#fbbf24' : '#f87171';
+            return (
+              <div
+                key={s.day}
+                className={`flex flex-col items-center justify-center rounded px-0.5 py-1 text-center ${isToday ? 'ring-2 ring-white' : ''}`}
+                style={{ background: bg, color: fg }}
+              >
+                <span className="text-[9px] font-bold opacity-80">{s.label}</span>
+                {s.n === 0 ? <span className="text-[10px]">—</span> : (
+                  <>
+                    <span className="text-[10px] font-bold">{s.winRate}%</span>
+                    <span className="text-[8px] opacity-60">n={s.n}</span>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+          {best && <span className="text-[#4ade80]">★ {best.label} {best.winRate}%</span>}
+          {worst && <span className="text-[#f87171]">✗ {worst.label} {worst.winRate}%</span>}
+          {t && t.n > 0 && <span className="text-[#aaa]">Hôm nay: {t.winRate}% {t.winRate >= 50 ? '↑' : '↓'}</span>}
+        </div>
+      </div>
+    );
+  }
+
+  function FormList({ recentMatches, team }: { recentMatches: Match[]; team: string }) {
+    if (!recentMatches.length) return <div className="text-[11px] text-[#555] py-1">Không có dữ liệu</div>;
+    return (
+      <div className="flex flex-col divide-y divide-[#1e1e1e]">
+        {recentMatches.map((m, i) => {
+          const isHome = m.homeTeam === team;
+          const opp = isHome ? m.awayTeam : m.homeTeam;
+          const res = resultFor(m, team);
+          const myTT = isHome ? m.ttHome : m.ttAway;
+          const opTT = isHome ? m.ttAway : m.ttHome;
+          return (
+            <div key={i} className="py-1.5 flex items-center gap-1">
+              <span className="text-[9px] text-[#555] flex-shrink-0">{isHome ? '🏠' : '✈️'}</span>
+              <span className="text-[10px] text-[#bbb] truncate flex-1 min-w-0">{opp}</span>
+              <span className="text-[10px] font-bold text-white flex-shrink-0">{myTT}-{opTT}</span>
+              <ResultTag result={res} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function H2HList({ h2h }: { h2h: Match[] }) {
+    if (!h2h.length) return <div className="text-[11px] text-[#555]">Chưa có dữ liệu đối đầu</div>;
+    return (
+      <div className="flex flex-col divide-y divide-[#1e1e1e]">
+        {h2h.map((m, i) => {
+          const ih = m.homeTeam === homeDbName;
+          const homeScore = +m.ttHome;
+          const awayScore = +m.ttAway;
+          const winner = homeScore > awayScore ? m.homeTeam : awayScore > homeScore ? m.awayTeam : null;
+          const wCls = winner === homeDbName ? 'text-[#4ade80]' : winner === awayDbName ? 'text-[#f87171]' : 'text-[#fbbf24]';
+          return (
+            <div key={i} className="flex items-center gap-2 py-1.5 text-[11px]">
+              <span className="w-[72px] flex-shrink-0 text-[10px] text-[#555]">{m.date}</span>
+              <span className="text-[10px]">{ih ? '🏠' : '✈️'}</span>
+              <span className="flex-1 min-w-0 text-[#bbb] truncate">
+                {m.homeTeam} vs {m.awayTeam}
+              </span>
+              <span className="text-[10px] text-[#555]">H1 {m.h1Home}-{m.h1Away}</span>
+              <span className="font-bold text-white">{m.ttHome}-{m.ttAway}</span>
+              <span className={`font-bold ${wCls}`}>{winner ? (winner === homeDbName ? 'H' : 'A') : 'D'}</span>
+              <TypeBadge type={m.matchType} />
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[520px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222] flex-shrink-0">
+          <span className="text-[13px] font-bold text-white">📊 Phân tích</span>
+          <button onClick={onClose} className="ml-auto text-[#555] hover:text-white text-lg leading-none">✕</button>
+        </div>
+
+        {/* Teams */}
+        <div className="px-4 py-2.5 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
+          <div className="text-[12px] font-semibold text-white">
+            {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
+          </div>
+          <div className="text-[10px] text-[#555] mt-0.5">
+            {!loading && matches ? `${matches.length} trận trong DB` : 'Đang tải…'}
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto">
+          {loading && (
+            <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải dữ liệu…</div>
+          )}
+
+          {!loading && matches !== null && (
+            <div className="flex flex-col gap-0">
+              {/* Section: Phong độ theo ngày */}
+              <div className="px-4 py-4 border-b border-[#1a1a1a]">
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[#555]">
+                  📅 Phong độ theo ngày · Hôm nay: {todayLabel}
+                </div>
+                <div className="flex flex-col gap-4">
+                  <DayBar stats={homeDayStats} team={homeDbName} />
+                  <DayBar stats={awayDayStats} team={awayDbName} />
+                </div>
+              </div>
+
+              {/* Section: 5 trận — 2 col side by side */}
+              <div className="px-4 py-4 border-b border-[#1a1a1a]">
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[#555]">📋 5 trận gần nhất</div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{homeDbName}</div>
+                    <FormList recentMatches={homeMatches} team={homeDbName} />
+                  </div>
+                  <div>
+                    <div className="mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{awayDbName}</div>
+                    <FormList recentMatches={awayMatches} team={awayDbName} />
+                  </div>
+                </div>
+              </div>
+
+              {/* Section: H2H full width */}
+              <div className="px-4 py-4">
+                <div className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
+                <H2HList h2h={h2hMatches} />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </>
   );
 }

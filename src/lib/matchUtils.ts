@@ -15,8 +15,7 @@ export function toVnTime(iso: string): { date: string; time: string } {
   };
 }
 
-const renameTeam = (name: string): string =>
-  name.replace(/ \(V\)$/, ' (V) (20p)').replace(/ \(S\)$/, ' (S) (16p)');
+const renameTeam = (name: string): string => name;
 
 
 export function apiToRow(m: Record<string, unknown>): Match {

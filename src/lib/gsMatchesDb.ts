@@ -3,10 +3,16 @@ import type { Match } from '../types/match';
 
 let pool: Pool | null = null;
 
-// Handles both old DB format "Team (20p)" and new format "Team (V) (20p)"
+// Normalize all DB formats to original API format: "Team (V)" / "Team (S)"
+// Old: "Team (20p)" → "Team (V)"
+// Mid: "Team (V) (20p)" → "Team (V)"
+// New rows already correct: "Team (V)" → "Team (V)"
 function formatTeam(name: string): string {
-  if (/ \([VS]\) \((?:20|16)p\)$/.test(name)) return name;
-  return name.replace(/ \(20p\)$/, ' (V) (20p)').replace(/ \(16p\)$/, ' (S) (16p)');
+  return name
+    .replace(/ \(V\) \(20p\)$/, ' (V)')
+    .replace(/ \(S\) \(16p\)$/, ' (S)')
+    .replace(/ \(20p\)$/, ' (V)')
+    .replace(/ \(16p\)$/, ' (S)');
 }
 
 function getPool(): Pool {
