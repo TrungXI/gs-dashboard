@@ -194,12 +194,14 @@ export default function GSLive() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
+  const osNotiRef = useRef(false);
   const [loadTs] = useState(() => Date.now());
   // '' = use default; any other string = custom token saved in localStorage
   const [tokenVal, setTokenVal] = useState('');
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
+  const [osNoti, setOsNoti] = useState(false);
 
   // Disable page scroll while GS Live is mounted (videos take full row height)
   // — but only on desktop; mobile card list must scroll vertically.
@@ -224,14 +226,16 @@ export default function GSLive() {
     setAutoStream(localStorage.getItem('gs_auto_stream') === '1');
   }, []);
 
-  // Request OS notification permission on mount
   useEffect(() => {
-    if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
+    const saved = localStorage.getItem('gs_os_noti') === '1';
+    setOsNoti(saved);
+    osNotiRef.current = saved;
   }, []);
 
+  useEffect(() => { osNotiRef.current = osNoti; }, [osNoti]);
+
   function notifyOS(title: string, body: string) {
+    if (!osNotiRef.current) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
     new Notification(title, { body, silent: false });
   }
@@ -394,6 +398,24 @@ export default function GSLive() {
           title="Reload tất cả video"
         >
           ↺ Reload All
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !osNoti;
+            if (next && typeof Notification !== 'undefined' && Notification.permission !== 'granted') {
+              Notification.requestPermission().then(p => {
+                if (p === 'granted') { setOsNoti(true); localStorage.setItem('gs_os_noti', '1'); }
+              });
+            } else {
+              setOsNoti(next);
+              localStorage.setItem('gs_os_noti', next ? '1' : '0');
+            }
+          }}
+          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNoti ? 'border-[#fb923c]/40 text-[#fb923c] bg-[#fb923c]/10 hover:bg-[#fb923c]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          title={osNoti ? 'Tắt thông báo Macbook' : 'Bật thông báo Macbook (goal & hết H1)'}
+        >
+          {osNoti ? '🔔 Noti ON' : '🔕 Noti OFF'}
         </button>
       </div>
 
