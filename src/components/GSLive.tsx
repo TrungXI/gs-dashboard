@@ -1617,20 +1617,18 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
       <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[520px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222] flex-shrink-0">
-          <span className="text-[13px] font-bold text-white">📊 Phân tích</span>
-          <button onClick={onClose} className="ml-auto text-[#555] hover:text-white text-lg leading-none">✕</button>
-        </div>
-
-        {/* Teams */}
-        <div className="px-4 py-2.5 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
-          <div className="text-[12px] font-semibold text-white">
-            {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
+        {/* Header + Teams */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-[#222] flex-shrink-0 bg-[#0d0d0d]">
+          <span className="text-[13px] font-bold text-[#fbbf24]">📊</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-bold text-white truncate">
+              {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
+            </div>
+            <div className="text-[10px] text-[#555] mt-0.5">
+              {!loading && matches ? `${matches.length} trận trong DB` : 'Đang tải…'}
+            </div>
           </div>
-          <div className="text-[10px] text-[#555] mt-0.5">
-            {!loading && matches ? `${matches.length} trận trong DB` : 'Đang tải…'}
-          </div>
+          <button onClick={onClose} className="text-[#555] hover:text-white text-lg leading-none flex-shrink-0">✕</button>
         </div>
 
         {/* Tabs */}
