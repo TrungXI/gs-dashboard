@@ -1,0 +1,12 @@
+{
+  "name": "gs-collector",
+  "version": "1.0.0",
+  "main": "collector.js",
+  "scripts": {
+    "start": "node collector.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "pg": "^8.12.0"
+  }
+}
