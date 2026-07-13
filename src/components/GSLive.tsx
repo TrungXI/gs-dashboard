@@ -1242,65 +1242,53 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
   const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
 
-  const buildForm = (recentMatches: Match[], team: string) =>
-    recentMatches.map(m => {
-      const isHome = m.homeTeam === team;
-      const res = resultFor(m, team);
-      const myScore = isHome ? m.ttHome : m.ttAway;
-      const oppScore = isHome ? m.ttAway : m.ttHome;
-      const opp = isHome ? m.awayTeam : m.homeTeam;
-      return { opp, result: res, myScore, oppScore, isHome };
-    });
-
   async function triggerPrediction() {
     if (predAbortRef.current) predAbortRef.current.abort();
     const ctrl = new AbortController();
     predAbortRef.current = ctrl;
-    setPredicting(true);
     setPrediction('');
+    setPredicting(true);
 
-    const h2hData = h2hMatches.map(m => {
-      const hs = +m.ttHome, as = +m.ttAway;
-      const winner: 'home' | 'away' | 'draw' = hs > as ? 'home' : as > hs ? 'away' : 'draw';
-      return { date: m.date, homeScore: m.ttHome, awayScore: m.ttAway, winner };
-    });
-
-    const body = {
-      homeTeam: homeDbName,
-      awayTeam: awayDbName,
-      matchType: live.matchType,
-      h1Home: live.h1Home,
-      h1Away: live.h1Away,
-      isH2: live.isH2,
-      minute: live.minuteElapsed,
-      hcLine: live.hcLines[0]?.line ?? null,
-      hcHome: live.hcLines[0]?.home ?? null,
-      hcAway: live.hcLines[0]?.away ?? null,
-      ouLine: live.ouLines[0]?.line ?? null,
-      homeForm: buildForm(homeMatches, homeDbName),
-      awayForm: buildForm(awayMatches, awayDbName),
-      h2h: h2hData,
-    };
+    const homeAvgGoals = homeMatches.length
+      ? homeMatches.reduce((s, m) => s + (m.homeTeam === homeDbName ? +m.ttHome : +m.ttAway), 0) / homeMatches.length
+      : 0;
+    const awayAvgGoals = awayMatches.length
+      ? awayMatches.reduce((s, m) => s + (m.homeTeam === awayDbName ? +m.ttHome : +m.ttAway), 0) / awayMatches.length
+      : 0;
 
     try {
       const res = await fetch('/api/gs-predict', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          homeTeam: homeDbName,
+          awayTeam: awayDbName,
+          h1Home: live.h1Home,
+          h1Away: live.h1Away,
+          isH2: live.isH2,
+          minuteElapsed: live.minuteElapsed ?? 0,
+          hcLine: live.hcLines[0]?.line ?? null,
+          hcHome: live.hcLines[0]?.home ?? null,
+          ouLine: live.ouLines[0]?.line ?? null,
+          homeW, homeD, homeL, homeAvgGoals,
+          awayW, awayD, awayL, awayAvgGoals,
+          h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
+        }),
         signal: ctrl.signal,
       });
-      if (!res.ok || !res.body) { setPredicting(false); return; }
+      if (!res.body) return;
       const reader = res.body.getReader();
-      const dec = new TextDecoder();
+      const decoder = new TextDecoder();
       while (true) {
-        const { done, value } = await reader.read();
+        const { value, done } = await reader.read();
         if (done) break;
-        setPrediction(prev => prev + dec.decode(value));
+        if (ctrl.signal.aborted) break;
+        setPrediction(prev => prev + decoder.decode(value, { stream: true }));
       }
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') setPrediction('Lỗi khi phân tích. Thử lại.');
+      if (!(e instanceof Error && e.name === 'AbortError')) console.error('predict error', e);
     } finally {
-      setPredicting(false);
+      if (!ctrl.signal.aborted) setPredicting(false);
     }
   }
 
