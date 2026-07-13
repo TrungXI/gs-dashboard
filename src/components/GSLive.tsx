@@ -1150,7 +1150,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'predict'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'predict' | 'claude'>('stats');
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
   const predAbortRef = useRef<AbortController | null>(null);
@@ -1637,15 +1637,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         <div className="flex gap-1 px-4 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
           <button
             onClick={() => setActiveTab('stats')}
-            className={`px-3 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'stats' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'stats' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
           >
             📊 Thống kê
           </button>
           <button
             onClick={() => setActiveTab('predict')}
-            className={`px-3 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'predict' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'predict' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
           >
-            🤖 Dự đoán
+            🤖 Dự đoán Python
+          </button>
+          <button
+            onClick={() => setActiveTab('claude')}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'claude' ? 'text-white border-[#a78bfa]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+          >
+            ✨ Claude AI
           </button>
         </div>
 
@@ -1699,19 +1705,19 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               {/* Streaming detail */}
               <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] p-3">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[12px] font-bold text-[#666]">Chi tiết phân tích</span>
-                  {predicting && <span className="text-[11px] text-[#fbbf24] animate-pulse">đang tính…</span>}
+                  <span className="text-[13px] font-bold text-[#666]">Chi tiết phân tích</span>
+                  {predicting && <span className="text-[12px] text-[#fbbf24] animate-pulse">đang tính…</span>}
                   {!predicting && prediction && (
-                    <button onClick={triggerPrediction} className="ml-auto text-[11px] text-[#555] hover:text-white">↺ Làm mới</button>
+                    <button onClick={triggerPrediction} className="ml-auto text-[12px] text-[#555] hover:text-white">↺ Làm mới</button>
                   )}
                 </div>
                 {!prediction && !predicting && (
-                  <div className="text-[12px] text-[#555]">Đang tải…</div>
+                  <div className="text-[13px] text-[#555]">Đang tải…</div>
                 )}
                 {prediction && (
                   <div className="space-y-0.5">
                     {predicting
-                      ? <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                      ? <div className="text-[14px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
                           {prediction}
                           <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />
                         </div>
@@ -1719,6 +1725,17 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                     }
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'claude' && (
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
+              <div className="text-5xl mb-4">✨</div>
+              <div className="text-[16px] font-bold text-[#a78bfa] mb-2">Claude AI</div>
+              <div className="text-[14px] text-[#555] mb-4">Đang phát triển</div>
+              <div className="text-[13px] text-[#444] leading-relaxed max-w-[280px]">
+                Sẽ dùng Claude Haiku để phân tích realtime với context sâu hơn. Nạp <span className="text-[#a78bfa] font-semibold">ANTHROPIC_API_KEY</span> để kích hoạt.
               </div>
             </div>
           )}

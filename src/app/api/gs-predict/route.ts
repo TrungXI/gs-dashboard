@@ -1,6 +1,18 @@
 import { NextRequest } from 'next/server';
+import { Pool } from 'pg';
 
 export const dynamic = 'force-dynamic';
+
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL; // e.g. http://103.82.23.48:8001
+const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
+
+// Lazy pool for prediction logging — only created when DB URL is set
+let _pool: Pool | null = null;
+function getPool(): Pool | null {
+  if (!ANALYSIS_DATABASE_URL) return null;
+  if (!_pool) _pool = new Pool({ connectionString: ANALYSIS_DATABASE_URL, max: 3 });
+  return _pool;
+}
 
 interface PredictBody {
   homeTeam: string;
@@ -15,9 +27,82 @@ interface PredictBody {
   homeW: number; homeD: number; homeL: number; homeAvgGoals: number;
   awayW: number; awayD: number; awayL: number; awayAvgGoals: number;
   h2hHomeW: number; h2hDraws: number; h2hAwayW: number; h2hTotal: number;
+  redHome?: number; redAway?: number;
 }
 
-function buildStatisticalAnalysis(b: PredictBody): string {
+interface MlPrediction {
+  home_pct: number;
+  draw_pct: number;
+  away_pct: number;
+  model_version: number;
+  confidence: string;
+  n_samples: number;
+}
+
+// ── ML service call ───────────────────────────────────────────────────────────
+
+async function callMlService(b: PredictBody): Promise<MlPrediction | null> {
+  if (!ML_SERVICE_URL) return null;
+  try {
+    const homeFormPts = b.homeW * 3 + b.homeD;
+    const awayFormPts = b.awayW * 3 + b.awayD;
+    const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
+    const res = await fetch(`${ML_SERVICE_URL}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        h1_home: b.h1Home,
+        h1_away: b.h1Away,
+        match_type: '20p',
+        home_form_pts: homeFormPts,
+        away_form_pts: awayFormPts,
+        h2h_home_win_rate: h2hRate,
+        hc_line: b.hcHome ? parseFloat(b.hcHome) : 0.0,
+        is_h2: b.isH2,
+        minute: b.minuteElapsed ?? 45,
+        red_home: b.redHome ?? 0,
+        red_away: b.redAway ?? 0,
+      }),
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as MlPrediction;
+  } catch {
+    return null;
+  }
+}
+
+// ── Fire-and-forget prediction log ───────────────────────────────────────────
+
+function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
+  const pool = getPool();
+  if (!pool) return;
+  const homeFormPts = b.homeW * 3 + b.homeD;
+  const awayFormPts = b.awayW * 3 + b.awayD;
+  const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
+  pool.query(
+    `INSERT INTO gs_ml_predictions
+       (home_team, away_team, h1_home, h1_away, is_h2, minute_elapsed,
+        home_form_pts, away_form_pts, h2h_home_win_rate,
+        hc_line, hc_home_odds, ou_line,
+        red_home, red_away,
+        predicted_home_pct, predicted_away_pct, model_version)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+    [
+      b.homeTeam, b.awayTeam, b.h1Home, b.h1Away, b.isH2, b.minuteElapsed ?? null,
+      homeFormPts, awayFormPts, h2hRate,
+      b.hcLine ? parseFloat(b.hcLine) : null,
+      b.hcHome ? parseFloat(b.hcHome) : null,
+      b.ouLine ? parseFloat(b.ouLine) : null,
+      b.redHome ?? 0, b.redAway ?? 0,
+      ml?.home_pct ?? null, ml?.away_pct ?? null, ml?.model_version ?? null,
+    ]
+  ).catch(() => { /* non-critical */ });
+}
+
+// ── Statistical engine ────────────────────────────────────────────────────────
+
+function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): string {
   const {
     homeTeam, awayTeam, h1Home, h1Away, isH2, minuteElapsed,
     hcLine, hcHome, ouLine,
@@ -77,6 +162,15 @@ function buildStatisticalAnalysis(b: PredictBody): string {
   const halfLabel = isH2 ? `H2 phút ${displayMinute}'` : `H1 phút ${displayMinute}'`;
 
   const lines: string[] = [];
+
+  // ML header — shown when ML service responded
+  if (ml) {
+    const confEmoji = ml.confidence === 'high' ? '🟢' : ml.confidence === 'medium' ? '🟡' : '🔴';
+    lines.push(`[ML v${ml.model_version} · ${ml.n_samples} mẫu · ${confEmoji} ${ml.confidence}]`);
+    lines.push(`${homeTeam}: ${ml.home_pct}% thắng · Hòa: ${ml.draw_pct}% · ${awayTeam}: ${ml.away_pct}% thắng`);
+    lines.push('');
+  }
+
   lines.push(`Đang: ${homeTeam} ${scoreLine} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'`);
   lines.push('');
   lines.push(`⚽ Ghi bàn tiếp theo`);
@@ -135,10 +229,7 @@ function statsStream(text: string): Response {
   const stream = new ReadableStream({
     start(controller) {
       function tick() {
-        if (i >= text.length) {
-          controller.close();
-          return;
-        }
+        if (i >= text.length) { controller.close(); return; }
         controller.enqueue(encoder.encode(text.slice(i, i + 4)));
         i += 4;
         setTimeout(tick, 10);
@@ -149,10 +240,10 @@ function statsStream(text: string): Response {
   return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
 }
 
-async function claudeStream(b: PredictBody): Promise<Response> {
+async function claudeStream(b: PredictBody, ml: MlPrediction | null): Promise<Response> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic();
-  const statsText = buildStatisticalAnalysis(b);
+  const statsText = buildStatisticalAnalysis(b, ml);
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 400,
@@ -181,8 +272,15 @@ async function claudeStream(b: PredictBody): Promise<Response> {
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as PredictBody;
+
+  // Call ML service (parallel, non-blocking on failure)
+  const ml = await callMlService(body);
+
+  // Log prediction fire-and-forget
+  logPrediction(body, ml);
+
   if (process.env.ANTHROPIC_API_KEY) {
-    return claudeStream(body);
+    return claudeStream(body, ml);
   }
-  return statsStream(buildStatisticalAnalysis(body));
+  return statsStream(buildStatisticalAnalysis(body, ml));
 }
