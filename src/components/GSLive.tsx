@@ -1153,7 +1153,10 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('suggest');
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
+  const [mlSamples, setMlSamples] = useState<number | null>(null);
   const predAbortRef = useRef<AbortController | null>(null);
+  const [goalFlash, setGoalFlash] = useState(false);
+  const prevScoreRef = useRef(`${live.h1Home}-${live.h1Away}`);
 
   useEffect(() => {
     let alive = true;
@@ -1269,23 +1272,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
     const isHeader = /^[⚽🔄🎯📋]/.test(line);
     const isArrow = line.trim().startsWith('→');
-    const isDim = line.trim().startsWith('OU') || line.trim().startsWith('HC') || line.trim().startsWith('Đang:');
+    const isBracket = line.trim().startsWith('[');
 
     if (isHeader) {
       return (
-        <div key={idx} className="text-[14px] font-extrabold text-white mt-4 first:mt-0 tracking-tight">
+        <div key={idx} className="text-[14px] font-extrabold text-white mt-3 first:mt-0 tracking-tight">
           {line}
         </div>
       );
     }
 
-    // Tokenize: team names → colored, numbers/% → yellow
     const otherTeam = favoredTeam === homeDbName ? awayDbName : homeDbName;
     type Tok = { text: string; cls?: string };
     const tokens: Tok[] = [];
     let rem = line.trim();
 
-    // Sort by length desc so longer names match first
     const namedPatterns: { str: string; cls: string }[] = [];
     if (favoredTeam) namedPatterns.push({ str: favoredTeam, cls: 'font-extrabold text-[#4ade80]' });
     if (otherTeam) namedPatterns.push({ str: otherTeam, cls: 'text-[#555] font-normal' });
@@ -1293,7 +1294,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
     while (rem.length > 0) {
       let found = false;
-
       for (const p of namedPatterns) {
         if (rem.startsWith(p.str)) {
           tokens.push({ text: p.str, cls: p.cls });
@@ -1304,7 +1304,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       }
       if (found) continue;
 
-      // Percentage
       const pct = rem.match(/^\d+%/);
       if (pct) {
         tokens.push({ text: pct[0], cls: 'font-extrabold text-[#fbbf24]' });
@@ -1312,7 +1311,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         continue;
       }
 
-      // Number with decimal (avg goals, kèo line)
       const num = rem.match(/^\d+\.\d+/);
       if (num) {
         tokens.push({ text: num[0], cls: 'font-bold text-[#17a2b8]' });
@@ -1320,7 +1318,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         continue;
       }
 
-      // Append plain char
       const last = tokens.at(-1);
       if (last && !last.cls) last.text += rem[0];
       else tokens.push({ text: rem[0] });
@@ -1329,8 +1326,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
     const wrapCls = isArrow
       ? 'text-[13px] text-[#fbbf24] pl-3 leading-relaxed'
-      : isDim
-        ? 'text-[12px] text-[#666] pl-3 leading-relaxed'
+      : isBracket
+        ? 'text-[12px] text-[#666] leading-relaxed'
         : 'text-[13px] text-[#bbb] pl-3 leading-relaxed';
 
     return (
@@ -1377,6 +1374,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         signal: ctrl.signal,
       });
       if (!res.body) return;
+      const samples = res.headers.get('X-ML-Samples');
+      if (samples) setMlSamples(Number(samples));
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
@@ -1396,8 +1395,20 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const triggerRef = useRef<() => void>(triggerPrediction);
   useEffect(() => { triggerRef.current = triggerPrediction; });
 
-  // Fires on: tab open, data load, score/half change, HC/OU line shift → immediate retrigger
-  const changeKey = `${live.h1Home}-${live.h1Away}-${live.isH2}-${live.redHome}-${live.redAway}-${live.hcLines[0]?.line ?? ''}-${live.hcLines[0]?.home ?? ''}-${live.ouLines[0]?.line ?? ''}`;
+  // Detect goal → flash all boxes + retrigger prediction regardless of active tab
+  useEffect(() => {
+    const cur = `${live.h1Home}-${live.h1Away}`;
+    if (cur !== prevScoreRef.current) {
+      prevScoreRef.current = cur;
+      setGoalFlash(true);
+      setTimeout(() => setGoalFlash(false), 2000);
+      if (matches) triggerRef.current();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live.h1Home, live.h1Away, matches]);
+
+  // Fires on: tab open, data load, non-goal events (half, HC/OU, red card)
+  const changeKey = `${live.isH2}-${live.redHome}-${live.redAway}-${live.hcLines[0]?.line ?? ''}-${live.hcLines[0]?.home ?? ''}-${live.ouLines[0]?.line ?? ''}`;
   useEffect(() => {
     if (activeTab !== 'suggest' || !matches) return;
     triggerRef.current();
@@ -1532,82 +1543,43 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     );
 
     return (
-      <div className="rounded-xl border border-[#2a2a2a] bg-[#161616] overflow-hidden">
-        {/* Badge header */}
-        <div className="px-3 py-2 border-b border-[#1f1f1f] flex items-center gap-2">
-          <span className="text-[11px] font-bold text-[#666] uppercase tracking-wider">⚽ Ghi bàn tiếp theo</span>
-          {isBalanced ? (
-            <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-[#fbbf24]/15 text-[#fbbf24]">Cân bằng</span>
-          ) : (
-            <span className={`ml-auto text-[11px] font-bold px-2.5 py-0.5 rounded-full ${homeLeads ? 'bg-[#4ade80]/15 text-[#4ade80]' : 'bg-[#f87171]/15 text-[#f87171]'}`}>
+      <div className="rounded-lg border border-[#2a2a2a] bg-[#161616] px-3 py-2">
+        {/* Compact header row */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px] text-[#555] font-bold uppercase tracking-wide">⚽ Ghi bàn tiếp</span>
+          {!isBalanced && (
+            <span className={`text-[11px] font-extrabold ${homeLeads ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
               {homeLeads ? homeDbName : awayDbName} ưu thế
             </span>
           )}
+          {isBalanced && <span className="text-[11px] text-[#fbbf24] font-bold">Cân bằng</span>}
+          {live.hcLines[0]?.line && (
+            <span className="ml-auto text-[11px] text-[#fbbf24] font-bold">HC {live.hcLines[0].line}</span>
+          )}
         </div>
 
-        {/* Big % */}
-        <div className="px-4 pt-4 pb-3">
-          <div className="flex items-end gap-3 mb-3">
-            <div className={`flex-1 transition-opacity ${homeLeads && !isBalanced ? 'opacity-100' : 'opacity-35'}`}>
-              <div className="text-[12px] font-semibold text-white truncate mb-0.5">{homeDbName}</div>
-              <div className={`text-[36px] font-black leading-none ${homeLeads ? 'text-[#4ade80]' : 'text-white'}`}>
-                {homePct}<span className="text-[18px] font-bold">%</span>
-              </div>
-            </div>
-            <div className="text-[14px] text-[#333] font-bold flex-shrink-0 pb-2">vs</div>
-            <div className={`flex-1 text-right transition-opacity ${!homeLeads && !isBalanced ? 'opacity-100' : 'opacity-35'}`}>
-              <div className="text-[12px] font-semibold text-white truncate mb-0.5">{awayDbName}</div>
-              <div className={`text-[36px] font-black leading-none ${!homeLeads ? 'text-[#f87171]' : 'text-white'}`}>
-                {awayPct}<span className="text-[18px] font-bold">%</span>
-              </div>
-            </div>
+        {/* % bar + form dots in one row */}
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className={`text-[20px] font-black leading-none flex-shrink-0 ${homeLeads && !isBalanced ? 'text-[#4ade80]' : 'text-[#666]'}`}>{homePct}%</span>
+          <div className="flex-1 flex rounded-full overflow-hidden h-2">
+            <div style={{ width: `${homePct}%` }} className={`transition-all duration-500 ${homeLeads ? 'bg-[#4ade80]' : 'bg-[#333]'}`} />
+            <div style={{ width: `${awayPct}%` }} className={`transition-all duration-500 ${!homeLeads ? 'bg-[#f87171]' : 'bg-[#333]'}`} />
           </div>
+          <span className={`text-[20px] font-black leading-none flex-shrink-0 ${!homeLeads && !isBalanced ? 'text-[#f87171]' : 'text-[#666]'}`}>{awayPct}%</span>
+        </div>
 
-          {/* Progress bar */}
-          <div className="flex rounded-full overflow-hidden h-3 mb-4">
-            <div style={{ width: `${homePct}%` }} className={`transition-all duration-500 ${homeLeads ? 'bg-[#4ade80]' : 'bg-[#2d2d2d]'}`} />
-            <div style={{ width: `${awayPct}%` }} className={`transition-all duration-500 ${!homeLeads ? 'bg-[#f87171]' : 'bg-[#2d2d2d]'}`} />
+        {/* Form dots */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <Dots w={homeW} d={homeD} l={homeL} />
           </div>
-
-          {/* Quick stats grid */}
-          <div className="flex gap-4">
-            {/* Form */}
-            <div className="flex-1 min-w-0">
-              <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">Form 5 trận</div>
-              <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <Dots w={homeW} d={homeD} l={homeL} />
-                  <span className="text-[11px] text-[#555]">{homeW}W {homeD}D {homeL}L</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Dots w={awayW} d={awayD} l={awayL} />
-                  <span className="text-[11px] text-[#555]">{awayW}W {awayD}D {awayL}L</span>
-                </div>
-              </div>
-            </div>
-
-            {/* H2H */}
-            {h2hMatches.length > 0 && (
-              <div className="flex-shrink-0 text-right">
-                <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">H2H</div>
-                <div className="flex gap-1 justify-end mb-1">
-                  {Array.from({ length: h2hHomeW }, (_, i) => <span key={`hh${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
-                  {Array.from({ length: h2hDraws }, (_, i) => <span key={`hd${i}`} className="w-2.5 h-2.5 rounded-full bg-[#fbbf24] inline-block" />)}
-                  {Array.from({ length: h2hAwayW }, (_, i) => <span key={`ha${i}`} className="w-2.5 h-2.5 rounded-full bg-[#f87171] inline-block" />)}
-                </div>
-                <div className="text-[11px] text-[#555]">{h2hHomeW}-{h2hDraws}-{h2hAwayW}</div>
-              </div>
-            )}
-
-            {/* HC */}
-            {live.hcLines[0]?.line && (
-              <div className="flex-shrink-0 text-right">
-                <div className="text-[10px] text-[#555] mb-1.5 uppercase tracking-wide">Kèo HC</div>
-                <div className="text-[14px] font-bold text-[#fbbf24]">{live.hcLines[0].line}</div>
-                <div className="text-[11px] text-[#555]">{live.hcLines[0].home}/{live.hcLines[0].away}</div>
-              </div>
-            )}
+          <span className="text-[10px] text-[#444] flex-1">vs</span>
+          <div className="flex items-center gap-1">
+            <Dots w={awayW} d={awayD} l={awayL} />
           </div>
+          {h2hMatches.length > 0 && (
+            <span className="text-[10px] text-[#555] flex-shrink-0">H2H {h2hHomeW}-{h2hDraws}-{h2hAwayW}</span>
+          )}
         </div>
       </div>
     );
@@ -1691,18 +1663,29 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
           {!loading && matches !== null && activeTab === 'suggest' && (
             <div className="px-4 py-4 space-y-3">
+              {goalFlash && (
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#fbbf24]/10 border border-[#fbbf24]/30 text-[#fbbf24] text-[12px] font-bold animate-pulse">
+                  ⚽ Bàn thắng! Đang cập nhật phân tích…
+                </div>
+              )}
               {/* Shared visual card */}
               <PredictCard />
 
               {/* Box 1 — Python ML */}
-              <div className="rounded-xl border border-[#1a3a1a] bg-[#0a1a0a] overflow-hidden">
+              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
                   <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
                   {predicting && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
-                  {!predicting && prediction && (
-                    <button onClick={triggerPrediction} className="ml-auto text-[11px] text-[#2a4a2a] hover:text-[#4ade80]">↺</button>
-                  )}
-                  <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML · 3414 mẫu</span>
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
+                    {!predicting && (
+                      <button
+                        onClick={triggerPrediction}
+                        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#1a3a1a] border border-[#3a6a3a] text-[#4ade80] hover:bg-[#223a22] active:scale-95 transition-all text-[18px] leading-none"
+                        title="Làm mới dự đoán"
+                      >↺</button>
+                    )}
+                  </div>
                 </div>
                 <div className="px-3 py-2.5">
                   {!prediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
@@ -1721,7 +1704,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               </div>
 
               {/* Box 3 — Claude AI */}
-              <div className="rounded-xl border border-[#2a1a4a] bg-[#0f0a1a] overflow-hidden">
+              <div className={`rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
                 <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
                   <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Dự đoán Claude</span>
                   <span className="ml-auto text-[10px] text-[#3a2a5a] font-semibold">Claude Haiku</span>

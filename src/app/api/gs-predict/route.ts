@@ -171,15 +171,16 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
     lines.push('');
   }
 
-  lines.push(`Đang: ${homeTeam} ${scoreLine} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'`);
+  lines.push(`Đang: ${homeTeam} ${h1Home}-${h1Away} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'`);
   lines.push('');
+
   lines.push(`⚽ Ghi bàn tiếp theo`);
   lines.push(`   ${homeTeam}: ${homeNextPctInt}%  ·  ${awayTeam}: ${awayNextPctInt}%`);
   const nextReason: string[] = [];
   if (homeFormPts !== awayFormPts)
     nextReason.push(`${nextFav} form ${formLabel(nextFav === homeTeam ? homeFormPts : awayFormPts)}`);
   if (h2hTotal > 0 && h2hHomeW !== h2hAwayW)
-    nextReason.push(`H2H ${homeTeam} ${h2hHomeW}-${h2hAwayW} ${awayTeam}`);
+    nextReason.push(`H2H ${h2hHomeW}-${h2hDraws}-${h2hAwayW} cho ${homeTeam}`);
   if (scoreDiff !== 0)
     nextReason.push(scoreDiff > 0 ? `${awayTeam} đang cần gỡ` : `${homeTeam} đang cần gỡ`);
   if (nextReason.length) lines.push(`   → ${nextReason.join(', ')}`);
@@ -187,7 +188,7 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
   lines.push('');
   lines.push(`🔄 Khả năng gỡ hòa: ${drawPct}%`);
   if (scoreDiff === 0) {
-    lines.push(`   Đang hòa ${scoreLine} — ${timeLeft < 20 ? 'ít thời gian, nhiều khả năng giữ hòa' : 'còn đủ thời gian bật tung'}`);
+    lines.push(`   Đang hòa ${h1Home}-${h1Away} — ${timeLeft < 20 ? 'ít thời gian, nhiều khả năng giữ hòa' : 'còn đủ thời gian bật tung'}`);
   } else {
     const trailingTeam = scoreDiff > 0 ? awayTeam : homeTeam;
     const trailingForm = scoreDiff > 0 ? awayFormPts : homeFormPts;
@@ -208,10 +209,10 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
     const ouVal = parseFloat(ouLine);
     const currentTotal = h1Home + h1Away;
     const goalsNeeded = Math.ceil(ouVal - currentTotal);
-    lines.push(`   OU ${ouLine}: cần thêm ~${Math.max(0, goalsNeeded)} bàn để qua tài`);
+    lines.push(`   OU ${ouLine}: ${goalsNeeded > 0 ? `cần thêm ~${goalsNeeded} bàn để qua tài` : 'đã đủ tài'}`);
   }
   if (hcLine)
-    lines.push(`   HC ${hcLine}: ${oddsSignal === 'home' ? homeTeam : oddsSignal === 'away' ? awayTeam : 'hai đội'} được kèo`);
+    lines.push(`   HC ${hcLine}: ${oddsSignal === 'home' ? homeTeam : oddsSignal === 'away' ? awayTeam : 'hai đội cân bằng'} được kèo`);
 
   lines.push('');
   lines.push(`📋 Phong độ (5 trận)`);
@@ -223,7 +224,7 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
   return lines.join('\n');
 }
 
-function statsStream(text: string): Response {
+function statsStream(text: string, ml: MlPrediction | null): Response {
   const encoder = new TextEncoder();
   let i = 0;
   const stream = new ReadableStream({
@@ -237,7 +238,9 @@ function statsStream(text: string): Response {
       tick();
     },
   });
-  return new Response(stream, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+  const headers: Record<string, string> = { 'Content-Type': 'text/plain; charset=utf-8' };
+  if (ml) headers['X-ML-Samples'] = String(ml.n_samples);
+  return new Response(stream, { headers });
 }
 
 async function claudeStream(b: PredictBody, ml: MlPrediction | null): Promise<Response> {
@@ -282,5 +285,5 @@ export async function POST(req: NextRequest) {
   if (process.env.ANTHROPIC_API_KEY) {
     return claudeStream(body, ml);
   }
-  return statsStream(buildStatisticalAnalysis(body, ml));
+  return statsStream(buildStatisticalAnalysis(body, ml), ml);
 }
