@@ -228,7 +228,7 @@ export default function GSLive() {
   async function requestAndSet(
     key: string,
     setter: (v: boolean) => void,
-    ref: React.MutableRefObject<boolean>,
+    ref: { current: boolean },
   ) {
     if (typeof Notification === 'undefined') return;
     if (Notification.permission !== 'granted') {
