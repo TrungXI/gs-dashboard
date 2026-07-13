@@ -1150,7 +1150,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'free' | 'predict' | 'claude'>('stats');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('stats');
   const [prediction, setPrediction] = useState('');
   const [predicting, setPredicting] = useState(false);
   const predAbortRef = useRef<AbortController | null>(null);
@@ -1399,14 +1399,14 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   // Fires on: tab open, data load, score/half change, HC/OU line shift → immediate retrigger
   const changeKey = `${live.h1Home}-${live.h1Away}-${live.isH2}-${live.redHome}-${live.redAway}-${live.hcLines[0]?.line ?? ''}-${live.hcLines[0]?.home ?? ''}-${live.ouLines[0]?.line ?? ''}`;
   useEffect(() => {
-    if (activeTab !== 'predict' || !matches) return;
+    if (activeTab !== 'suggest' || !matches) return;
     triggerRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, matches, changeKey]);
 
   // 2-min timer — periodic refresh even when nothing changed
   useEffect(() => {
-    if (activeTab !== 'predict' || !matches) return;
+    if (activeTab !== 'suggest' || !matches) return;
     const id = setInterval(() => triggerRef.current(), 2 * 60 * 1000);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1642,22 +1642,10 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             📊 Thống kê
           </button>
           <button
-            onClick={() => setActiveTab('free')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'free' ? 'text-white border-[#17a2b8]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+            onClick={() => setActiveTab('suggest')}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'suggest' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
           >
-            🆓 Free
-          </button>
-          <button
-            onClick={() => setActiveTab('predict')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'predict' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            🤖 Python
-          </button>
-          <button
-            onClick={() => setActiveTab('claude')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'claude' ? 'text-white border-[#a78bfa]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            ✨ Claude
+            💡 Gợi ý
           </button>
         </div>
 
@@ -1703,27 +1691,30 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             </div>
           )}
 
-          {!loading && matches !== null && activeTab === 'free' && (
+          {!loading && matches !== null && activeTab === 'suggest' && (
             <div className="px-4 py-4 space-y-3">
+              {/* Shared visual card */}
               <PredictCard />
-              <div className="rounded-lg border border-[#1a3a4a] bg-[#0a1a20] p-3">
-                <div className="text-[12px] font-bold text-[#17a2b8] mb-2">🆓 Phân tích thống kê (free)</div>
-                <div className="text-[13px] text-[#888] leading-relaxed">
-                  Phân tích dựa trên công thức thống kê: form W/D/L, H2H, kèo HC. Không dùng AI hay ML.
+
+              {/* Box 1 — Free */}
+              <div className="rounded-xl border border-[#1a3a4a] bg-[#0a1a20] overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a4a]">
+                  <span className="text-[12px] font-extrabold text-[#17a2b8]">🆓 Dự đoán Free</span>
+                  <span className="ml-auto text-[10px] text-[#2a5a6a] font-semibold">Công thức thống kê</span>
                 </div>
-                <div className="mt-3 space-y-2 text-[13px] text-[#bbb]">
+                <div className="px-3 py-2.5 space-y-1.5 text-[13px]">
                   <div className="flex justify-between">
                     <span className="text-[#555]">Form {homeDbName}</span>
-                    <span className="font-bold">{homeW}W {homeD}D {homeL}L</span>
+                    <span className="font-bold text-white">{homeW}W {homeD}D {homeL}L</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#555]">Form {awayDbName}</span>
-                    <span className="font-bold">{awayW}W {awayD}D {awayL}L</span>
+                    <span className="font-bold text-white">{awayW}W {awayD}D {awayL}L</span>
                   </div>
                   {h2hMatches.length > 0 && (
                     <div className="flex justify-between">
                       <span className="text-[#555]">H2H</span>
-                      <span className="font-bold">{homeDbName} {h2hHomeW}W · {h2hDraws}D · {h2hAwayW}W {awayDbName}</span>
+                      <span className="font-bold text-white">{h2hHomeW}W · {h2hDraws}D · {h2hAwayW}W</span>
                     </div>
                   )}
                   {live.hcLines[0]?.line && (
@@ -1732,50 +1723,54 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                       <span className="font-bold text-[#fbbf24]">{live.hcLines[0].line} ({live.hcLines[0].home}/{live.hcLines[0].away})</span>
                     </div>
                   )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {!loading && matches !== null && activeTab === 'predict' && (
-            <div className="px-4 py-4 space-y-3">
-              {/* Visual next-goal card */}
-              <PredictCard />
-
-              {/* Streaming detail */}
-              <div className="rounded-lg border border-[#2a2a2a] bg-[#0d0d0d] p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[13px] font-bold text-[#666]">Chi tiết phân tích</span>
-                  {predicting && <span className="text-[12px] text-[#fbbf24] animate-pulse">đang tính…</span>}
-                  {!predicting && prediction && (
-                    <button onClick={triggerPrediction} className="ml-auto text-[12px] text-[#555] hover:text-white">↺ Làm mới</button>
+                  {live.ouLines[0]?.line && (
+                    <div className="flex justify-between">
+                      <span className="text-[#555]">Tài xỉu</span>
+                      <span className="font-bold text-[#fbbf24]">{live.ouLines[0].line}</span>
+                    </div>
                   )}
                 </div>
-                {!prediction && !predicting && (
-                  <div className="text-[13px] text-[#555]">Đang tải…</div>
-                )}
-                {prediction && (
-                  <div className="space-y-0.5">
-                    {predicting
-                      ? <div className="text-[14px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                          {prediction}
-                          <span className="inline-block w-1.5 h-3.5 bg-[#fbbf24] ml-0.5 animate-pulse align-middle" />
-                        </div>
-                      : prediction.split('\n').map((line, i) => renderLine(line, i))
-                    }
-                  </div>
-                )}
               </div>
-            </div>
-          )}
 
-          {activeTab === 'claude' && (
-            <div className="flex flex-col items-center justify-center py-20 px-6 text-center">
-              <div className="text-5xl mb-4">✨</div>
-              <div className="text-[16px] font-bold text-[#a78bfa] mb-2">Claude AI</div>
-              <div className="text-[14px] text-[#555] mb-4">Đang phát triển</div>
-              <div className="text-[13px] text-[#444] leading-relaxed max-w-[280px]">
-                Sẽ dùng Claude Haiku để phân tích realtime với context sâu hơn. Nạp <span className="text-[#a78bfa] font-semibold">ANTHROPIC_API_KEY</span> để kích hoạt.
+              {/* Box 2 — Python ML */}
+              <div className="rounded-xl border border-[#1a3a1a] bg-[#0a1a0a] overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
+                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
+                  {predicting && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
+                  {!predicting && prediction && (
+                    <button onClick={triggerPrediction} className="ml-auto text-[11px] text-[#2a4a2a] hover:text-[#4ade80]">↺</button>
+                  )}
+                  <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML · 3414 mẫu</span>
+                </div>
+                <div className="px-3 py-2.5">
+                  {!prediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                  {prediction && (
+                    <div className="space-y-0.5">
+                      {predicting
+                        ? <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                            {prediction}
+                            <span className="inline-block w-1.5 h-3.5 bg-[#4ade80] ml-0.5 animate-pulse align-middle" />
+                          </div>
+                        : prediction.split('\n').map((line, i) => renderLine(line, i))
+                      }
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Box 3 — Claude AI */}
+              <div className="rounded-xl border border-[#2a1a4a] bg-[#0f0a1a] overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
+                  <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Dự đoán Claude</span>
+                  <span className="ml-auto text-[10px] text-[#3a2a5a] font-semibold">Claude Haiku</span>
+                </div>
+                <div className="flex items-center gap-3 px-3 py-4">
+                  <div className="text-2xl">🔒</div>
+                  <div>
+                    <div className="text-[13px] text-[#666]">Đang phát triển</div>
+                    <div className="text-[11px] text-[#3a2a5a] mt-0.5">Nạp <span className="text-[#a78bfa]">ANTHROPIC_API_KEY</span> để kích hoạt</div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
