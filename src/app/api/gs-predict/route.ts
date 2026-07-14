@@ -426,7 +426,9 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const prompt = CLAUDE_PROMPTS[CLAUDE_PROMPT_VERSION];
 
   const prevPreds = b.previousPredictions;
-  let userContent: string;
+
+  // Always start with the original v3 prompt (unchanged)
+  let userContent = prompt.user(statsText);
 
   if (prevPreds && prevPreds.length > 0) {
     // Last 3 predictions, full text — no truncation
@@ -437,22 +439,30 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
       return `[Tỉ số ${scoreLabel}${timeLabel ? ` · ${timeLabel}` : ''}]\n${p.prediction_text.trim()}`;
     }).join('\n\n---\n\n');
 
-    // Structure: stats → history → instructions (Claude reads history BEFORE the task)
-    userContent =
-      `Số liệu trận đang diễn ra:\n\n${statsText}\n\n` +
+    const historySection =
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
       `📚 LỊCH SỬ DỰ ĐOÁN CỦA BẠN TRONG TRẬN NÀY:\n` +
-      `(Đọc kỹ để tự đánh giá đúng/sai trước khi phân tích mới)\n\n` +
+      `(Đọc kỹ — tổng hợp lại để tự đánh giá đúng/sai trước khi đưa ra phân tích mới)\n\n` +
       `${historyBlock}\n\n` +
-      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-      `Dựa vào số liệu HIỆN TẠI và lịch sử dự đoán trên, trả lời đúng định dạng:\n\n` +
-      `🎯 BÀN TIẾP THEO\n- [Đội] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n` +
-      `⚡ ĐỘI ĐANG THUA CÓ GHI BÀN TRONG HIỆP NÀY KHÔNG\n- CÓ / KHÔNG · xác suất ước tính\n- Nêu ngắn gọn: odds, thời gian còn lại, comeback rate, H2H\n\n` +
-      `🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\n` +
-      `✏️ ĐIỀU CHỈNH TỪ DỰ ĐOÁN TRƯỚC\n- Dự đoán trước đúng hay sai ở điểm nào? Điều chỉnh gì cho lần này?\n\n` +
-      `Mỗi mục 1-2 câu, tập trung vào kết luận và xác suất cao nhất.`;
-  } else {
-    userContent = prompt.user(statsText);
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+
+    // Insert history block between statsText and the format instructions (keep v3 format intact)
+    const splitMarker = 'Dựa vào số liệu trên, trả lời đúng định dạng sau:';
+    const splitIdx = userContent.indexOf(splitMarker);
+    if (splitIdx !== -1) {
+      userContent =
+        userContent.slice(0, splitIdx) +
+        historySection + '\n' +
+        userContent.slice(splitIdx);
+    } else {
+      userContent += '\n\n' + historySection;
+    }
+
+    // Append ✏️ ĐIỀU CHỈNH section after the original format (extra section only when history exists)
+    userContent +=
+      `\n\n✏️ ĐIỀU CHỈNH TỪ DỰ ĐOÁN TRƯỚC\n` +
+      `- Dự đoán trước đúng hay sai ở điểm nào? Tỉ số thực tế có khớp không?\n` +
+      `- Điều chỉnh gì trong lần phân tích này dựa trên những gì đã xảy ra?`;
   }
 
   const maxTokens = prevPreds && prevPreds.length > 0 ? 950 : 650;
