@@ -8,40 +8,6 @@ import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_F
 import { TypeBadge, ResultTag } from './badges';
 import MatchAnalysis from './MatchAnalysis';
 
-interface AnalysisSnapshot {
-  snapshotType: string;
-  scoreHome: number;
-  scoreAway: number;
-  hcLine: string | null;
-  hcHomeOdds: string | null;
-  hcAwayOdds: string | null;
-  hcH1Line: string | null;
-  hcH1HomeOdds: string | null;
-  hcH1AwayOdds: string | null;
-  ouLine: string | null;
-  ouOver: string | null;
-  ouUnder: string | null;
-  ouH1Line: string | null;
-  ouH1Over: string | null;
-  ouH1Under: string | null;
-  recordedAt: string | null;
-}
-
-interface AnalysisMatch {
-  eventId: number;
-  homeTeam: string;
-  awayTeam: string;
-  matchDate: string | null;
-  matchType: string | null;
-  finalScore: { home: number; away: number };
-  snapshots: AnalysisSnapshot[];
-}
-
-interface SimilarResult {
-  group: AnalysisMatch;
-  pts: number;
-  matchingSnap: AnalysisSnapshot | null;
-}
 
 interface GsLiveMatch {
   leagueId: number;
@@ -78,24 +44,6 @@ interface GsLiveMatch {
   cornersAway: number;
 }
 
-function computeSimilarity(live: GsLiveMatch, group: AnalysisMatch): SimilarResult {
-  const snap = group.snapshots.find(
-    (s) => s.scoreHome === live.h1Home && s.scoreAway === live.h1Away,
-  ) ?? null;
-  if (!snap) return { group, pts: 0, matchingSnap: null };
-
-  let pts = 3;
-  if (live.hcLines[0]?.line && snap.hcLine === live.hcLines[0].line) pts += 2;
-  if (live.ouLines[0]?.line && snap.ouLine === live.ouLines[0].line) pts += 2;
-  if (live.hcH1Lines[0]?.line && snap.hcH1Line === live.hcH1Lines[0].line) pts += 1;
-  if (live.ouH1Lines[0]?.line && snap.ouH1Line === live.ouH1Lines[0].line) pts += 1;
-  const lhcH = live.hcLines[0]?.home;
-  if (lhcH && snap.hcHomeOdds && Math.abs(parseFloat(lhcH) - parseFloat(snap.hcHomeOdds)) < 0.06) pts += 1;
-  const louO = live.ouLines[0]?.over;
-  if (louO && snap.ouOver && Math.abs(parseFloat(louO) - parseFloat(snap.ouOver)) < 0.06) pts += 1;
-
-  return { group, pts, matchingSnap: snap };
-}
 
 type Signal =
   | { kind: 'FOLLOW'; label: '◀ THEO'; color: string }
@@ -261,7 +209,6 @@ export default function GSLive() {
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
-  const [similarMatchId, setSimilarMatchId] = useState<number | null>(null);
   const [analysisMatchId, setAnalysisMatchId] = useState<number | null>(null);
   const [confrontMatchId, setConfrontMatchId] = useState<number | null>(null);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
@@ -499,12 +446,10 @@ export default function GSLive() {
       </div>
 
       {(() => {
-        const simLive = similarMatchId != null ? matches.find(m => m.eventId === similarMatchId) ?? null : null;
         const anaLive = analysisMatchId != null ? matches.find(m => m.eventId === analysisMatchId) ?? null : null;
         const cLive = confrontMatchId != null ? matches.find(m => m.eventId === confrontMatchId) ?? null : null;
         return (
           <>
-            {simLive && <SimilarMatchesDrawer live={simLive} onClose={() => setSimilarMatchId(null)} />}
             {anaLive && <LiveAnalysisDrawer live={anaLive} onClose={() => setAnalysisMatchId(null)} />}
             {cLive && <ConfrontationDrawer live={cLive} onClose={() => setConfrontMatchId(null)} />}
           </>
@@ -535,7 +480,6 @@ export default function GSLive() {
             globalReloadKey={globalReloadKey}
             h1Finals={h1Finals}
             autoStream={autoStream}
-            onSimilar={(m) => setSimilarMatchId(m.eventId)}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
             onConfront={(m) => setConfrontMatchId(m.eventId)}
           />
@@ -550,7 +494,6 @@ export default function GSLive() {
             globalReloadKey={globalReloadKey}
             h1Finals={h1Finals}
             autoStream={autoStream}
-            onSimilar={(m) => setSimilarMatchId(m.eventId)}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
             onConfront={(m) => setConfrontMatchId(m.eventId)}
           />
@@ -806,7 +749,6 @@ function LeagueSection({
   globalReloadKey,
   h1Finals,
   autoStream,
-  onSimilar,
   onAnalysis,
   onConfront,
 }: {
@@ -820,7 +762,6 @@ function LeagueSection({
   globalReloadKey: number;
   h1Finals: Map<number, { home: number; away: number }>;
   autoStream: boolean;
-  onSimilar: (m: GsLiveMatch) => void;
   onAnalysis: (m: GsLiveMatch) => void;
   onConfront: (m: GsLiveMatch) => void;
 }) {
@@ -929,14 +870,6 @@ function LeagueSection({
                     )}
                     <div className="text-[10px] text-[#888]">{phaseLabel(m, nowMs)}</div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => onSimilar(m)}
-                    className="flex-shrink-0 rounded px-1.5 py-1 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-white hover:border-[#444] transition-colors"
-                    title="Tìm trận tương tự"
-                  >
-                    🔍
-                  </button>
                   <button
                     type="button"
                     onClick={() => onAnalysis(m)}
@@ -1068,14 +1001,6 @@ function LeagueSection({
                         <CardBadges yellow={m.yellowAway} red={m.redAway} />
                       </div>
                       {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
-                      <button
-                        type="button"
-                        onClick={() => onSimilar(m)}
-                        className="mt-1.5 rounded px-2 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-white hover:border-[#444] transition-colors"
-                        title="Tìm trận tương tự"
-                      >
-                        🔍 Tương tự
-                      </button>
                       <button
                         type="button"
                         onClick={() => onAnalysis(m)}
@@ -2060,154 +1985,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   )}
                 </div>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    </>
-  );
-}
-
-function SimilarMatchesDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
-  const [matches, setMatches] = useState<AnalysisMatch[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    setMatches(null);
-    const urlAB =
-      `/api/match-analysis?homeTeam=${encodeURIComponent(live.homeTeam)}` +
-      `&awayTeam=${encodeURIComponent(live.awayTeam)}`;
-    const urlBA =
-      `/api/match-analysis?homeTeam=${encodeURIComponent(live.awayTeam)}` +
-      `&awayTeam=${encodeURIComponent(live.homeTeam)}`;
-    Promise.all([fetch(urlAB).then((r) => r.json()), fetch(urlBA).then((r) => r.json())])
-      .then(([jsonAB, jsonBA]: [{ ok: boolean; matches?: AnalysisMatch[] }, { ok: boolean; matches?: AnalysisMatch[] }]) => {
-        if (!alive) return;
-        const list = [...(jsonAB.matches ?? []), ...(jsonBA.matches ?? [])]
-          .filter((g) => g.eventId !== live.eventId)
-          .sort((a, b) => {
-            const aT = a.snapshots.at(-1)?.recordedAt ?? '';
-            const bT = b.snapshots.at(-1)?.recordedAt ?? '';
-            return bT.localeCompare(aT);
-          });
-        setMatches(list);
-      })
-      .catch(() => { if (alive) setMatches([]); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
-  }, [live.eventId, live.homeTeam, live.awayTeam]);
-
-  const snapLabel: Record<string, string> = {
-    first_seen: 'Bắt đầu',
-    kickoff_h1: 'KO H1',
-    kickoff_h2: 'KO H2',
-    goal_h1: 'Bàn H1',
-    goal_h2: 'Bàn H2',
-  };
-
-  return (
-    <>
-      <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[460px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222] flex-shrink-0">
-          <span className="text-[13px] font-bold text-white">🔍 Lịch sử đối đầu</span>
-          <button onClick={onClose} className="ml-auto text-[#555] hover:text-white text-lg leading-none">✕</button>
-        </div>
-
-        {/* Teams header */}
-        <div className="px-4 py-2.5 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
-          <div className="text-[12px] font-semibold text-white">
-            {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
-          </div>
-          <div className="text-[10px] text-[#555] mt-0.5">
-            {!loading && matches ? `${matches.length} trận trong DB` : 'Đang tìm…'}
-          </div>
-        </div>
-
-        {/* Results */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex items-center justify-center py-12 text-[#666] text-[13px]">Đang tìm kiếm…</div>
-          )}
-          {!loading && matches?.length === 0 && (
-            <div className="flex flex-col items-center justify-center py-12 gap-2">
-              <span className="text-3xl">📭</span>
-              <span className="text-[13px] text-[#666]">Chưa có lịch sử đối đầu trong DB</span>
-            </div>
-          )}
-          {!loading && matches && matches.length > 0 && (
-            <div className="flex flex-col divide-y divide-[#1a1a1a]">
-              {matches.map((g) => {
-                const isExpanded = expandedId === g.eventId;
-                return (
-                  <div key={g.eventId} className="px-4 py-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[13px] font-bold text-[#fbbf24]">
-                            {g.finalScore.home}–{g.finalScore.away}
-                          </span>
-                          <span className="text-[10px] text-[#555]">
-                            {g.matchDate ?? '—'} · {g.matchType ?? ''}
-                          </span>
-                          {g.homeTeam !== live.homeTeam && (
-                            <span className="text-[9px] px-1 py-0.5 rounded bg-[#1e3a5f]/40 text-[#60a5fa] border border-[#60a5fa]/30">đảo</span>
-                          )}
-                        </div>
-                        <div className="text-[10px] text-[#666] mt-0.5">
-                          {g.snapshots.length} snapshots
-                          {g.snapshots[0]?.hcLine && <span className="ml-2">HC {g.snapshots[0].hcLine}</span>}
-                          {g.snapshots[0]?.ouLine && <span className="ml-2">OU {g.snapshots[0].ouLine}</span>}
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => setExpandedId(isExpanded ? null : g.eventId)}
-                        className="flex-shrink-0 text-[#555] hover:text-white text-sm transition-colors"
-                      >
-                        {isExpanded ? '▲' : '▼'}
-                      </button>
-                    </div>
-
-                    {/* Snapshot timeline */}
-                    {isExpanded && (
-                      <div className="mt-3 flex flex-col gap-1.5">
-                        {g.snapshots.map((s, idx) => (
-                          <div
-                            key={idx}
-                            className="rounded-md px-2.5 py-1.5 text-[11px] border bg-[#141414] border-[#222]"
-                          >
-                            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                              <span className="font-semibold text-[#888]">
-                                {snapLabel[s.snapshotType] ?? s.snapshotType}
-                              </span>
-                              <span className="text-[#fbbf24] font-bold">{s.scoreHome}–{s.scoreAway}</span>
-                              {s.hcLine && (
-                                <span className="text-[#aaa]">HC {s.hcLine} · {s.hcHomeOdds ?? '—'}/{s.hcAwayOdds ?? '—'}</span>
-                              )}
-                              {s.ouLine && (
-                                <span className="text-[#aaa]">OU {s.ouLine} · {s.ouOver ?? '—'}/{s.ouUnder ?? '—'}</span>
-                              )}
-                              {s.hcH1Line && (
-                                <span className="text-[#60a5fa]/70">HC H1 {s.hcH1Line}</span>
-                              )}
-                              {s.ouH1Line && (
-                                <span className="text-[#60a5fa]/70">OU H1 {s.ouH1Line}</span>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                        <div className="mt-1 text-[10px] text-[#555]">
-                          Kết quả: {g.finalScore.home}–{g.finalScore.away}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
             </div>
           )}
         </div>
