@@ -1158,7 +1158,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('suggest');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'python'>('suggest');
   const [claudePrediction, setClaudePrediction] = useState('');
   const [pythonStats, setPythonStats] = useState('');
   const [predicting, setPredicting] = useState(false);
@@ -1850,6 +1850,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           >
             💡 Gợi ý
           </button>
+          <button
+            onClick={() => setActiveTab('python')}
+            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'python' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
+          >
+            🤖 Python
+          </button>
         </div>
 
         {/* Body */}
@@ -1997,34 +2003,26 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   );
                 })()}
 
-                {/* Python box */}
-                <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
-                    <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Python ML</span>
-                    {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
-                    <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
-                  </div>
-                  <div className="px-3 py-2.5">
-                    {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                    {pythonStats && (
-                      <div className="space-y-0.5">
-                        {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
-                      </div>
-                    )}
-                  </div>
-                </div>
               </div>
+            </div>
+          )}
 
-              {/* Mobile dot indicators */}
-              <div className="flex justify-center gap-2 md:hidden">
-                <button
-                  onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })}
-                  className={`h-2 rounded-full transition-all duration-300 ${activeDot === 0 ? 'w-5 bg-[#a78bfa]' : 'w-2 bg-[#333]'}`}
-                />
-                <button
-                  onClick={() => carouselRef.current?.scrollTo({ left: carouselRef.current.offsetWidth, behavior: 'smooth' })}
-                  className={`h-2 rounded-full transition-all duration-300 ${activeDot === 1 ? 'w-5 bg-[#4ade80]' : 'w-2 bg-[#333]'}`}
-                />
+          {!loading && matches !== null && activeTab === 'python' && (
+            <div className="px-4 py-4">
+              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
+                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Python ML</span>
+                  {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
+                  <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
+                </div>
+                <div className="px-3 py-2.5">
+                  {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                  {pythonStats && (
+                    <div className="space-y-0.5">
+                      {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
