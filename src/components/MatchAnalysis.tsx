@@ -331,17 +331,16 @@ export default function MatchAnalysis({
     if (!embedded || !initialTeamA || !initialTeamB) return;
     let alive = true;
     setLoading(true);
-    Promise.all([
-      fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamA)}&awayTeam=${encodeURIComponent(initialTeamB)}`).then(r => r.json()),
-      fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamB)}&awayTeam=${encodeURIComponent(initialTeamA)}`).then(r => r.json()),
-    ]).then(([aJson, bJson]: [{ ok: boolean; matches?: MatchGroup[] }, { ok: boolean; matches?: MatchGroup[] }]) => {
-      if (!alive) return;
-      setAMatches(aJson.matches ?? []);
-      setBMatches(bJson.matches ?? []);
-      setAnalyzedA(initialTeamA);
-      setAnalyzedB(initialTeamB);
-      setTab('a');
-    }).catch(e => { if (alive) setError(String(e)); }).finally(() => { if (alive) setLoading(false); });
+    fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamA)}&awayTeam=${encodeURIComponent(initialTeamB)}`)
+      .then(r => r.json())
+      .then((json: { ok: boolean; aMatches?: MatchGroup[]; bMatches?: MatchGroup[] }) => {
+        if (!alive) return;
+        setAMatches(json.aMatches ?? []);
+        setBMatches(json.bMatches ?? []);
+        setAnalyzedA(initialTeamA);
+        setAnalyzedB(initialTeamB);
+        setTab('a');
+      }).catch(e => { if (alive) setError(String(e)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -389,28 +388,18 @@ export default function MatchAnalysis({
     setLoading(true);
     setError(null);
     try {
-      const [aRes, bRes] = await Promise.all([
-        fetch(
-          `/api/match-analysis?homeTeam=${encodeURIComponent(teamA)}&awayTeam=${encodeURIComponent(teamB)}`,
-        ),
-        fetch(
-          `/api/match-analysis?homeTeam=${encodeURIComponent(teamB)}&awayTeam=${encodeURIComponent(teamA)}`,
-        ),
-      ]);
-      const aJson = (await aRes.json()) as {
+      const res = await fetch(
+        `/api/match-analysis?homeTeam=${encodeURIComponent(teamA)}&awayTeam=${encodeURIComponent(teamB)}`,
+      );
+      const json = (await res.json()) as {
         ok: boolean;
-        matches?: MatchGroup[];
+        aMatches?: MatchGroup[];
+        bMatches?: MatchGroup[];
         error?: string;
       };
-      const bJson = (await bRes.json()) as {
-        ok: boolean;
-        matches?: MatchGroup[];
-        error?: string;
-      };
-      if (!aJson.ok) throw new Error(aJson.error ?? 'Lỗi truy vấn');
-      if (!bJson.ok) throw new Error(bJson.error ?? 'Lỗi truy vấn');
-      setAMatches(aJson.matches ?? []);
-      setBMatches(bJson.matches ?? []);
+      if (!json.ok) throw new Error(json.error ?? 'Lỗi truy vấn');
+      setAMatches(json.aMatches ?? []);
+      setBMatches(json.bMatches ?? []);
       setAnalyzedA(teamA);
       setAnalyzedB(teamB);
       setTab('a');

@@ -12,6 +12,67 @@ function getPool(): Pool {
   return pool;
 }
 
+// ---------- Name normalisation (same map as collector + gs-live) ----------
+
+const VN_TO_EN: Record<string, string> = {
+  'Nhật Bản': 'Japan',
+  'Hàn Quốc': 'Korea Republic',
+  'Trung Quốc': 'China',
+  'Thái Lan': 'Thailand',
+  'Việt Nam': 'Vietnam',
+  'Ả Rập Xê Út': 'Saudi Arabia',
+  'Ả Rập Saudi': 'Saudi Arabia',
+  'Úc': 'Australia',
+  'Ấn Độ': 'India',
+  'Campuchia': 'Cambodia',
+  'Lào': 'Laos',
+  'Nga': 'Russia',
+  'Đức': 'Germany',
+  'Pháp': 'France',
+  'Tây Ban Nha': 'Spain',
+  'Bồ Đào Nha': 'Portugal',
+  'Hà Lan': 'Netherlands',
+  'Bỉ': 'Belgium',
+  'Thụy Sĩ': 'Switzerland(CHE)',
+  'Thụy Điển': 'Sweden',
+  'Na Uy': 'Norway',
+  'Áo': 'Austria',
+  'Ý': 'Italy',
+  'Anh': 'England',
+  'Maroc': 'Morocco',
+  'Mỹ': 'USA',
+  'Viet Nam': 'Vietnam',
+  'South Korea': 'Korea Republic',
+  'Republic of Korea': 'Korea Republic',
+  'DPR Korea': 'North Korea',
+  'Korea DPR': 'North Korea',
+  'IR Iran': 'Iran',
+  'Islamic Republic of Iran': 'Iran',
+  'Brunei Darussalam': 'Brunei',
+};
+
+/** Parse "Korea Republic (V)" → { base: "Korea Republic", type: "V" } after normalising. */
+function parseTeamName(name: string): { base: string; type: string } | null {
+  const m = name.trim().match(/^(.+?)\s+\(([VS])\)$/);
+  if (!m) return null;
+  const raw = m[1].trim();
+  return { base: VN_TO_EN[raw] ?? raw, type: m[2] };
+}
+
+/** Normalise any team name variant → ID in gs_teams. Returns null if team unknown. */
+async function resolveTeamId(db: Pool, name: string): Promise<{ id: number; display: string } | null> {
+  const parsed = parseTeamName(name);
+  if (!parsed) return null;
+  const { rows } = await db.query<{ id: number }>(
+    'SELECT id FROM gs_teams WHERE name = $1 AND type = $2',
+    [parsed.base, parsed.type],
+  );
+  if (!rows[0]) return null;
+  return { id: rows[0].id, display: `${parsed.base} (${parsed.type})` };
+}
+
+// ---------- Types ----------
+
 interface Snapshot {
   snapshotType: string;
   period: number | null;
@@ -61,93 +122,6 @@ interface MatchGroup {
 }
 
 type Row = Record<string, unknown>;
-
-// ---------- Team alias table ----------
-// Canonical team names are whatever match_odds_log stores (e.g. "Vietnam (V)").
-// Aliases cover Vietnamese names, alternate English spellings, etc.
-// The suffix "(V)" / "(S)" is preserved — only the base name is looked up.
-
-const ALIAS_SEEDS: [string, string][] = [
-  // Vietnamese base names → English canonical
-  ['Nhật Bản', 'Japan'],
-  ['Hàn Quốc', 'Korea Republic'],
-  ['Trung Quốc', 'China'],
-  ['Thái Lan', 'Thailand'],
-  ['Việt Nam', 'Vietnam'],
-  ['Ả Rập Xê Út', 'Saudi Arabia'],
-  ['Ả Rập Saudi', 'Saudi Arabia'],
-  ['Úc', 'Australia'],
-  ['Ấn Độ', 'India'],
-  ['Campuchia', 'Cambodia'],
-  ['Lào', 'Laos'],
-  ['Philippines', 'Philippines'],
-  ['Malaysia', 'Malaysia'],
-  ['Indonesia', 'Indonesia'],
-  ['Singapore', 'Singapore'],
-  ['Myanmar', 'Myanmar'],
-  ['Iran', 'Iran'],
-  ['Qatar', 'Qatar'],
-  // English alternate spellings
-  ['Viet Nam', 'Vietnam'],
-  ['South Korea', 'Korea Republic'],
-  ['Republic of Korea', 'Korea Republic'],
-  ['DPR Korea', 'North Korea'],
-  ['Korea DPR', 'North Korea'],
-  ['IR Iran', 'Iran'],
-  ['Islamic Republic of Iran', 'Iran'],
-  ['New Zealand', 'New Zealand'],
-  ['Saudi Arabia', 'Saudi Arabia'],
-  ['Korea Republic', 'Korea Republic'],
-  ['North Korea', 'North Korea'],
-  ['Australia', 'Australia'],
-  ['Japan', 'Japan'],
-  ['China', 'China'],
-  ['Thailand', 'Thailand'],
-  ['Vietnam', 'Vietnam'],
-  ['Brunei', 'Brunei'],
-  ['Brunei Darussalam', 'Brunei'],
-  ['Laos', 'Laos'],
-  ['Cambodia', 'Cambodia'],
-  ['India', 'India'],
-  ['Indonesia', 'Indonesia'],
-];
-
-let aliasTableReady = false;
-
-async function ensureAliasTable(db: Pool): Promise<void> {
-  if (aliasTableReady) return;
-  await db.query(`
-    CREATE TABLE IF NOT EXISTS gs_team_aliases (
-      alias     TEXT PRIMARY KEY,
-      canonical TEXT NOT NULL
-    )
-  `);
-  if (ALIAS_SEEDS.length > 0) {
-    const placeholders = ALIAS_SEEDS.map((_, i) => `($${2 * i + 1}, $${2 * i + 2})`).join(', ');
-    await db.query(
-      `INSERT INTO gs_team_aliases (alias, canonical) VALUES ${placeholders}
-       ON CONFLICT (alias) DO NOTHING`,
-      ALIAS_SEEDS.flat(),
-    );
-  }
-  aliasTableReady = true;
-}
-
-/** Resolve any team name variant to the canonical DB name.
- *  Input: "Viet Nam (V)" → Output: "Vietnam (V)"
- *  Strips suffix, looks up base alias, re-attaches suffix.
- */
-async function resolveTeam(db: Pool, name: string): Promise<string> {
-  const m = name.match(/^(.+?)(\s+\([VS]\))$/);
-  if (!m) return name;
-  const base = m[1].trim();
-  const suffix = m[2];
-  const { rows } = await db.query<{ canonical: string }>(
-    'SELECT canonical FROM gs_team_aliases WHERE alias = $1',
-    [base],
-  );
-  return (rows[0]?.canonical ?? base) + suffix;
-}
 
 // ---------- Helpers ----------
 
@@ -209,7 +183,7 @@ function fmtDate(v: unknown): string | null {
   return String(v).slice(0, 10);
 }
 
-function groupRows(rows: Row[], fallbackHome?: string, fallbackAway?: string): MatchGroup[] {
+function groupRows(rows: Row[]): MatchGroup[] {
   const byEvent = new Map<number, MatchGroup>();
   for (const r of rows) {
     const eventId = num(r.event_id);
@@ -219,8 +193,8 @@ function groupRows(rows: Row[], fallbackHome?: string, fallbackAway?: string): M
         eventId,
         matchDate: fmtDate(r.match_date),
         matchType: str(r.match_type),
-        homeTeam: String(r.home_team ?? fallbackHome ?? ''),
-        awayTeam: String(r.away_team ?? fallbackAway ?? ''),
+        homeTeam: String(r.home_team ?? ''),
+        awayTeam: String(r.away_team ?? ''),
         finalScore: { home: 0, away: 0 },
         snapshots: [],
       };
@@ -233,36 +207,39 @@ function groupRows(rows: Row[], fallbackHome?: string, fallbackAway?: string): M
   return [...byEvent.values()];
 }
 
+// JOIN query fragment: enriches rows with display names from gs_teams
+const SELECT_WITH_NAMES = `
+  SELECT mol.*,
+         ht.name || ' (' || ht.type || ')' AS home_team,
+         at.name || ' (' || at.type || ')' AS away_team
+  FROM match_odds_log mol
+  JOIN gs_teams ht ON ht.id = mol.home_team_id
+  JOIN gs_teams at ON at.id = mol.away_team_id
+`;
+
 // ---------- Route ----------
 
 export async function GET(req: NextRequest) {
-  const action = req.nextUrl.searchParams.get('action');
+  const action   = req.nextUrl.searchParams.get('action');
   const homeTeam = req.nextUrl.searchParams.get('homeTeam');
   const awayTeam = req.nextUrl.searchParams.get('awayTeam');
 
   try {
     const db = getPool();
-    await ensureAliasTable(db);
 
+    // List all known teams from gs_teams (single source of truth)
     if (action === 'teams') {
-      const { rows } = await db.query<{ team: string }>(
-        `SELECT DISTINCT unnest(ARRAY[home_team, away_team]) as team
-         FROM match_odds_log ORDER BY 1`,
+      const { rows } = await db.query<{ display: string }>(
+        `SELECT name || ' (' || type || ')' AS display
+         FROM gs_teams ORDER BY type, name`,
       );
-      const teams = rows.map((r) => r.team).filter(Boolean);
-      return NextResponse.json({ ok: true, teams });
+      return NextResponse.json({ ok: true, teams: rows.map(r => r.display) });
     }
 
+    // All matches, ordered newest-last
     if (action === 'recent') {
       const { rows } = await db.query<Row>(
-        `SELECT * FROM match_odds_log
-         WHERE event_id IN (
-           SELECT event_id FROM match_odds_log
-           GROUP BY event_id
-           ORDER BY MAX(recorded_at) DESC
-           LIMIT 100
-         )
-         ORDER BY event_id, recorded_at`,
+        `${SELECT_WITH_NAMES} ORDER BY mol.event_id, mol.recorded_at`,
       );
       const matches = groupRows(rows).sort((a, b) => {
         const aT = a.snapshots.at(-1)?.recordedAt ?? '';
@@ -279,43 +256,52 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // Normalize via alias table before querying
-    const [resolvedHome, resolvedAway] = await Promise.all([
-      resolveTeam(db, homeTeam),
-      resolveTeam(db, awayTeam),
+    // Normalize → lookup ID (single source of truth: gs_teams)
+    const [home, away] = await Promise.all([
+      resolveTeamId(db, homeTeam),
+      resolveTeamId(db, awayTeam),
     ]);
 
+    if (!home || !away) {
+      const missing = [!home && homeTeam, !away && awayTeam].filter(Boolean).join(', ');
+      return NextResponse.json({ ok: false, error: `Team not found: ${missing}` }, { status: 404 });
+    }
+
+    // Single query, both directions, filter by ID — no string comparison
     const { rows } = await db.query<Row>(
-      `SELECT * FROM match_odds_log
-       WHERE home_team = $1 AND away_team = $2
-       ORDER BY event_id, recorded_at`,
-      [resolvedHome, resolvedAway],
+      `${SELECT_WITH_NAMES}
+       WHERE (mol.home_team_id = $1 AND mol.away_team_id = $2)
+          OR (mol.home_team_id = $2 AND mol.away_team_id = $1)
+       ORDER BY mol.event_id, mol.recorded_at`,
+      [home.id, away.id],
     );
 
-    const matches = groupRows(rows, resolvedHome, resolvedAway);
-    return NextResponse.json({ ok: true, matches, resolvedHome, resolvedAway });
+    const allMatches = groupRows(rows);
+    const aMatches = allMatches.filter(m => m.homeTeam === home.display);
+    const bMatches = allMatches.filter(m => m.homeTeam === away.display);
+
+    return NextResponse.json({ ok: true, aMatches, bMatches });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
 }
 
-// ---------- Admin: upsert aliases ----------
+// ---------- Admin: upsert team alias (optional) ----------
 
 export async function POST(req: NextRequest) {
   try {
-    const { alias, canonical } = (await req.json()) as { alias?: string; canonical?: string };
-    if (!alias || !canonical) {
-      return NextResponse.json({ ok: false, error: 'alias and canonical required' }, { status: 400 });
+    const { name, type } = (await req.json()) as { name?: string; type?: string };
+    if (!name || !type || !['V', 'S'].includes(type)) {
+      return NextResponse.json({ ok: false, error: 'name and type (V|S) required' }, { status: 400 });
     }
     const db = getPool();
-    await ensureAliasTable(db);
-    await db.query(
-      `INSERT INTO gs_team_aliases (alias, canonical) VALUES ($1, $2)
-       ON CONFLICT (alias) DO UPDATE SET canonical = EXCLUDED.canonical`,
-      [alias.trim(), canonical.trim()],
+    const { rows } = await db.query<{ id: number }>(
+      `INSERT INTO gs_teams (name, type) VALUES ($1, $2)
+       ON CONFLICT (name, type) DO UPDATE SET name = EXCLUDED.name
+       RETURNING id`,
+      [name.trim(), type],
     );
-    aliasTableReady = false; // force re-seed check next call
-    return NextResponse.json({ ok: true, alias: alias.trim(), canonical: canonical.trim() });
+    return NextResponse.json({ ok: true, id: rows[0].id, name: name.trim(), type });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }

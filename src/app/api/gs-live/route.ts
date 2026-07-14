@@ -39,12 +39,11 @@ const VN_TO_EN: Record<string, string> = {
 };
 
 function normalizeTeam(name: string): string {
-  // Name format: "Team (V)" or "Team (S)" — translate base only
-  const m = name.match(/^(.+?)(\s+\([VS]\))?$/);
-  if (!m) return name;
+  const m = name.trim().match(/^(.+?)(\s+\([VS]\))?$/);
+  if (!m) return name.trim();
   const base = m[1].trim();
-  const suffix = m[2] ?? '';
-  return (VN_TO_EN[base] ?? base) + suffix;
+  const suffix = m[2]?.trim() ? ` ${m[2].trim()}` : '';
+  return ((VN_TO_EN[base] ?? base) + suffix).trim();
 }
 
 // 2140 = GS Ảo 16p, 2125 = GS Ảo 20p

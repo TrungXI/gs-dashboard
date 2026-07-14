@@ -3,18 +3,6 @@ import type { Match } from '../types/match';
 
 let pool: Pool | null = null;
 
-// Normalize all DB formats to original API format: "Team (V)" / "Team (S)"
-// Old: "Team (20p)" → "Team (V)"
-// Mid: "Team (V) (20p)" → "Team (V)"
-// New rows already correct: "Team (V)" → "Team (V)"
-function formatTeam(name: string): string {
-  return name
-    .replace(/ \(V\) \(20p\)$/, ' (V)')
-    .replace(/ \(S\) \(16p\)$/, ' (S)')
-    .replace(/ \(20p\)$/, ' (V)')
-    .replace(/ \(16p\)$/, ' (S)');
-}
-
 function getPool(): Pool {
   if (!pool) {
     pool = new Pool({ connectionString: process.env.ANALYSIS_DATABASE_URL });
@@ -25,10 +13,14 @@ function getPool(): Pool {
 export async function fetchAllMatches(): Promise<Match[]> {
   const db = getPool();
   const { rows } = await db.query(`
-    SELECT match_time, match_type, league, home_team, away_team,
-           h1_home, h1_away, tt_home, tt_away
-    FROM gs_matches_history
-    ORDER BY match_time DESC
+    SELECT mh.match_time, mh.match_type, mh.league,
+           ht.name || ' (' || ht.type || ')' AS home_team,
+           at.name || ' (' || at.type || ')' AS away_team,
+           mh.h1_home, mh.h1_away, mh.tt_home, mh.tt_away
+    FROM gs_matches_history mh
+    JOIN gs_teams ht ON ht.id = mh.home_team_id
+    JOIN gs_teams at ON at.id = mh.away_team_id
+    ORDER BY mh.match_time DESC
   `);
 
   return rows.map((r) => {
@@ -44,8 +36,8 @@ export async function fetchAllMatches(): Promise<Match[]> {
       time: `${dd}/${mm}/${yyyy} ${hh}:${min}`,
       matchType: r.match_type as '20p' | '16p',
       league: r.league as string,
-      homeTeam: formatTeam(r.home_team as string),
-      awayTeam: formatTeam(r.away_team as string),
+      homeTeam: r.home_team as string,
+      awayTeam: r.away_team as string,
       h1Home: String(r.h1_home),
       h1Away: String(r.h1_away),
       ttHome: String(r.tt_home),

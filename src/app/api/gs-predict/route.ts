@@ -114,31 +114,50 @@ async function callMlAnalyze(b: PredictBody): Promise<string | null> {
 
 // ── Fire-and-forget prediction log ───────────────────────────────────────────
 
+/** Resolve team name (already canonical English "Japan (V)") → gs_teams.id */
+async function resolveTeamId(pool: Pool, name: string): Promise<number | null> {
+  const m = name.trim().match(/^(.+?)\s+\(([VS])\)$/);
+  if (!m) return null;
+  const { rows } = await pool.query<{ id: number }>(
+    'SELECT id FROM gs_teams WHERE name = $1 AND type = $2',
+    [m[1].trim(), m[2]],
+  );
+  return rows[0]?.id ?? null;
+}
+
 function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
   const pool = getPool();
   if (!pool) return;
   const homeFormPts = b.homeW * 3 + b.homeD;
   const awayFormPts = b.awayW * 3 + b.awayD;
   const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
-  pool.query(
-    `INSERT INTO gs_ml_predictions
-       (event_id, home_team, away_team, h1_home, h1_away, is_h2, minute_elapsed,
-        home_form_pts, away_form_pts, h2h_home_win_rate,
-        hc_line, hc_home_odds, ou_line,
-        red_home, red_away,
-        predicted_home_pct, predicted_away_pct, model_version)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-    [
-      b.eventId ?? null,
-      b.homeTeam, b.awayTeam, b.h1Home, b.h1Away, b.isH2, b.minuteElapsed ?? null,
-      homeFormPts, awayFormPts, h2hRate,
-      b.hcLine ? parseFloat(b.hcLine) : null,
-      b.hcHome ? parseFloat(b.hcHome) : null,
-      b.ouLine ? parseFloat(b.ouLine) : null,
-      b.redHome ?? 0, b.redAway ?? 0,
-      ml?.home_pct ?? null, ml?.away_pct ?? null, ml?.model_version ?? null,
-    ]
-  ).catch(() => { /* non-critical */ });
+
+  // Resolve team IDs async then insert — fire-and-forget, errors are non-critical
+  Promise.all([resolveTeamId(pool, b.homeTeam), resolveTeamId(pool, b.awayTeam)])
+    .then(([homeTeamId, awayTeamId]) =>
+      pool.query(
+        `INSERT INTO gs_ml_predictions
+           (event_id, home_team, away_team, home_team_id, away_team_id,
+            h1_home, h1_away, is_h2, minute_elapsed,
+            home_form_pts, away_form_pts, h2h_home_win_rate,
+            hc_line, hc_home_odds, ou_line,
+            red_home, red_away,
+            predicted_home_pct, predicted_away_pct, model_version)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+        [
+          b.eventId ?? null,
+          b.homeTeam, b.awayTeam, homeTeamId, awayTeamId,
+          b.h1Home, b.h1Away, b.isH2, b.minuteElapsed ?? null,
+          homeFormPts, awayFormPts, h2hRate,
+          b.hcLine ? parseFloat(b.hcLine) : null,
+          b.hcHome ? parseFloat(b.hcHome) : null,
+          b.ouLine ? parseFloat(b.ouLine) : null,
+          b.redHome ?? 0, b.redAway ?? 0,
+          ml?.home_pct ?? null, ml?.away_pct ?? null, ml?.model_version ?? null,
+        ]
+      )
+    )
+    .catch(() => { /* non-critical */ });
 }
 
 // ── Statistical engine ────────────────────────────────────────────────────────

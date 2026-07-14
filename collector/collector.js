@@ -9,12 +9,48 @@ const POLL_MS       = 2000
 const GS_LEAGUE_IDS = new Set([2140, 2125])
 const MATCH_TYPE    = { 2140: '16p', 2125: '20p' }
 
+const VN_TO_EN = {
+  'Nhật Bản': 'Japan', 'Hàn Quốc': 'Korea Republic', 'Trung Quốc': 'China',
+  'Thái Lan': 'Thailand', 'Việt Nam': 'Vietnam', 'Ả Rập Xê Út': 'Saudi Arabia',
+  'Ả Rập Saudi': 'Saudi Arabia', 'Úc': 'Australia', 'Ấn Độ': 'India',
+  'Campuchia': 'Cambodia', 'Lào': 'Laos', 'Nga': 'Russia', 'Đức': 'Germany',
+  'Pháp': 'France', 'Tây Ban Nha': 'Spain', 'Bồ Đào Nha': 'Portugal',
+  'Hà Lan': 'Netherlands', 'Bỉ': 'Belgium', 'Thụy Sĩ': 'Switzerland(CHE)',
+  'Thụy Điển': 'Sweden', 'Na Uy': 'Norway', 'Áo': 'Austria', 'Ý': 'Italy',
+  'Anh': 'England', 'Maroc': 'Morocco', 'Mỹ': 'USA',
+  'Viet Nam': 'Vietnam', 'South Korea': 'Korea Republic',
+  'Republic of Korea': 'Korea Republic', 'DPR Korea': 'North Korea',
+  'Korea DPR': 'North Korea',
+}
+
+function normalizeTeam(name) {
+  const m = name.trim().match(/^(.+?)(\s+\([VS]\))?$/)
+  if (!m) return name.trim()
+  const base = m[1].trim()
+  const suffix = m[2]?.trim() ? ` ${m[2].trim()}` : ''
+  return ((VN_TO_EN[base] ?? base) + suffix).trim()
+}
+
 if (!process.env.DATABASE_URL) {
   console.error('Missing DATABASE_URL in .env')
   process.exit(1)
 }
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
+
+async function getOrCreateTeamId(name) {
+  const m = name.match(/^(.+?)\s+\(([VS])\)$/)
+  if (!m) return null
+  const base = m[1].trim()
+  const type = m[2]
+  const { rows } = await pool.query(
+    `INSERT INTO gs_teams (name, type) VALUES ($1, $2)
+     ON CONFLICT (name, type) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [base, type]
+  )
+  return rows[0]?.id ?? null
+}
 
 const prevState = new Map()
 
@@ -96,8 +132,8 @@ function buildMatch(leagueId, leagueName, ev) {
     leagueName,
     matchType:     MATCH_TYPE[leagueId] ?? '16p',
     eventId:       ev['8'],
-    homeTeam:      ev['2'],
-    awayTeam:      ev['3'],
+    homeTeam:      normalizeTeam(ev['2']),
+    awayTeam:      normalizeTeam(ev['3']),
     h1Home:        score['0'] ?? 0,
     h1Away:        score['1'] ?? 0,
     minuteElapsed: ev6ms !== null ? Math.ceil(ev6ms / 60000) : null,
@@ -188,6 +224,11 @@ function detectSnapshotType(match, key) {
 // ─── DB write ─────────────────────────────────────────────────────────────────
 
 async function logSnapshot(match, snapshotType) {
+  const [homeTeamId, awayTeamId] = await Promise.all([
+    getOrCreateTeamId(match.homeTeam),
+    getOrCreateTeamId(match.awayTeam),
+  ])
+
   const values = [
     match.eventId,
     match.matchType,
@@ -228,6 +269,8 @@ async function logSnapshot(match, snapshotType) {
     match.redAway,
     match.cornersHome,
     match.cornersAway,
+    homeTeamId,
+    awayTeamId,
   ]
 
   await pool.query(
@@ -242,12 +285,14 @@ async function logSnapshot(match, snapshotType) {
       ou_line, ou_over, ou_under,
       ou_h1_line, ou_h1_over, ou_h1_under,
       yellow_home, yellow_away, red_home, red_away,
-      corners_home, corners_away
+      corners_home, corners_away,
+      home_team_id, away_team_id
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
       $11,$12,$13,$14,$15,$16,$17,$18,$19,$20,
       $21,$22,$23,$24,$25,$26,$27,$28,$29,$30,
-      $31,$32,$33,$34,$35,$36,$37,$38,$39
+      $31,$32,$33,$34,$35,$36,$37,$38,$39,
+      $40,$41
     )`,
     values
   )

@@ -1116,96 +1116,65 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     return () => { alive = false; };
   }, [live.homeTeam, live.awayTeam]);
 
-  // Live API may send Vietnamese names ("Nhật Bản") but DB stores English ("Japan")
-  const VN_TO_EN: Record<string, string> = {
-    'Nhật Bản': 'Japan', 'Hàn Quốc': 'Korea Republic', 'Trung Quốc': 'China',
-    'Thái Lan': 'Thailand', 'Việt Nam': 'Vietnam', 'Nga': 'Russia',
-    'Đức': 'Germany', 'Pháp': 'France', 'Tây Ban Nha': 'Spain',
-    'Bồ Đào Nha': 'Portugal', 'Hà Lan': 'Netherlands', 'Bỉ': 'Belgium',
-    'Thụy Sĩ': 'Switzerland(CHE)', 'Thụy Điển': 'Sweden', 'Na Uy': 'Norway',
-    'Áo': 'Austria', 'Ý': 'Italy', 'Anh': 'England',
-    'Maroc': 'Morocco', 'Mỹ': 'USA', 'Ả Rập Xê Út': 'Saudi Arabia',
-    'Úc': 'Australia', 'Ấn Độ': 'India', 'Campuchia': 'Cambodia', 'Lào': 'Laos',
-  };
-  const resolveDbName = (liveName: string): string => {
-    if (!matches) return liveName;
-    // Exact match first
-    for (const m of matches) {
-      if (m.homeTeam === liveName) return m.homeTeam;
-      if (m.awayTeam === liveName) return m.awayTeam;
-    }
-    // Translate Vietnamese → English, then match by base + suffix
-    const rawBase = liveName.replace(/ \([VS]\)$/, '').trim();
-    const enBase = VN_TO_EN[rawBase] ?? rawBase;
-    const suffix = liveName.endsWith('(S)') ? '(S)' : liveName.endsWith('(V)') ? '(V)' : null;
-    if (suffix) {
-      for (const m of matches) {
-        if (m.homeTeam.startsWith(enBase) && m.homeTeam.endsWith(suffix)) return m.homeTeam;
-        if (m.awayTeam.startsWith(enBase) && m.awayTeam.endsWith(suffix)) return m.awayTeam;
-      }
-    }
-    return liveName;
-  };
-
-  const homeDbName = resolveDbName(live.homeTeam);
-  const awayDbName = resolveDbName(live.awayTeam);
+  // live.homeTeam / live.awayTeam are already canonical English (from gs-live normalizeTeam)
+  // gs-team-analysis now returns names from gs_teams via JOIN — direct comparison works
 
   // Form: last 100 for each team
   const homeMatches = matches
-    ? matches.filter(m => m.homeTeam === homeDbName || m.awayTeam === homeDbName).slice(0, 100)
+    ? matches.filter(m => m.homeTeam === live.homeTeam || m.awayTeam === live.homeTeam).slice(0, 100)
     : [];
   const awayMatches = matches
-    ? matches.filter(m => m.homeTeam === awayDbName || m.awayTeam === awayDbName).slice(0, 100)
+    ? matches.filter(m => m.homeTeam === live.awayTeam || m.awayTeam === live.awayTeam).slice(0, 100)
     : [];
 
   // H2H: matches between both teams, last 100
   const h2hMatches = matches
     ? matches.filter(m =>
-        (m.homeTeam === homeDbName && m.awayTeam === awayDbName) ||
-        (m.homeTeam === awayDbName && m.awayTeam === homeDbName)
+        (m.homeTeam === live.homeTeam && m.awayTeam === live.awayTeam) ||
+        (m.homeTeam === live.awayTeam && m.awayTeam === live.homeTeam)
       ).slice(0, 100)
     : [];
 
   // Day stats
   const today = todayDayOfWeek();
   const todayLabel = DAY_LABELS_FULL[today];
-  const homeDayStats = matches ? teamDayStats(matches, homeDbName) : [];
-  const awayDayStats = matches ? teamDayStats(matches, awayDbName) : [];
+  const homeDayStats = matches ? teamDayStats(matches, live.homeTeam) : [];
+  const awayDayStats = matches ? teamDayStats(matches, live.awayTeam) : [];
 
   // Prediction stat bars — computed instantly from existing data
-  const homeW = homeMatches.filter(m => resultFor(m, homeDbName) === 'W').length;
-  const homeD = homeMatches.filter(m => resultFor(m, homeDbName) === 'D').length;
-  const homeL = homeMatches.filter(m => resultFor(m, homeDbName) === 'L').length;
-  const awayW = awayMatches.filter(m => resultFor(m, awayDbName) === 'W').length;
-  const awayD = awayMatches.filter(m => resultFor(m, awayDbName) === 'D').length;
-  const awayL = awayMatches.filter(m => resultFor(m, awayDbName) === 'L').length;
+  const homeW = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'W').length;
+  const homeD = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'D').length;
+  const homeL = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'L').length;
+  const awayW = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'W').length;
+  const awayD = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'D').length;
+  const awayL = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'L').length;
 
   // Goals conceded avg & hold rate (when leading at H1, did they win full time?)
   const homeAvgConceded = homeMatches.length
-    ? homeMatches.reduce((s, m) => s + (m.homeTeam === homeDbName ? +m.ttAway : +m.ttHome), 0) / homeMatches.length
+    ? homeMatches.reduce((s, m) => s + (m.homeTeam === live.homeTeam ? +m.ttAway : +m.ttHome), 0) / homeMatches.length
     : 0;
   const awayAvgConceded = awayMatches.length
-    ? awayMatches.reduce((s, m) => s + (m.homeTeam === awayDbName ? +m.ttAway : +m.ttHome), 0) / awayMatches.length
+    ? awayMatches.reduce((s, m) => s + (m.homeTeam === live.awayTeam ? +m.ttAway : +m.ttHome), 0) / awayMatches.length
     : 0;
   const homeHoldW = homeMatches.filter(m => {
-    const isHome = m.homeTeam === homeDbName;
-    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, homeDbName) === 'W';
+    const isHome = m.homeTeam === live.homeTeam;
+    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, live.homeTeam) === 'W';
   }).length;
   const homeHoldTotal = homeMatches.filter(m => {
-    const isHome = m.homeTeam === homeDbName;
+    const isHome = m.homeTeam === live.homeTeam;
     return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
   }).length;
   const awayHoldW = awayMatches.filter(m => {
-    const isHome = m.homeTeam === awayDbName;
-    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, awayDbName) === 'W';
+    const isHome = m.homeTeam === live.awayTeam;
+    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, live.awayTeam) === 'W';
   }).length;
   const awayHoldTotal = awayMatches.filter(m => {
-    const isHome = m.homeTeam === awayDbName;
+    const isHome = m.homeTeam === live.awayTeam;
     return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
   }).length;
   const h2hHomeW = h2hMatches.filter(m => {
     const hs = +m.ttHome; const as = +m.ttAway;
-    return m.homeTeam === homeDbName ? hs > as : as > hs;
+    return m.homeTeam === live.homeTeam ? hs > as : as > hs;
   }).length;
   const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
   const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
@@ -1228,9 +1197,9 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     p = Math.min(Math.max(p, 0.2), 0.8);
     const homePct = Math.round(p * 100);
     if (Math.abs(homePct - (100 - homePct)) <= 8) return null;
-    return homePct > 50 ? homeDbName : awayDbName;
+    return homePct > 50 ? live.homeTeam : live.awayTeam;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeW, homeD, awayW, awayD, h2hMatches.length, h2hHomeW, h2hDraws, live.h1Home, live.h1Away, live.hcLines[0]?.home, homeDbName, awayDbName]);
+  }, [homeW, homeD, awayW, awayD, h2hMatches.length, h2hHomeW, h2hDraws, live.h1Home, live.h1Away, live.hcLines[0]?.home, live.homeTeam, live.awayTeam]);
 
   // Tokenize one line: highlight team names + numbers
   function renderLine(line: string, idx: number) {
@@ -1248,7 +1217,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       );
     }
 
-    const otherTeam = favoredTeam === homeDbName ? awayDbName : homeDbName;
+    const otherTeam = favoredTeam === live.homeTeam ? live.awayTeam : live.homeTeam;
     type Tok = { text: string; cls?: string };
     const tokens: Tok[] = [];
     let rem = line.trim();
@@ -1315,8 +1284,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       const nodes: React.ReactNode[] = [];
       let rem = text;
       let ki = 0;
-      const teamA = homeDbName;
-      const teamB = awayDbName;
+      const teamA = live.homeTeam;
+      const teamB = live.awayTeam;
       while (rem.length > 0) {
         // **bold**
         const bold = rem.match(/^\*\*(.+?)\*\*/);
@@ -1421,15 +1390,15 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     } catch { /* non-fatal */ }
 
     const homeAvgGoals = homeMatches.length
-      ? homeMatches.reduce((s, m) => s + (m.homeTeam === homeDbName ? +m.ttHome : +m.ttAway), 0) / homeMatches.length
+      ? homeMatches.reduce((s, m) => s + (m.homeTeam === live.homeTeam ? +m.ttHome : +m.ttAway), 0) / homeMatches.length
       : 0;
     const awayAvgGoals = awayMatches.length
-      ? awayMatches.reduce((s, m) => s + (m.homeTeam === awayDbName ? +m.ttHome : +m.ttAway), 0) / awayMatches.length
+      ? awayMatches.reduce((s, m) => s + (m.homeTeam === live.awayTeam ? +m.ttHome : +m.ttAway), 0) / awayMatches.length
       : 0;
 
     const body = JSON.stringify({
-      homeTeam: homeDbName,
-      awayTeam: awayDbName,
+      homeTeam: live.homeTeam,
+      awayTeam: live.awayTeam,
       h1Home: live.h1Home,
       h1Away: live.h1Away,
       isH2: live.isH2,
@@ -1641,13 +1610,13 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     return (
       <div className="flex flex-col divide-y divide-[#1e1e1e]">
         {h2h.map((m, i) => {
-          const ih = m.homeTeam === homeDbName;
+          const ih = m.homeTeam === live.homeTeam;
           const homeScore = +m.ttHome;
           const awayScore = +m.ttAway;
           const winner = homeScore > awayScore ? m.homeTeam : awayScore > homeScore ? m.awayTeam : null;
           // H/A relative to the H2H match itself (home/away of displayed row), color relative to live match
           const h2hLabel = winner === null ? 'D' : winner === m.homeTeam ? 'H' : 'A';
-          const wCls = winner === homeDbName ? 'text-[#4ade80]' : winner === awayDbName ? 'text-[#f87171]' : winner === null ? 'text-[#fbbf24]' : 'text-[#aaa]';
+          const wCls = winner === live.homeTeam ? 'text-[#4ade80]' : winner === live.awayTeam ? 'text-[#f87171]' : winner === null ? 'text-[#fbbf24]' : 'text-[#aaa]';
           return (
             <div key={i} className="flex items-center gap-1.5 md:gap-2 py-1 md:py-1.5 text-[11px]">
               <span className="w-[56px] md:w-[72px] flex-shrink-0 text-[10px] text-[#555] tabular-nums">{m.date}</span>
@@ -1712,7 +1681,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           <span className="text-[11px] text-[#555] font-bold uppercase tracking-wide">⚽ Ghi bàn tiếp</span>
           {!isBalanced && (
             <span className={`text-[11px] font-extrabold ${homeLeads ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
-              {homeLeads ? homeDbName : awayDbName} ưu thế
+              {homeLeads ? live.homeTeam : live.awayTeam} ưu thế
             </span>
           )}
           {isBalanced && <span className="text-[11px] text-[#fbbf24] font-bold">Cân bằng</span>}
@@ -1816,8 +1785,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   📅 Phong độ theo ngày · Hôm nay: {todayLabel}
                 </div>
                 <div className="flex flex-col gap-1.5 md:gap-4">
-                  <DayBar stats={homeDayStats} team={homeDbName} />
-                  <DayBar stats={awayDayStats} team={awayDbName} />
+                  <DayBar stats={homeDayStats} team={live.homeTeam} />
+                  <DayBar stats={awayDayStats} team={live.awayTeam} />
                 </div>
               </div>
 
@@ -1826,12 +1795,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                 <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📋 5 trận gần nhất</div>
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
                   <div>
-                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{homeDbName}</div>
-                    <FormList recentMatches={homeMatches.slice(0, 5)} team={homeDbName} />
+                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{live.homeTeam}</div>
+                    <FormList recentMatches={homeMatches.slice(0, 5)} team={live.homeTeam} />
                   </div>
                   <div>
-                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{awayDbName}</div>
-                    <FormList recentMatches={awayMatches.slice(0, 5)} team={awayDbName} />
+                    <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{live.awayTeam}</div>
+                    <FormList recentMatches={awayMatches.slice(0, 5)} team={live.awayTeam} />
                   </div>
                 </div>
               </div>
