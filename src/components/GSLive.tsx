@@ -1366,6 +1366,98 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     );
   }
 
+  function renderClaudeLine(line: string, idx: number) {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={idx} className="h-2" />;
+    if (trimmed === '---' || trimmed === '***') return <hr key={idx} className="border-[#2a1a4a] my-2" />;
+
+    // Inline parser: **bold**, team names, %, CÓ/KHÔNG, ~X%
+    const inlineTokens = (text: string) => {
+      const nodes: React.ReactNode[] = [];
+      let rem = text;
+      let ki = 0;
+      const teamA = homeDbName;
+      const teamB = awayDbName;
+      while (rem.length > 0) {
+        // **bold**
+        const bold = rem.match(/^\*\*(.+?)\*\*/);
+        if (bold) {
+          nodes.push(<span key={ki++} className="font-bold text-white">{bold[1]}</span>);
+          rem = rem.slice(bold[0].length);
+          continue;
+        }
+        // team names
+        if (teamA && rem.startsWith(teamA)) {
+          nodes.push(<span key={ki++} className="font-extrabold text-[#4ade80]">{teamA}</span>);
+          rem = rem.slice(teamA.length);
+          continue;
+        }
+        if (teamB && rem.startsWith(teamB)) {
+          nodes.push(<span key={ki++} className="font-extrabold text-[#f87171]">{teamB}</span>);
+          rem = rem.slice(teamB.length);
+          continue;
+        }
+        // ~X% or X-Y% or X%
+        const pct = rem.match(/^~?\d+(?:[–-]\d+)?%/);
+        if (pct) {
+          nodes.push(<span key={ki++} className="font-extrabold text-[#fbbf24]">{pct[0]}</span>);
+          rem = rem.slice(pct[0].length);
+          continue;
+        }
+        // verdict words
+        if (rem.startsWith('CÓ')) { nodes.push(<span key={ki++} className="font-bold text-[#4ade80]">CÓ</span>); rem = rem.slice(2); continue; }
+        if (rem.startsWith('KHÔNG')) { nodes.push(<span key={ki++} className="font-bold text-[#f87171]">KHÔNG</span>); rem = rem.slice(5); continue; }
+        if (rem.startsWith('THẮNG')) { nodes.push(<span key={ki++} className="font-bold text-[#fbbf24]">THẮNG</span>); rem = rem.slice(5); continue; }
+        if (rem.startsWith('HÒA')) { nodes.push(<span key={ki++} className="font-bold text-[#a78bfa]">HÒA</span>); rem = rem.slice(3); continue; }
+        // plain char
+        if (typeof nodes.at(-1) === 'string') nodes[nodes.length - 1] = (nodes.at(-1) as string) + rem[0];
+        else nodes.push(rem[0]);
+        rem = rem.slice(1);
+      }
+      return nodes;
+    };
+
+    // # H1
+    if (trimmed.startsWith('# ')) {
+      return <div key={idx} className="text-[13px] font-extrabold text-[#a78bfa] mt-1 mb-1 tracking-tight">{inlineTokens(trimmed.slice(2))}</div>;
+    }
+    // ## H2 section
+    if (trimmed.startsWith('## ') || trimmed.startsWith('### ')) {
+      const text = trimmed.replace(/^#{2,3}\s+/, '');
+      return <div key={idx} className="text-[13px] font-extrabold text-white mt-3 first:mt-0 border-l-2 border-[#a78bfa] pl-2">{inlineTokens(text)}</div>;
+    }
+    // table separator
+    if (/^\|[-:\s|]+\|$/.test(trimmed)) return <div key={idx} />;
+    // table row
+    if (trimmed.startsWith('|') && trimmed.endsWith('|')) {
+      const cells = trimmed.split('|').filter((_, i, a) => i > 0 && i < a.length - 1).map(c => c.trim());
+      return (
+        <div key={idx} className="flex gap-2 text-[12px] py-0.5 border-b border-[#1a0a2a]/40">
+          {cells.map((cell, ci) => (
+            <div key={ci} className={ci === 0 ? 'w-[45%] text-[#888]' : 'flex-1 text-[#ccc]'}>
+              {inlineTokens(cell)}
+            </div>
+          ))}
+        </div>
+      );
+    }
+    // list item
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      return (
+        <div key={idx} className="flex gap-1.5 text-[12px] text-[#bbb] leading-relaxed pl-1">
+          <span className="text-[#a78bfa] flex-shrink-0 mt-0.5">·</span>
+          <span>{inlineTokens(trimmed.slice(2))}</span>
+        </div>
+      );
+    }
+    // → arrow line
+    if (trimmed.startsWith('→')) {
+      return <div key={idx} className="text-[12px] text-[#fbbf24] pl-2 leading-relaxed">{inlineTokens(trimmed)}</div>;
+    }
+    // plain
+    return <div key={idx} className="text-[12px] text-[#bbb] leading-relaxed">{inlineTokens(trimmed)}</div>;
+  }
+
   async function triggerPrediction() {
     if (predAbortRef.current) predAbortRef.current.abort();
     const ctrl = new AbortController();
@@ -1769,8 +1861,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   <div className="px-3 py-2.5">
                     {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
                     {claudePrediction && (
-                      <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                        {claudePrediction}
+                      <div className="space-y-0.5">
+                        {claudePrediction.split('\n').map((line, i) => renderClaudeLine(line, i))}
                         {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
                       </div>
                     )}
