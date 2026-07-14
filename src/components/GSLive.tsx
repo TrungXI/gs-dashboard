@@ -1653,8 +1653,16 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#222] flex-shrink-0 bg-[#0d0d0d]">
           <span className="text-[13px] font-bold text-[#fbbf24]">📊</span>
           <div className="flex-1 min-w-0">
-            <div className="text-[13px] font-bold text-white truncate">
-              {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[13px] font-bold text-white truncate">
+                {live.homeTeam} <span className="text-[#555] font-normal">vs</span> {live.awayTeam}
+              </span>
+              <span className="text-[13px] font-extrabold text-[#fbbf24] tabular-nums">
+                {live.h1Home}–{live.h1Away}
+              </span>
+              <span className="text-[11px] font-semibold text-[#4ade80]">
+                {live.isH2 ? 'H2' : 'H1'} {live.minuteElapsed ?? 0}&apos;
+              </span>
             </div>
             <div className="text-[10px] text-[#555] mt-0.5">
               {!loading && matches ? `${matches.length} trận trong DB` : 'Đang tải…'}
