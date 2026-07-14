@@ -1648,7 +1648,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   return (
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[520px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[680px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
         {/* Header + Teams */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#222] flex-shrink-0 bg-[#0d0d0d]">
           <span className="text-[13px] font-bold text-[#fbbf24]">📊</span>
@@ -1747,12 +1747,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   const { scrollLeft, offsetWidth } = carouselRef.current;
                   setActiveDot(scrollLeft > offsetWidth * 0.5 ? 1 : 0);
                 }}
-                className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:grid md:grid-cols-2 md:overflow-x-visible md:snap-none"
+                className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:flex-col md:overflow-visible md:snap-none"
                 style={{ scrollbarWidth: 'none' }}
               >
                 {/* Claude box */}
-                <div className={`snap-start shrink-0 w-full md:w-auto md:flex md:flex-col md:h-[340px] rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a] flex-shrink-0">
+                <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
                     <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Claude</span>
                     {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
                     <div className="ml-auto flex items-center gap-2">
@@ -1766,7 +1766,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                       )}
                     </div>
                   </div>
-                  <div className="px-3 py-2.5 md:flex-1 md:overflow-y-auto">
+                  <div className="px-3 py-2.5">
                     {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
                     {claudePrediction && (
                       <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
@@ -1778,13 +1778,13 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                 </div>
 
                 {/* Python box */}
-                <div className={`snap-start shrink-0 w-full md:w-auto md:flex md:flex-col md:h-[340px] rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a] flex-shrink-0">
+                <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
                     <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Python ML</span>
                     {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
                     <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
                   </div>
-                  <div className="px-3 py-2.5 md:flex-1 md:overflow-y-auto">
+                  <div className="px-3 py-2.5">
                     {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
                     {pythonStats && (
                       <div className="space-y-0.5">
