@@ -319,22 +319,50 @@ def train():
 class AnalyzeRequest(BaseModel):
     home_team: str
     away_team: str
+    match_type: str = ""  # "16p" or "20p" — filters history to same type
 
 
 class AnalyzeResponse(BaseModel):
     text: str
 
 
-def analyze_teams_from_db(home_team: str, away_team: str) -> str:
-    import psycopg2
-    db_url = os.getenv("DATABASE_URL")
-    if not db_url:
-        return ""
-    try:
-        conn = psycopg2.connect(db_url)
-        cur = conn.cursor()
+def _fetch_match_data(cur, home_team: str, away_team: str, match_type: str):
+    """Run both queries filtered by match_type (or all types if empty)."""
+    if match_type:
+        cur.execute("""
+            WITH h1_snap AS (
+                SELECT event_id, score_home AS h1_home, score_away AS h1_away
+                FROM match_odds_log WHERE snapshot_type = 'kickoff_h2' AND match_type = %s
+            ),
+            last_snap AS (
+                SELECT DISTINCT ON (event_id) event_id,
+                    score_home AS final_home, score_away AS final_away
+                FROM match_odds_log ORDER BY event_id, recorded_at DESC
+            )
+            SELECT d.event_id, d.home_team, d.away_team,
+                   h1.h1_home, h1.h1_away, ls.final_home, ls.final_away
+            FROM (SELECT DISTINCT event_id, home_team, away_team
+                  FROM match_odds_log
+                  WHERE match_type = %s
+                    AND (home_team = %s OR away_team = %s
+                      OR home_team = %s OR away_team = %s)) d
+            LEFT JOIN h1_snap h1 USING (event_id)
+            LEFT JOIN last_snap ls USING (event_id)
+            WHERE h1.h1_home IS NOT NULL AND ls.final_home IS NOT NULL
+            ORDER BY d.event_id DESC LIMIT 300
+        """, (match_type, match_type, home_team, home_team, away_team, away_team))
+        match_rows = cur.fetchall()
 
-        # Query 1: per-match H1 score and final score
+        cur.execute("""
+            SELECT event_id, minute
+            FROM match_odds_log
+            WHERE snapshot_type IN ('goal_h1', 'goal_h2')
+              AND minute IS NOT NULL AND match_type = %s
+              AND (home_team = %s OR away_team = %s
+                OR home_team = %s OR away_team = %s)
+            ORDER BY event_id, recorded_at
+        """, (match_type, home_team, home_team, away_team, away_team))
+    else:
         cur.execute("""
             WITH h1_snap AS (
                 SELECT event_id, score_home AS h1_home, score_away AS h1_away
@@ -358,7 +386,6 @@ def analyze_teams_from_db(home_team: str, away_team: str) -> str:
         """, (home_team, home_team, away_team, away_team))
         match_rows = cur.fetchall()
 
-        # Query 2: goal timing
         cur.execute("""
             SELECT event_id, minute
             FROM match_odds_log
@@ -368,101 +395,117 @@ def analyze_teams_from_db(home_team: str, away_team: str) -> str:
                 OR home_team = %s OR away_team = %s)
             ORDER BY event_id, recorded_at
         """, (home_team, home_team, away_team, away_team))
-        goal_rows = cur.fetchall()
+
+    goal_rows = cur.fetchall()
+    return match_rows, goal_rows
+
+
+def _compute_stats(match_rows, goal_rows, home_team: str, away_team: str):
+    """Compute comeback, H2 goals, first-goal minute, H2H from fetched rows."""
+    first_goal: dict = {}
+    for ev_id, minute in goal_rows:
+        if ev_id not in first_goal:
+            first_goal[ev_id] = minute
+
+    def team_stats(team: str):
+        n = cb = cb_total = h2_total = 0
+        for ev_id, ht, at, h1h, h1a, fh, fa in match_rows:
+            is_home = ht == team
+            if not (is_home or at == team):
+                continue
+            n += 1
+            h1_for = h1h if is_home else h1a
+            h1_opp = h1a if is_home else h1h
+            fin_for = fh if is_home else fa
+            fin_opp = fa if is_home else fh
+            h2_total += max(0, fin_for - h1_for)
+            if h1_for < h1_opp:
+                cb_total += 1
+                if fin_for >= fin_opp:
+                    cb += 1
+        return n, cb, cb_total, (h2_total / n) if n > 0 else 0.0
+
+    h2h_hw = h2h_aw = h2h_d = 0
+    for ev_id, ht, at, h1h, h1a, fh, fa in match_rows:
+        if not ((ht == home_team and at == away_team) or
+                (ht == away_team and at == home_team)):
+            continue
+        winner = ht if fh > fa else (at if fa > fh else None)
+        if winner == home_team:   h2h_hw += 1
+        elif winner == away_team: h2h_aw += 1
+        else:                     h2h_d += 1
+
+    ev_ids = {r[0] for r in match_rows}
+    mins = [m for eid, m in first_goal.items() if eid in ev_ids]
+    avg_min = round(sum(mins) / len(mins)) if mins else None
+
+    return team_stats(home_team), team_stats(away_team), (h2h_hw, h2h_aw, h2h_d), avg_min
+
+
+def analyze_teams_from_db(home_team: str, away_team: str, match_type: str = "") -> str:
+    import psycopg2
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        return ""
+    try:
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+
+        # Primary: same match_type (if provided)
+        match_rows, goal_rows = _fetch_match_data(cur, home_team, away_team, match_type)
+
+        # Fallback: all types if same-type has < 5 total rows
+        all_match_rows, all_goal_rows = (match_rows, goal_rows)
+        if match_type and (len(match_rows) < 5):
+            all_match_rows, all_goal_rows = _fetch_match_data(cur, home_team, away_team, "")
+
         cur.close()
         conn.close()
     except Exception as e:
         log.warning("analyze_teams_from_db error: %s", e)
         return ""
 
-    if not match_rows:
-        return ""
-
-    # --- per-match analysis ---
-    # track first goal minute per event
-    first_goal_per_event: dict = {}
-    for ev_id, minute in goal_rows:
-        if ev_id not in first_goal_per_event:
-            first_goal_per_event[ev_id] = minute
-
-    def team_stats(team: str):
-        n = cb = cb_total = 0
-        h2_goals_total = 0
-        for ev_id, ht, at, h1h, h1a, fh, fa in match_rows:
-            is_home = ht == team
-            is_away = at == team
-            if not (is_home or is_away):
-                continue
-            n += 1
-            # H1 goals for this team
-            h1_for = h1h if is_home else h1a
-            h1_opp = h1a if is_home else h1h
-            fin_for = fh if is_home else fa
-            fin_opp = fa if is_home else fh
-            # H2 goals added
-            h2_goals_total += max(0, fin_for - h1_for)
-            # Comeback: trailing at H1, not losing at final
-            if h1_for < h1_opp and fin_for >= fin_opp:
-                cb += 1
-            if h1_for < h1_opp:
-                cb_total += 1
-        h2_avg = (h2_goals_total / n) if n > 0 else 0.0
-        return n, cb, cb_total, h2_avg
-
-    home_n, home_cb, home_cb_total, home_h2 = team_stats(home_team)
-    away_n, away_cb, away_cb_total, away_h2 = team_stats(away_team)
-
-    # H2H
-    h2h_home_w = h2h_away_w = h2h_d = 0
-    for ev_id, ht, at, h1h, h1a, fh, fa in match_rows:
-        if not ((ht == home_team and at == away_team) or
-                (ht == away_team and at == home_team)):
-            continue
-        if fh > fa:
-            winner = ht
-        elif fa > fh:
-            winner = at
-        else:
-            winner = None
-        if winner == home_team:
-            h2h_home_w += 1
-        elif winner == away_team:
-            h2h_away_w += 1
-        else:
-            h2h_d += 1
-    h2h_n = h2h_home_w + h2h_away_w + h2h_d
-
-    # Average first goal minute (across all matching matches)
-    mins = [m for ev_id, m in first_goal_per_event.items()
-            if any(r[0] == ev_id for r in match_rows)]
-    avg_min = round(sum(mins) / len(mins)) if mins else None
-
-    total = home_n + away_n
-    if total < 5:
-        return f"📊 Lịch sử: {total} trận — chưa đủ dữ liệu để phân tích"
-
-    # Short team display
     def short(name: str) -> str:
         return name.split(" (")[0] if " (" in name else name
 
     hn = short(home_team)
     an = short(away_team)
 
-    lines = [f"📊 Lịch sử odds ({home_n} trận {hn}, {away_n} trận {an})"]
-    if home_cb_total > 0:
-        lines.append(f"   {hn}: lật ngược {home_cb}/{home_cb_total} khi thua H1 · H2 TB +{home_h2:.1f} bàn")
-    else:
-        lines.append(f"   {hn}: không thua H1 trong DB · H2 TB +{home_h2:.1f} bàn")
-    if away_cb_total > 0:
-        lines.append(f"   {an}: lật ngược {away_cb}/{away_cb_total} khi thua H1 · H2 TB +{away_h2:.1f} bàn")
-    else:
-        lines.append(f"   {an}: không thua H1 trong DB · H2 TB +{away_h2:.1f} bàn")
-    if avg_min is not None:
-        lines.append(f"   Bàn đầu TB: phút {avg_min}")
-    if h2h_n > 0:
-        h2h_leader = hn if h2h_home_w > h2h_away_w else (an if h2h_away_w > h2h_home_w else "Cân bằng")
-        h2h_w = max(h2h_home_w, h2h_away_w)
-        lines.append(f"   H2H: {h2h_n} trận · {h2h_leader} thắng {h2h_w} · Hòa {h2h_d}")
+    def build_lines(rows, goals, label: str) -> list:
+        if not rows:
+            return []
+        (hn_n, hn_cb, hn_cb_tot, hn_h2), (an_n, an_cb, an_cb_tot, an_h2), \
+            (h2h_hw, h2h_aw, h2h_d), avg_min = _compute_stats(rows, goals, home_team, away_team)
+
+        total = hn_n + an_n
+        if total < 3:
+            return [f"📊 Lịch sử {label}: {total} trận — chưa đủ dữ liệu"]
+
+        out = [f"📊 Lịch sử {label} ({hn_n} trận {hn}, {an_n} trận {an})"]
+        # Home comeback
+        if hn_cb_tot > 0:
+            out.append(f"   {hn}: lật {hn_cb}/{hn_cb_tot} khi thua H1 · H2 TB +{hn_h2:.1f} bàn")
+        else:
+            out.append(f"   {hn}: chưa thua H1 trong mẫu · H2 TB +{hn_h2:.1f} bàn")
+        # Away comeback
+        if an_cb_tot > 0:
+            out.append(f"   {an}: lật {an_cb}/{an_cb_tot} khi thua H1 · H2 TB +{an_h2:.1f} bàn")
+        else:
+            out.append(f"   {an}: chưa thua H1 trong mẫu · H2 TB +{an_h2:.1f} bàn")
+        if avg_min is not None:
+            out.append(f"   Bàn đầu TB: phút {avg_min}")
+        h2h_n = h2h_hw + h2h_aw + h2h_d
+        if h2h_n > 0:
+            leader = hn if h2h_hw > h2h_aw else (an if h2h_aw > h2h_hw else "Cân bằng")
+            out.append(f"   H2H: {h2h_n} trận · {leader} thắng {max(h2h_hw, h2h_aw)} · Hòa {h2h_d}")
+        return out
+
+    type_label = match_type if match_type else "tổng hợp"
+    lines = build_lines(match_rows, goal_rows, type_label)
+
+    # If fell back to all types, append a note
+    if match_type and len(match_rows) < 5 and all_match_rows is not match_rows:
+        lines = build_lines(all_match_rows, all_goal_rows, "tổng hợp (ít dữ liệu 16p/20p riêng)")
 
     return "\n".join(lines)
 
@@ -470,7 +513,7 @@ def analyze_teams_from_db(home_team: str, away_team: str) -> str:
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze(req: AnalyzeRequest):
     try:
-        text = analyze_teams_from_db(req.home_team, req.away_team)
+        text = analyze_teams_from_db(req.home_team, req.away_team, req.match_type)
         return AnalyzeResponse(text=text)
     except Exception as e:
         log.warning("analyze endpoint error: %s", e)

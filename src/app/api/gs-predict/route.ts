@@ -80,7 +80,7 @@ async function callMlAnalyze(b: PredictBody): Promise<string | null> {
     const res = await fetch(`${ML_SERVICE_URL}/analyze`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ home_team: b.homeTeam, away_team: b.awayTeam }),
+      body: JSON.stringify({ home_team: b.homeTeam, away_team: b.awayTeam, match_type: b.matchType ?? '' }),
       signal: AbortSignal.timeout(3000),
     });
     if (!res.ok) return null;
