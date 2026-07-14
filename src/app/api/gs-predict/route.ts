@@ -294,11 +294,11 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const statsText = buildStatisticalAnalysis(b, ml, historical);
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
-    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội chơi thiếu người. Đưa ra dự đoán rõ ràng dựa trên số liệu và lịch sử đối đầu.',
+    max_tokens: 500,
+    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội chơi thiếu người. QUAN TRỌNG: luôn phân biệt rõ 2 câu hỏi — (1) đội nào khả năng cao GHI BÀN TIẾP THEO, và (2) đội nào sẽ THẮNG TRẬN — hai câu trả lời này có thể là hai đội khác nhau (ví dụ: đội đang thua có thể ghi bàn tiếp nhưng vẫn thua trận). Đưa ra dự đoán rõ ràng dựa trên số liệu và lịch sử đối đầu.',
     messages: [{
       role: 'user',
-      content: `Số liệu thống kê trận đấu đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên (kể cả lịch sử odds và comeback rate nếu có), phân tích và dự đoán: đội nào ghi bàn tiếp theo, khả năng gỡ hòa, và kết quả cuối trận. Lưu ý loại trận (16p/20p). Giữ ngắn gọn (5-7 dòng).`,
+      content: `Số liệu thống kê trận đấu đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, phân tích và trả lời rõ 2 điểm:\n1. 🎯 BÀN TIẾP THEO: đội nào nhiều khả năng ghi bàn tiếp theo và tại sao\n2. 🏆 KẾT QUẢ TRẬN: đội nào thắng cuối cùng — lưu ý đây có thể là đội khác với câu 1\nGiải thích ngắn lý do cho mỗi dự đoán. Lưu ý loại trận (16p/20p) và thời gian còn lại.`,
     }],
   });
   const encoder = new TextEncoder();
@@ -320,6 +320,7 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as PredictBody;
+  const isPython = new URL(req.url).searchParams.get('python') === '1';
 
   // Call ML predict + historical analyze in parallel
   const [ml, historical] = await Promise.all([
@@ -327,8 +328,13 @@ export async function POST(req: NextRequest) {
     callMlAnalyze(body),
   ]);
 
-  // Log prediction fire-and-forget
-  logPrediction(body, ml);
+  // Log prediction fire-and-forget (only on main call, not python sidecar)
+  if (!isPython) logPrediction(body, ml);
+
+  // ?python=1 → always return Python stats text (no Claude)
+  if (isPython) {
+    return statsStream(buildStatisticalAnalysis(body, ml, historical), ml);
+  }
 
   if (process.env.ANTHROPIC_API_KEY) {
     return claudeStream(body, ml, historical);
