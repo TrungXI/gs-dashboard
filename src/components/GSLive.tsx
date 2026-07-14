@@ -1368,6 +1368,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           hcHome: live.hcLines[0]?.home ?? null,
           ouLine: live.ouLines[0]?.line ?? null,
           eventId: live.eventId,
+          matchType: live.matchType,
           homeW, homeD, homeL, homeAvgGoals,
           awayW, awayD, awayL, awayAvgGoals,
           h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,

@@ -29,6 +29,7 @@ interface PredictBody {
   awayW: number; awayD: number; awayL: number; awayAvgGoals: number;
   h2hHomeW: number; h2hDraws: number; h2hAwayW: number; h2hTotal: number;
   redHome?: number; redAway?: number;
+  matchType?: string;
 }
 
 interface MlPrediction {
@@ -190,7 +191,14 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
     lines.push('');
   }
 
-  lines.push(`Đang: ${homeTeam} ${h1Home}-${h1Away} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'`);
+  const matchTypeLabel = b.matchType ? ` · loại ${b.matchType}` : '';
+  lines.push(`Đang: ${homeTeam} ${h1Home}-${h1Away} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'${matchTypeLabel}`);
+  if ((b.redHome ?? 0) > 0 || (b.redAway ?? 0) > 0) {
+    const parts: string[] = [];
+    if ((b.redHome ?? 0) > 0) parts.push(`${homeTeam} bị thẻ đỏ (−${b.redHome} người)`);
+    if ((b.redAway ?? 0) > 0) parts.push(`${awayTeam} bị thẻ đỏ (−${b.redAway} người)`);
+    lines.push(`⚠️ ${parts.join(' · ')}`);
+  }
   lines.push('');
 
   lines.push(`⚽ Ghi bàn tiếp theo`);
@@ -276,10 +284,10 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 400,
-    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (16-20 phút). Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Đưa ra dự đoán rõ ràng dựa trên số liệu.',
+    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội chơi thiếu người. Đưa ra dự đoán rõ ràng dựa trên số liệu và lịch sử đối đầu.',
     messages: [{
       role: 'user',
-      content: `Số liệu thống kê trận đấu đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, phân tích và dự đoán: đội nào ghi bàn tiếp theo, khả năng gỡ hòa, và kết quả cuối trận. Giữ ngắn gọn (5-7 dòng).`,
+      content: `Số liệu thống kê trận đấu đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên (kể cả lịch sử odds và comeback rate nếu có), phân tích và dự đoán: đội nào ghi bàn tiếp theo, khả năng gỡ hòa, và kết quả cuối trận. Lưu ý loại trận (16p/20p). Giữ ngắn gọn (5-7 dòng).`,
     }],
   });
   const encoder = new TextEncoder();
