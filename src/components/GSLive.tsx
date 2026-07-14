@@ -867,7 +867,7 @@ function LeagueSection({
                     type="button"
                     onClick={() => onAnalysis(m)}
                     className="flex-shrink-0 rounded px-1.5 py-1 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#60a5fa] hover:border-[#444] transition-colors"
-                    title="Phân tích 2 đội"
+                    title="Kèo trận"
                   >
                     📊
                   </button>
@@ -990,9 +990,9 @@ function LeagueSection({
                         type="button"
                         onClick={() => onAnalysis(m)}
                         className="mt-1 rounded px-2 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#60a5fa] hover:border-[#444] transition-colors"
-                        title="Phân tích 2 đội"
+                        title="Kèo trận"
                       >
-                        📊 Phân tích
+                        📊 Kèo trận
                       </button>
                     </td>
                     {/* Tỉ số / Phase */}

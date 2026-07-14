@@ -152,8 +152,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
   const navItems: [View, string, string][] = [
     ['data', '📋', 'GS Dữ liệu'],
     ['gs-live', '🔴', 'GS Live'],
-    ['report', '📊', 'GS Phân tích'],
-    ['match-analysis', '📈', 'Phân Tích'],
+    ['report', '📊', 'Đối Đầu'],
+    ['match-analysis', '📈', 'Phân Tích Kèo'],
   ];
 
   return (
@@ -271,7 +271,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
         ) : view === 'report' ? (
           <>
             <div className="mb-5 flex items-baseline gap-3 flex-wrap">
-              <h1 className="text-xl font-bold text-white">📊 Phân tích đối đầu &amp; Form</h1>
+              <h1 className="text-xl font-bold text-white">📊 Đối Đầu &amp; Form</h1>
               <span className="text-[13px] text-[#666]">
                 {dates.length > 0 ? `${dates[dates.length - 1]}–${dates[0]}` : 'Dữ liệu'}
               </span>
