@@ -150,14 +150,14 @@ function Summary({ matches }: { matches: MatchGroup[] }) {
   ];
 
   return (
-    <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+    <div className="mb-3 grid grid-cols-4 gap-1.5">
       {cards.map(([label, val]) => (
         <div
           key={label}
-          className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-2.5"
+          className="rounded-md border border-[#2a2a2a] bg-[#141414] px-2 py-1.5 text-center"
         >
-          <div className="text-[10px] text-white/40">{label}</div>
-          <div className="mt-0.5 text-sm font-bold text-white">{val}</div>
+          <div className="text-[9px] text-white/35 leading-tight">{label}</div>
+          <div className="mt-0.5 text-xs font-bold text-white">{val}</div>
         </div>
       ))}
     </div>
@@ -502,40 +502,25 @@ export default function MatchAnalysis({
       {analyzed ? (
         <>
           {/* Tabs */}
-          <div className={`flex gap-2 flex-wrap ${embedded ? 'px-3 pt-3 pb-2' : 'mb-4'}`}>
-            <button
-              type="button"
-              onClick={() => setTab('all')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                tab === 'all'
-                  ? 'bg-[#17a2b8] text-white'
-                  : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
-              }`}
-            >
-              🔀 Tất cả ({allMatches.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('a')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                tab === 'a'
-                  ? 'bg-[#17a2b8] text-white'
-                  : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
-              }`}
-            >
-              {analyzedA} ({aMatches.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('b')}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
-                tab === 'b'
-                  ? 'bg-[#17a2b8] text-white'
-                  : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
-              }`}
-            >
-              {analyzedB} ({bMatches.length})
-            </button>
+          <div className={`flex gap-1.5 overflow-x-auto scrollbar-none ${embedded ? 'px-3 pt-2.5 pb-2' : 'mb-3'}`}>
+            {([
+              ['all', '🔀 Tất cả', allMatches.length],
+              ['a', analyzedA, aMatches.length],
+              ['b', analyzedB, bMatches.length],
+            ] as [typeof tab, string, number][]).map(([key, label, count]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setTab(key)}
+                className={`flex-shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  tab === key
+                    ? 'bg-[#17a2b8] text-white'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
+                }`}
+              >
+                {label} <span className="opacity-70">({count})</span>
+              </button>
+            ))}
           </div>
 
           <div className={embedded ? 'px-3 pb-4' : ''}>
