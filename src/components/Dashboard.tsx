@@ -1,7 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, startTransition, useRef, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useMemo, useState, useEffect, startTransition, useRef } from 'react';
 import type { Match } from '../types/match';
 import SearchDropdown from './SearchDropdown';
 import DataTable from './DataTable';
@@ -25,31 +24,10 @@ function loadUiState() {
   } catch { return null; }
 }
 
-const PATH_TO_VIEW: Record<string, View> = {
-  '/':         'data',
-  '/live':     'gs-live',
-  '/report':   'report',
-  '/analysis': 'match-analysis',
-};
-
-const VIEW_TO_PATH: Record<View, string> = {
-  'data':           '/',
-  'gs-live':        '/live',
-  'report':         '/report',
-  'match-analysis': '/analysis',
-};
-
 export default function Dashboard({ initialMatches }: { initialMatches: Match[] }) {
-  const router = useRouter();
-  const pathname = usePathname();
   const [matches, setMatches] = useState<Match[]>(initialMatches);
 
-  const [view, setView] = useState<View>(() => PATH_TO_VIEW[pathname] ?? 'data');
-
-  const changeView = useCallback((v: View) => {
-    setView(v);
-    router.push(VIEW_TO_PATH[v], { scroll: false });
-  }, [router]);
+  const [view, setView] = useState<View>('data');
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all');
   const [fTeam, setFTeam] = useState('all');
@@ -70,14 +48,15 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     if (!uiRestored.current) return;
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ fType, fDate, fTeam, r1, r2, h1Filter }));
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
     }, 300);
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [fType, fDate, fTeam, r1, r2, h1Filter]);
+  }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
 
   useEffect(() => {
     const ui = loadUiState();
     if (ui) {
+      if (ui.view) setView(ui.view);
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
@@ -190,7 +169,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
             {navItems.map(([v, icon, label]) => (
               <button
                 key={v}
-                onClick={() => changeView(v)}
+                onClick={() => setView(v)}
                 title={label}
                 className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-all ${
                   view === v
@@ -223,7 +202,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               {navItems.map(([v, icon, label]) => (
                 <div
                   key={v}
-                  onClick={() => changeView(v)}
+                  onClick={() => setView(v)}
                   className={`flex cursor-pointer items-center gap-2 border-l-[3px] px-5 py-2.5 text-[13px] font-semibold transition-all ${
                     view === v
                       ? 'border-[#17a2b8] bg-white/[.12] text-white'
@@ -362,7 +341,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
           <button
             key={v}
             type="button"
-            onClick={() => changeView(v)}
+            onClick={() => setView(v)}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[16px] transition-colors ${
               view === v ? 'text-[#17a2b8]' : 'text-white/50'
             }`}
