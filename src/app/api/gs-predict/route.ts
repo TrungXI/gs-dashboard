@@ -295,10 +295,10 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 500,
-    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội chơi thiếu người. QUAN TRỌNG: luôn phân biệt rõ 2 câu hỏi — (1) đội nào khả năng cao GHI BÀN TIẾP THEO, và (2) đội nào sẽ THẮNG TRẬN — hai câu trả lời này có thể là hai đội khác nhau (ví dụ: đội đang thua có thể ghi bàn tiếp nhưng vẫn thua trận). Đưa ra dự đoán rõ ràng dựa trên số liệu và lịch sử đối đầu.',
+    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội thiếu người. Luôn phân biệt rõ 3 điểm: (1) đội nào ghi BÀN TIẾP THEO, (2) đội đang THUA có khả năng GỠ không — dựa vào odds hiện tại, thời gian còn lại, và comeback rate lịch sử, (3) ai THẮNG TRẬN cuối. Ba câu trả lời này có thể là ba kịch bản khác nhau.',
     messages: [{
       role: 'user',
-      content: `Số liệu thống kê trận đấu đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, phân tích và trả lời rõ 2 điểm:\n1. 🎯 BÀN TIẾP THEO: đội nào nhiều khả năng ghi bàn tiếp theo và tại sao\n2. 🏆 KẾT QUẢ TRẬN: đội nào thắng cuối cùng — lưu ý đây có thể là đội khác với câu 1\nGiải thích ngắn lý do cho mỗi dự đoán. Lưu ý loại trận (16p/20p) và thời gian còn lại.`,
+      content: `Số liệu thống kê trận đang diễn ra:\n\n${statsText}\n\nPhân tích 3 điểm sau:\n1. 🎯 BÀN TIẾP THEO: đội nào ghi bàn tiếp theo (dựa vào xác suất ML, odds, phong độ)\n2. ⚡ ĐỘI THUA CÓ GỠ ĐƯỢC KHÔNG: dựa vào (a) odds hiện tại có đang nghiêng về đội thua không, (b) còn bao nhiêu phút — đủ thời gian không, (c) lịch sử comeback rate của đội thua trong các trận tương tự — kết luận rõ CÓ hay KHÔNG và xác suất ước tính\n3. 🏆 KẾT QUẢ CUỐI: ai thắng trận (có thể khác với câu 1 và 2)\nMỗi điểm 1-2 câu ngắn gọn.`,
     }],
   });
   const encoder = new TextEncoder();
