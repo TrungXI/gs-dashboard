@@ -6,6 +6,7 @@ import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
 import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats, type DayOfWeek } from '../lib/dayStats';
 import { TypeBadge, ResultTag } from './badges';
+import MatchAnalysis from './MatchAnalysis';
 
 interface AnalysisSnapshot {
   snapshotType: string;
@@ -262,6 +263,7 @@ export default function GSLive() {
   const [autoStream, setAutoStream] = useState(false);
   const [similarMatchId, setSimilarMatchId] = useState<number | null>(null);
   const [analysisMatchId, setAnalysisMatchId] = useState<number | null>(null);
+  const [confrontMatchId, setConfrontMatchId] = useState<number | null>(null);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
 
@@ -499,10 +501,12 @@ export default function GSLive() {
       {(() => {
         const simLive = similarMatchId != null ? matches.find(m => m.eventId === similarMatchId) ?? null : null;
         const anaLive = analysisMatchId != null ? matches.find(m => m.eventId === analysisMatchId) ?? null : null;
+        const cLive = confrontMatchId != null ? matches.find(m => m.eventId === confrontMatchId) ?? null : null;
         return (
           <>
             {simLive && <SimilarMatchesDrawer live={simLive} onClose={() => setSimilarMatchId(null)} />}
             {anaLive && <LiveAnalysisDrawer live={anaLive} onClose={() => setAnalysisMatchId(null)} />}
+            {cLive && <ConfrontationDrawer live={cLive} onClose={() => setConfrontMatchId(null)} />}
           </>
         );
       })()}
@@ -533,6 +537,7 @@ export default function GSLive() {
             autoStream={autoStream}
             onSimilar={(m) => setSimilarMatchId(m.eventId)}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onConfront={(m) => setConfrontMatchId(m.eventId)}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -547,6 +552,7 @@ export default function GSLive() {
             autoStream={autoStream}
             onSimilar={(m) => setSimilarMatchId(m.eventId)}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onConfront={(m) => setConfrontMatchId(m.eventId)}
           />
         </>
       )}
@@ -802,6 +808,7 @@ function LeagueSection({
   autoStream,
   onSimilar,
   onAnalysis,
+  onConfront,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -815,6 +822,7 @@ function LeagueSection({
   autoStream: boolean;
   onSimilar: (m: GsLiveMatch) => void;
   onAnalysis: (m: GsLiveMatch) => void;
+  onConfront: (m: GsLiveMatch) => void;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -936,6 +944,14 @@ function LeagueSection({
                     title="Phân tích 2 đội"
                   >
                     📊
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onConfront(m)}
+                    className="flex-shrink-0 rounded px-1.5 py-1 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#17a2b8] hover:border-[#444] transition-colors"
+                    title="Phân tích đối kháng"
+                  >
+                    ⚔️
                   </button>
                 </div>
 
@@ -1067,6 +1083,14 @@ function LeagueSection({
                         title="Phân tích 2 đội"
                       >
                         📊 Phân tích
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onConfront(m)}
+                        className="mt-1 rounded px-2 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#17a2b8] hover:border-[#444] transition-colors"
+                        title="Phân tích đối kháng"
+                      >
+                        ⚔️ Đối kháng
                       </button>
                     </td>
                     {/* Tỉ số / Phase */}
@@ -2186,6 +2210,39 @@ function SimilarMatchesDrawer({ live, onClose }: { live: GsLiveMatch; onClose: (
               })}
             </div>
           )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function ConfrontationDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
+  return (
+    <>
+      <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
+      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[520px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222] flex-shrink-0">
+          <span className="text-[13px] font-bold text-white">⚔️ Phân tích đối kháng</span>
+          <button onClick={onClose} className="ml-auto text-[#555] hover:text-white text-lg leading-none">✕</button>
+        </div>
+        {/* Teams subheader */}
+        <div className="px-4 py-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
+          <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+            <span className="font-semibold text-white">{live.homeTeam}</span>
+            <span className="text-[#555]">vs</span>
+            <span className="font-semibold text-white">{live.awayTeam}</span>
+            <span className="text-[#444]">·</span>
+            <span className="text-[#666]">{live.isH2 ? '2H' : '1H'} · {live.minuteElapsed ?? 0}&apos; · {live.h1Home}–{live.h1Away}</span>
+          </div>
+        </div>
+        {/* Content — scrollable */}
+        <div className="flex-1 overflow-y-auto">
+          <MatchAnalysis
+            embedded
+            initialTeamA={live.homeTeam}
+            initialTeamB={live.awayTeam}
+          />
         </div>
       </div>
     </>

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Vietnamese → English team name normalization
-// Live API sometimes sends Vietnamese names; DB stores English
+// Live API sometimes sends Vietnamese names OR alternate English spellings; DB stores canonical English
 const VN_TO_EN: Record<string, string> = {
+  // Vietnamese names
   'Nhật Bản': 'Japan',
   'Hàn Quốc': 'Korea Republic',
   'Trung Quốc': 'China',
@@ -28,6 +29,13 @@ const VN_TO_EN: Record<string, string> = {
   'Ấn Độ': 'India',
   'Campuchia': 'Cambodia',
   'Lào': 'Laos',
+  // English alternate spellings (live API with lng=en may differ from DB canonical)
+  'Viet Nam': 'Vietnam',
+  'South Korea': 'Korea Republic',
+  'Republic of Korea': 'Korea Republic',
+  'DPR Korea': 'North Korea',
+  'Korea DPR': 'North Korea',
+  'New Zealand': 'New Zealand', // already correct, explicit for clarity
 };
 
 function normalizeTeam(name: string): string {

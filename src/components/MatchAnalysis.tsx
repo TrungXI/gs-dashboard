@@ -290,10 +290,18 @@ function MatchList({ matches }: { matches: MatchGroup[] }) {
   );
 }
 
-export default function MatchAnalysis() {
+export default function MatchAnalysis({
+  initialTeamA,
+  initialTeamB,
+  embedded = false,
+}: {
+  initialTeamA?: string;
+  initialTeamB?: string;
+  embedded?: boolean;
+} = {}) {
   const [teams, setTeams] = useState<string[]>([]);
-  const [teamA, setTeamA] = useState('');
-  const [teamB, setTeamB] = useState('');
+  const [teamA, setTeamA] = useState(initialTeamA ?? '');
+  const [teamB, setTeamB] = useState(initialTeamB ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recentMatches, setRecentMatches] = useState<MatchGroup[]>([]);
@@ -303,7 +311,28 @@ export default function MatchAnalysis() {
   const [analyzedA, setAnalyzedA] = useState('');
   const [analyzedB, setAnalyzedB] = useState('');
 
+  // Auto-fetch when embedded with pre-filled teams
   useEffect(() => {
+    if (!embedded || !initialTeamA || !initialTeamB) return;
+    let alive = true;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamA)}&awayTeam=${encodeURIComponent(initialTeamB)}`).then(r => r.json()),
+      fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamB)}&awayTeam=${encodeURIComponent(initialTeamA)}`).then(r => r.json()),
+    ]).then(([aJson, bJson]: [{ ok: boolean; matches?: MatchGroup[] }, { ok: boolean; matches?: MatchGroup[] }]) => {
+      if (!alive) return;
+      setAMatches(aJson.matches ?? []);
+      setBMatches(bJson.matches ?? []);
+      setAnalyzedA(initialTeamA);
+      setAnalyzedB(initialTeamB);
+      setTab('a');
+    }).catch(e => { if (alive) setError(String(e)); }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (embedded) return; // skip teams + recent fetch when embedded
     let alive = true;
     (async () => {
       try {
@@ -382,59 +411,71 @@ export default function MatchAnalysis() {
   const analyzed = analyzedA !== '' && analyzedB !== '';
 
   return (
-    <div className="text-white pt-[160px] md:pt-0">
-      {/* Selector card — fixed top on mobile, normal flow on desktop */}
-      <div className="fixed top-0 left-0 right-0 z-40 rounded-none border-b border-[#2a2a2a] bg-[#141414] p-4 md:relative md:mb-5 md:rounded-lg md:border md:border-[#2a2a2a]">
-        <h1 className="mb-3 text-sm font-bold text-white">📊 Phân Tích Đối Kháng</h1>
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[180px] flex-1">
-            <div className="mb-1 text-[10px] text-white/45">Đội A</div>
-            <SearchDropdown
-              options={teamOptions}
-              value={teamA}
-              onChange={setTeamA}
-              placeholder="Chọn đội..."
-            />
-          </div>
-          <span className="pb-2 text-xs text-white/40">vs</span>
-          <div className="min-w-[180px] flex-1">
-            <div className="mb-1 text-[10px] text-white/45">Đội B</div>
-            <SearchDropdown
-              options={teamOptions}
-              value={teamB}
-              onChange={setTeamB}
-              placeholder="Chọn đội..."
-            />
-          </div>
-          <button
-            type="button"
-            onClick={analyze}
-            disabled={!teamA || !teamB || teamA === teamB || loading}
-            className="rounded-lg bg-[#17a2b8] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#17a2b8]/80 disabled:opacity-40"
-          >
-            {loading ? '…' : 'Phân tích'}
-          </button>
-          {(teamA || teamB || analyzed) && (
+    <div className={embedded ? 'text-white' : 'text-white pt-[160px] md:pt-0'}>
+      {/* Selector card — only shown in standalone (non-embedded) mode */}
+      {!embedded && (
+        <div className="fixed top-0 left-0 right-0 z-40 rounded-none border-b border-[#2a2a2a] bg-[#141414] p-4 md:relative md:mb-5 md:rounded-lg md:border md:border-[#2a2a2a]">
+          <h1 className="mb-3 text-sm font-bold text-white">📊 Phân Tích Đối Kháng</h1>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[180px] flex-1">
+              <div className="mb-1 text-[10px] text-white/45">Đội A</div>
+              <SearchDropdown
+                options={teamOptions}
+                value={teamA}
+                onChange={setTeamA}
+                placeholder="Chọn đội..."
+              />
+            </div>
+            <span className="pb-2 text-xs text-white/40">vs</span>
+            <div className="min-w-[180px] flex-1">
+              <div className="mb-1 text-[10px] text-white/45">Đội B</div>
+              <SearchDropdown
+                options={teamOptions}
+                value={teamB}
+                onChange={setTeamB}
+                placeholder="Chọn đội..."
+              />
+            </div>
             <button
               type="button"
-              onClick={reset}
-              className="rounded-lg border border-[#2a2a2a] px-3 py-2 text-xs text-white/50 transition-colors hover:border-[#444] hover:text-white/80"
+              onClick={analyze}
+              disabled={!teamA || !teamB || teamA === teamB || loading}
+              className="rounded-lg bg-[#17a2b8] px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-[#17a2b8]/80 disabled:opacity-40"
             >
-              ✕ Reset
+              {loading ? '…' : 'Phân tích'}
             </button>
+            {(teamA || teamB || analyzed) && (
+              <button
+                type="button"
+                onClick={reset}
+                className="rounded-lg border border-[#2a2a2a] px-3 py-2 text-xs text-white/50 transition-colors hover:border-[#444] hover:text-white/80"
+              >
+                ✕ Reset
+              </button>
+            )}
+          </div>
+          {error && (
+            <div className="mt-3 rounded-md bg-[#f87171]/10 px-3 py-2 text-[11px] text-[#f87171]">
+              {error}
+            </div>
           )}
         </div>
-        {error && (
-          <div className="mt-3 rounded-md bg-[#f87171]/10 px-3 py-2 text-[11px] text-[#f87171]">
-            {error}
-          </div>
-        )}
-      </div>
+      )}
+
+      {/* Loading state for embedded mode */}
+      {embedded && loading && (
+        <div className="flex h-[120px] items-center justify-center text-[13px] text-white/40">
+          Đang tải…
+        </div>
+      )}
+      {embedded && error && (
+        <div className="mx-3 mt-3 rounded-md bg-[#f87171]/10 px-3 py-2 text-[11px] text-[#f87171]">{error}</div>
+      )}
 
       {analyzed ? (
         <>
           {/* Tabs */}
-          <div className="mb-4 flex gap-2">
+          <div className={`flex gap-2 flex-wrap ${embedded ? 'px-3 pt-3 pb-2' : 'mb-4'}`}>
             <button
               type="button"
               onClick={() => setTab('a')}
@@ -444,7 +485,7 @@ export default function MatchAnalysis() {
                   : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
               }`}
             >
-              🏠 {analyzedA} sân nhà ({aMatches.length} trận)
+              🏠 {analyzedA} ({aMatches.length})
             </button>
             <button
               type="button"
@@ -455,13 +496,15 @@ export default function MatchAnalysis() {
                   : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
               }`}
             >
-              🏠 {analyzedB} sân nhà ({bMatches.length} trận)
+              🏠 {analyzedB} ({bMatches.length})
             </button>
           </div>
 
-          <MatchList matches={tab === 'a' ? aMatches : bMatches} />
+          <div className={embedded ? 'px-3 pb-4' : ''}>
+            <MatchList matches={tab === 'a' ? aMatches : bMatches} />
+          </div>
         </>
-      ) : (
+      ) : !embedded ? (
         <>
           <div className="mb-3 flex items-center gap-2">
             <span className="text-[11px] font-semibold text-white/50 uppercase tracking-wide">Tất cả trận gần đây</span>
@@ -479,7 +522,7 @@ export default function MatchAnalysis() {
             </div>
           )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }
