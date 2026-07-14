@@ -1449,6 +1449,15 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.h1Home, live.h1Away]);
 
+  // Auto-load once when tab first opens or matches finish loading — no repeat after that
+  const triggerRef = useRef<() => void>(triggerPrediction);
+  useEffect(() => { triggerRef.current = triggerPrediction; });
+  useEffect(() => {
+    if (activeTab !== 'suggest' || !matches) return;
+    triggerRef.current();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, matches]);
+
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
     const t = todayStats(stats);
