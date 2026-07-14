@@ -2220,7 +2220,7 @@ function ConfrontationDrawer({ live, onClose }: { live: GsLiveMatch; onClose: ()
   return (
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[520px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[600px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-[#222] flex-shrink-0">
           <span className="text-[13px] font-bold text-white">⚔️ Phân tích đối kháng</span>
