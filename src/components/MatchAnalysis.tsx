@@ -322,7 +322,7 @@ export default function MatchAnalysis({
   const [recentMatches, setRecentMatches] = useState<MatchGroup[]>([]);
   const [aMatches, setAMatches] = useState<MatchGroup[]>([]);
   const [bMatches, setBMatches] = useState<MatchGroup[]>([]);
-  const [tab, setTab] = useState<'a' | 'b'>('a');
+  const [tab, setTab] = useState<'all' | 'a' | 'b'>('all');
   const [analyzedA, setAnalyzedA] = useState('');
   const [analyzedB, setAnalyzedB] = useState('');
 
@@ -339,7 +339,7 @@ export default function MatchAnalysis({
         setBMatches(json.bMatches ?? []);
         setAnalyzedA(initialTeamA);
         setAnalyzedB(initialTeamB);
-        setTab('a');
+        setTab('all');
       }).catch(e => { if (alive) setError(String(e)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -402,7 +402,7 @@ export default function MatchAnalysis({
       setBMatches(json.bMatches ?? []);
       setAnalyzedA(teamA);
       setAnalyzedB(teamB);
-      setTab('a');
+      setTab('all');
     } catch (e) {
       setError(String(e instanceof Error ? e.message : e));
       setAMatches([]);
@@ -410,6 +410,24 @@ export default function MatchAnalysis({
     } finally {
       setLoading(false);
     }
+  }, [teamA, teamB]);
+
+  const allMatches = useMemo(() => {
+    const seen = new Set<number>();
+    const merged: MatchGroup[] = [];
+    for (const m of [...aMatches, ...bMatches]) {
+      if (!seen.has(m.eventId)) {
+        seen.add(m.eventId);
+        merged.push(m);
+      }
+    }
+    return merged.sort((a, b) => (b.matchDate ?? '').localeCompare(a.matchDate ?? ''));
+  }, [aMatches, bMatches]);
+
+  const swapTeams = useCallback(() => {
+    const tmp = teamA;
+    setTeamA(teamB);
+    setTeamB(tmp);
   }, [teamA, teamB]);
 
   const analyzed = analyzedA !== '' && analyzedB !== '';
@@ -430,7 +448,12 @@ export default function MatchAnalysis({
                 placeholder="Chọn đội..."
               />
             </div>
-            <span className="pb-2 text-xs text-white/40">vs</span>
+            <button
+              type="button"
+              onClick={swapTeams}
+              className="pb-2 text-xs text-white/40 hover:text-white transition-colors"
+              title="Đổi 2 đội"
+            >⇄</button>
             <div className="min-w-[180px] flex-1">
               <div className="mb-1 text-[10px] text-white/45">Đội B</div>
               <SearchDropdown
@@ -482,6 +505,17 @@ export default function MatchAnalysis({
           <div className={`flex gap-2 flex-wrap ${embedded ? 'px-3 pt-3 pb-2' : 'mb-4'}`}>
             <button
               type="button"
+              onClick={() => setTab('all')}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                tab === 'all'
+                  ? 'bg-[#17a2b8] text-white'
+                  : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              🔀 Tất cả ({allMatches.length})
+            </button>
+            <button
+              type="button"
               onClick={() => setTab('a')}
               className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
                 tab === 'a'
@@ -489,7 +523,7 @@ export default function MatchAnalysis({
                   : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
               }`}
             >
-              🏠 {analyzedA} ({aMatches.length})
+              {analyzedA} ({aMatches.length})
             </button>
             <button
               type="button"
@@ -500,12 +534,12 @@ export default function MatchAnalysis({
                   : 'bg-white/10 text-white/65 hover:bg-white/20 hover:text-white'
               }`}
             >
-              🏠 {analyzedB} ({bMatches.length})
+              {analyzedB} ({bMatches.length})
             </button>
           </div>
 
           <div className={embedded ? 'px-3 pb-4' : ''}>
-            <MatchList matches={tab === 'a' ? aMatches : bMatches} />
+            <MatchList matches={tab === 'all' ? allMatches : tab === 'a' ? aMatches : bMatches} />
           </div>
         </>
       ) : !embedded ? (
