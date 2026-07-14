@@ -294,7 +294,7 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const statsText = buildStatisticalAnalysis(b, ml, historical);
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 500,
+    max_tokens: 650,
     system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội thiếu người. Luôn phân biệt rõ 3 điểm: (1) đội nào ghi BÀN TIẾP THEO, (2) đội đang THUA có khả năng GỠ không — dựa vào odds hiện tại, thời gian còn lại, và comeback rate lịch sử, (3) ai THẮNG TRẬN cuối. Ba câu trả lời này có thể là ba kịch bản khác nhau.',
     messages: [{
       role: 'user',
