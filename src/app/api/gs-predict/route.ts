@@ -24,7 +24,16 @@ interface PredictBody {
   minuteElapsed: number;
   hcLine: string | null;
   hcHome: string | null;
+  hcAway?: string | null;
   ouLine: string | null;
+  ouOver?: string | null;
+  ouUnder?: string | null;
+  hcH1Line?: string | null;
+  hcH1Home?: string | null;
+  hcH1Away?: string | null;
+  ouH1Line?: string | null;
+  ouH1Over?: string | null;
+  ouH1Under?: string | null;
   homeW: number; homeD: number; homeL: number; homeAvgGoals: number;
   awayW: number; awayD: number; awayL: number; awayAvgGoals: number;
   h2hHomeW: number; h2hDraws: number; h2hAwayW: number; h2hTotal: number;
@@ -60,7 +69,7 @@ async function callMlService(b: PredictBody): Promise<MlPrediction | null> {
       body: JSON.stringify({
         h1_home: b.h1Home,
         h1_away: b.h1Away,
-        match_type: '20p',
+        match_type: b.matchType ?? '16p',
         home_form_pts: homeFormPts,
         away_form_pts: awayFormPts,
         h2h_home_win_rate: h2hRate,
@@ -233,20 +242,40 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
   }
 
   lines.push('');
+  // Odds block
+  lines.push(`📊 Kèo hiện tại`);
+  if (hcLine) {
+    const hcHomeStr = b.hcHome ? ` Home ${b.hcHome}` : '';
+    const hcAwayStr = b.hcAway ? ` Away ${b.hcAway}` : '';
+    const hcDir = oddsSignal === 'home' ? ` → ${homeTeam} được kèo` : oddsSignal === 'away' ? ` → ${awayTeam} được kèo` : '';
+    lines.push(`   HC ${hcLine}:${hcHomeStr} /${hcAwayStr}${hcDir}`);
+  }
+  if (ouLine) {
+    const ouVal = parseFloat(ouLine);
+    const currentTotal = h1Home + h1Away;
+    const goalsNeeded = Math.ceil(ouVal - currentTotal);
+    const ouOverStr = b.ouOver ? ` Tài ${b.ouOver}` : '';
+    const ouUnderStr = b.ouUnder ? ` / Xỉu ${b.ouUnder}` : '';
+    lines.push(`   OU ${ouLine}:${ouOverStr}${ouUnderStr} · ${goalsNeeded > 0 ? `cần thêm ~${goalsNeeded} bàn qua tài` : 'đã qua tài'}`);
+  }
+  if (b.hcH1Line) {
+    const h1hStr = b.hcH1Home ? ` Home ${b.hcH1Home}` : '';
+    const h1aStr = b.hcH1Away ? ` Away ${b.hcH1Away}` : '';
+    lines.push(`   HC H1 ${b.hcH1Line}:${h1hStr} /${h1aStr}`);
+  }
+  if (b.ouH1Line) {
+    const h1oStr = b.ouH1Over ? ` Tài ${b.ouH1Over}` : '';
+    const h1uStr = b.ouH1Under ? ` / Xỉu ${b.ouH1Under}` : '';
+    lines.push(`   OU H1 ${b.ouH1Line}:${h1oStr}${h1uStr}`);
+  }
+
+  lines.push('');
   lines.push(`🎯 Dự đoán kết quả`);
   if (predictedWinner) {
     lines.push(`   ${predictedWinner} thắng`);
   } else {
     lines.push(`   Hai đội cân bằng — hòa hoặc cách biệt 1 bàn`);
   }
-  if (ouLine) {
-    const ouVal = parseFloat(ouLine);
-    const currentTotal = h1Home + h1Away;
-    const goalsNeeded = Math.ceil(ouVal - currentTotal);
-    lines.push(`   OU ${ouLine}: ${goalsNeeded > 0 ? `cần thêm ~${goalsNeeded} bàn để qua tài` : 'đã đủ tài'}`);
-  }
-  if (hcLine)
-    lines.push(`   HC ${hcLine}: ${oddsSignal === 'home' ? homeTeam : oddsSignal === 'away' ? awayTeam : 'hai đội cân bằng'} được kèo`);
 
   lines.push('');
   const homeTotal = homeW + homeD + homeL;
