@@ -73,6 +73,23 @@ async function callMlService(b: PredictBody): Promise<MlPrediction | null> {
   }
 }
 
+async function callMlAnalyze(b: PredictBody): Promise<string | null> {
+  if (!ML_SERVICE_URL) return null;
+  try {
+    const res = await fetch(`${ML_SERVICE_URL}/analyze`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ home_team: b.homeTeam, away_team: b.awayTeam }),
+      signal: AbortSignal.timeout(3000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { text: string };
+    return data.text || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Fire-and-forget prediction log ───────────────────────────────────────────
 
 function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
@@ -104,7 +121,7 @@ function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
 
 // ── Statistical engine ────────────────────────────────────────────────────────
 
-function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): string {
+function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, historical: string | null = null): string {
   const {
     homeTeam, awayTeam, h1Home, h1Away, isH2, minuteElapsed,
     hcLine, hcHome, ouLine,
@@ -225,6 +242,11 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
   if (h2hTotal > 0)
     lines.push(`   H2H: ${homeTeam} ${h2hHomeW}W · ${h2hDraws}D · ${h2hAwayW}W ${awayTeam}`);
 
+  if (historical) {
+    lines.push('');
+    lines.push(historical);
+  }
+
   return lines.join('\n');
 }
 
@@ -247,10 +269,10 @@ function statsStream(text: string, ml: MlPrediction | null): Response {
   return new Response(stream, { headers });
 }
 
-async function claudeStream(b: PredictBody, ml: MlPrediction | null): Promise<Response> {
+async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical: string | null = null): Promise<Response> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic();
-  const statsText = buildStatisticalAnalysis(b, ml);
+  const statsText = buildStatisticalAnalysis(b, ml, historical);
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 400,
@@ -280,14 +302,17 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null): Promise<Re
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as PredictBody;
 
-  // Call ML service (parallel, non-blocking on failure)
-  const ml = await callMlService(body);
+  // Call ML predict + historical analyze in parallel
+  const [ml, historical] = await Promise.all([
+    callMlService(body),
+    callMlAnalyze(body),
+  ]);
 
   // Log prediction fire-and-forget
   logPrediction(body, ml);
 
   if (process.env.ANTHROPIC_API_KEY) {
-    return claudeStream(body, ml);
+    return claudeStream(body, ml, historical);
   }
-  return statsStream(buildStatisticalAnalysis(body, ml), ml);
+  return statsStream(buildStatisticalAnalysis(body, ml, historical), ml);
 }
