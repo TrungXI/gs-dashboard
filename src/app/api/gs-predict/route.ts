@@ -288,17 +288,34 @@ function statsStream(text: string, ml: MlPrediction | null): Response {
   return new Response(stream, { headers });
 }
 
+// ── Prompt versions — đổi CLAUDE_PROMPT_VERSION để switch, cả 2 đều được giữ lại ──
+const CLAUDE_PROMPT_VERSION: 1 | 2 = 2;
+
+const CLAUDE_PROMPTS = {
+  1: {
+    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội thiếu người. Luôn phân biệt rõ 3 điểm: (1) đội nào ghi BÀN TIẾP THEO, (2) đội đang THUA có khả năng GỠ không — dựa vào odds hiện tại, thời gian còn lại, và comeback rate lịch sử, (3) ai THẮNG TRẬN cuối. Ba câu trả lời này có thể là ba kịch bản khác nhau.',
+    user: (statsText: string) =>
+      `Số liệu thống kê trận đang diễn ra:\n\n${statsText}\n\nPhân tích 3 điểm sau:\n1. 🎯 BÀN TIẾP THEO: đội nào ghi bàn tiếp theo (dựa vào xác suất ML, odds, phong độ)\n2. ⚡ ĐỘI THUA CÓ GỠ ĐƯỢC KHÔNG: dựa vào (a) odds hiện tại có đang nghiêng về đội thua không, (b) còn bao nhiêu phút — đủ thời gian không, (c) lịch sử comeback rate của đội thua trong các trận tương tự — kết luận rõ CÓ hay KHÔNG và xác suất ước tính\n3. 🏆 KẾT QUẢ CUỐI: ai thắng trận (có thể khác với câu 1 và 2)\nMỗi điểm 1-2 câu ngắn gọn.`,
+  },
+  2: {
+    system: 'Bạn là chuyên gia thống kê bóng đá ảo tốc độ (16p và 20p). Nhiệm vụ của bạn là phân tích xác suất cân bằng — không thiên vị đội nào, chỉ nói theo số liệu. Trả lời bằng tiếng Việt, ngắn gọn, súc tích.',
+    user: (statsText: string) =>
+      `Số liệu trận đang diễn ra:\n\n${statsText}\n\nDựa hoàn toàn vào số liệu thống kê trên, đánh giá xác suất cân bằng cho 3 tình huống:\n\n1. 🎯 BÀN TIẾP THEO\n   - Xác suất % mỗi đội ghi bàn tiếp theo\n   - Lý do ngắn gọn (phong độ, odds, áp lực tỉ số)\n\n2. ⚡ ĐỘI ĐANG THUA CÓ GỠ KHÔNG\n   - Odds có đang phản ánh khả năng gỡ không?\n   - Thời gian còn lại có đủ không?\n   - Lịch sử comeback rate nói gì?\n   - Kết luận: xác suất gỡ ~X%\n\n3. 🏆 KẾT QUẢ CUỐI\n   - Xác suất % cho từng kịch bản: Đội A thắng / Hòa / Đội B thắng\n   - Kịch bản nào có trọng số lớn nhất và tại sao\n\nLưu ý: nếu số liệu 2 đội gần bằng nhau thì nói thẳng là "cân bằng, khó đoán". Không đưa ra kết luận chắc chắn khi dữ liệu không đủ.`,
+  },
+} as const;
+
 async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical: string | null = null): Promise<Response> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic();
   const statsText = buildStatisticalAnalysis(b, ml, historical);
+  const prompt = CLAUDE_PROMPTS[CLAUDE_PROMPT_VERSION];
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 650,
-    system: 'Bạn là chuyên gia phân tích bóng đá ảo tốc độ (loại 16p và 20p — không phải bóng đá 90 phút). Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh. Trận 20p có 20 phút. Phân tích ngắn gọn, cụ thể, bằng tiếng Việt. Chú ý thẻ đỏ làm đội thiếu người. Luôn phân biệt rõ 3 điểm: (1) đội nào ghi BÀN TIẾP THEO, (2) đội đang THUA có khả năng GỠ không — dựa vào odds hiện tại, thời gian còn lại, và comeback rate lịch sử, (3) ai THẮNG TRẬN cuối. Ba câu trả lời này có thể là ba kịch bản khác nhau.',
+    system: prompt.system,
     messages: [{
       role: 'user',
-      content: `Số liệu thống kê trận đang diễn ra:\n\n${statsText}\n\nPhân tích 3 điểm sau:\n1. 🎯 BÀN TIẾP THEO: đội nào ghi bàn tiếp theo (dựa vào xác suất ML, odds, phong độ)\n2. ⚡ ĐỘI THUA CÓ GỠ ĐƯỢC KHÔNG: dựa vào (a) odds hiện tại có đang nghiêng về đội thua không, (b) còn bao nhiêu phút — đủ thời gian không, (c) lịch sử comeback rate của đội thua trong các trận tương tự — kết luận rõ CÓ hay KHÔNG và xác suất ước tính\n3. 🏆 KẾT QUẢ CUỐI: ai thắng trận (có thể khác với câu 1 và 2)\nMỗi điểm 1-2 câu ngắn gọn.`,
+      content: prompt.user(statsText),
     }],
   });
   const encoder = new TextEncoder();
