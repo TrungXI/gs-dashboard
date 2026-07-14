@@ -91,17 +91,21 @@ async function upsertMatches(matches) {
     const ttHome    = parseInt(m['6'], 10) || 0
     const ttAway    = parseInt(m['7'], 10) || 0
 
+    // m['8'] may carry event_id in some API responses
+    const eventId = typeof m['8'] === 'number' ? m['8'] : null
+
     await pool.query(
       `INSERT INTO gs_matches_history
-         (match_time, match_type, league, home_team, away_team, h1_home, h1_away, tt_home, tt_away)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         (match_time, match_type, league, home_team, away_team, h1_home, h1_away, tt_home, tt_away, event_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (match_time, home_team, away_team) DO UPDATE SET
          h1_home    = EXCLUDED.h1_home,
          h1_away    = EXCLUDED.h1_away,
          tt_home    = EXCLUDED.tt_home,
          tt_away    = EXCLUDED.tt_away,
+         event_id   = COALESCE(gs_matches_history.event_id, EXCLUDED.event_id),
          updated_at = now()`,
-      [matchTime, matchType, league, homeTeam, awayTeam, h1Home, h1Away, ttHome, ttAway]
+      [matchTime, matchType, league, homeTeam, awayTeam, h1Home, h1Away, ttHome, ttAway, eventId]
     )
     count++
   }
@@ -110,80 +114,82 @@ async function upsertMatches(matches) {
 
 // ── Live odds logger ──────────────────────────────────────────────────────────
 
+const GS_LEAGUE_IDS = new Set([2140, 2125])
+const MATCH_TYPE_MAP = { 2140: '16p', 2125: '20p' }
+
+function parseAsianOdds(market7, key) {
+  // Returns { line, homeOdds, awayOdds } from raw market string
+  if (!market7 || !market7[key]) return { line: null, homeOdds: null, awayOdds: null }
+  const entries = Array.isArray(market7[key]) ? market7[key].map(String) : [String(market7[key])]
+  const e = entries[0] || ''
+  let line = null, homeOdds = null, awayOdds = null
+  for (const token of e.trim().split(/\s+/)) {
+    if (token.includes('*')) {
+      const [val, sel] = token.split('*')
+      const side = sel?.slice(-1)
+      if (side === 'h' && homeOdds == null) homeOdds = val
+      else if (side === 'a' && awayOdds == null) awayOdds = val
+    } else if (line == null && /^-?[\d.]+([-][\d.]+)?$/.test(token)) {
+      line = token
+    }
+  }
+  return {
+    line:     line != null ? parseFloat(line) : null,
+    homeOdds: homeOdds != null ? parseFloat(homeOdds) : null,
+    awayOdds: awayOdds != null ? parseFloat(awayOdds) : null,
+  }
+}
+
 async function fetchLive() {
-  const headers = {
-    token: GS_TOKEN,
-    accept: 'application/json',
-    lng: 'en',
-    'content-type': 'application/json',
-  }
-  const url = 'https://be.sb21.net/api/v2/matches/live?matchType=3&timezoneOffset=-420'
-  const res = await fetch(url, { headers })
-  const raw = await res.text()
-  if (!raw || raw.trim() === '' || raw.trim() === '""') return []
-  let d = JSON.parse(raw)
-  if (typeof d === 'string') d = JSON.parse(d)
-  // Live response: array or object with '1' key
-  if (Array.isArray(d)) return d
-  if (d && Array.isArray(d['1'])) return d['1']
-  return []
-}
+  const headers = { token: GS_TOKEN, accept: 'application/json', lng: 'en' }
+  const res = await fetch('https://be.sb21.net/api/v2/getEvent?sportType=3_1&timezoneOffset=-420', { headers })
+  const json = await res.json()
 
-function parseOddsLine(arr) {
-  // arr: [line, homeOdds, awayOdds] or similar
-  if (!arr || !arr.length) return { line: null, homeOdds: null, awayOdds: null }
-  return {
-    line:     arr[0] != null ? parseFloat(arr[0]) : null,
-    homeOdds: arr[1] != null ? parseFloat(arr[1]) : null,
-    awayOdds: arr[2] != null ? parseFloat(arr[2]) : null,
+  const events = []
+  if (json && typeof json === 'object' && !Array.isArray(json) && json.data) {
+    for (const [key, list] of Object.entries(json.data)) {
+      const lid = Number(key)
+      if (!GS_LEAGUE_IDS.has(lid)) continue
+      for (const ev of (list ?? [])) events.push({ lid, ev })
+    }
+  } else {
+    const liveSection = Array.isArray(json[0]) ? json[0] : []
+    for (const league of liveSection) {
+      const lid = league['0']
+      if (!GS_LEAGUE_IDS.has(lid)) continue
+      for (const ev of (league['2'] ?? [])) events.push({ lid, ev })
+    }
   }
-}
-
-function parseOuLine(arr) {
-  if (!arr || !arr.length) return { line: null, overOdds: null, underOdds: null }
-  return {
-    line:      arr[0] != null ? parseFloat(arr[0]) : null,
-    overOdds:  arr[1] != null ? parseFloat(arr[1]) : null,
-    underOdds: arr[2] != null ? parseFloat(arr[2]) : null,
-  }
+  return events
 }
 
 async function logLiveOdds(events) {
   let count = 0
-  for (const ev of events) {
+  for (const { lid, ev } of events) {
     try {
-      const eventId  = ev['0'] || ev['id'] || null
-      const league   = String(ev['1'] || ev['league'] || '')
-      const homeTeam = renameTeam(ev['2'] || ev['home'] || '')
-      const awayTeam = renameTeam(ev['3'] || ev['away'] || '')
-      const matchType = league.includes('20 minutes') ? '20p' : '16p'
-
-      // Score fields — layout varies; try common keys
-      const scoreHome = parseInt(ev['4'] ?? ev['scoreHome'] ?? 0, 10) || 0
-      const scoreAway = parseInt(ev['5'] ?? ev['scoreAway'] ?? 0, 10) || 0
-      const h1Home    = parseInt(ev['6'] ?? ev['h1Home'] ?? 0, 10) || 0
-      const h1Away    = parseInt(ev['7'] ?? ev['h1Away'] ?? 0, 10) || 0
-
-      // Period / minute
-      const period  = parseInt(ev['period'] ?? ev['8'] ?? 0, 10) || 0
-      const isH2    = period >= 2
-      const minute  = parseInt(ev['minuteElapsed'] ?? ev['minute'] ?? ev['9'] ?? 0, 10) || 0
-
-      // Cards / corners
-      const yellowHome  = parseInt(ev['yellowHome']  ?? ev['yh'] ?? 0, 10) || 0
-      const yellowAway  = parseInt(ev['yellowAway']  ?? ev['ya'] ?? 0, 10) || 0
-      const redHome     = parseInt(ev['redHome']     ?? ev['rh'] ?? 0, 10) || 0
-      const redAway     = parseInt(ev['redAway']     ?? ev['ra'] ?? 0, 10) || 0
-      const cornersHome = parseInt(ev['cornersHome'] ?? ev['ch'] ?? 0, 10) || 0
-      const cornersAway = parseInt(ev['cornersAway'] ?? ev['ca'] ?? 0, 10) || 0
-
-      // Odds — try nested arrays or flat fields
-      const hcArr  = ev['hcLines']?.[0] || ev['hc']  || null
-      const ouArr  = ev['ouLines']?.[0] || ev['ou']  || null
-      const hc = hcArr ? (Array.isArray(hcArr) ? parseOddsLine(hcArr) : { line: parseFloat(hcArr['line'] ?? 0), homeOdds: parseFloat(hcArr['home'] ?? 0), awayOdds: parseFloat(hcArr['away'] ?? 0) }) : { line: null, homeOdds: null, awayOdds: null }
-      const ou = ouArr ? (Array.isArray(ouArr) ? parseOuLine(ouArr)   : { line: parseFloat(ouArr['line'] ?? 0), overOdds: parseFloat(ouArr['over'] ?? 0), underOdds: parseFloat(ouArr['under'] ?? 0) }) : { line: null, overOdds: null, underOdds: null }
-
+      const eventId   = ev['8'] || null
+      const homeTeam  = renameTeam(ev['2'] || '')
+      const awayTeam  = renameTeam(ev['3'] || '')
+      const matchType = MATCH_TYPE_MAP[lid] ?? '16p'
       if (!homeTeam || !awayTeam) continue
+
+      const score      = ev['4'] ?? {}
+      const market7    = ev['7'] ?? {}
+      const ev6ms      = typeof ev['6'] === 'number' ? ev['6'] : null
+      const minute     = ev6ms != null ? Math.ceil(ev6ms / 60000) : 0
+      const isH2       = ev['10'] === 8
+
+      const h1Home     = parseInt(score['0'] ?? 0, 10)
+      const h1Away     = parseInt(score['1'] ?? 0, 10)
+      const redHome    = parseInt(score['2'] ?? 0, 10)
+      const redAway    = parseInt(score['3'] ?? 0, 10)
+      const cornersHome = parseInt(score['5'] ?? 0, 10)
+      const cornersAway = parseInt(score['6'] ?? 0, 10)
+      const yellowHome = parseInt(score['7'] ?? 0, 10)
+      const yellowAway = parseInt(score['8'] ?? 0, 10)
+
+      const hc = parseAsianOdds(market7, '5')  // HC full time
+      const ou = parseAsianOdds(market7, '3')  // OU full time
 
       await pool.query(
         `INSERT INTO gs_match_odds_log
@@ -197,10 +203,10 @@ async function logLiveOdds(events) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
         [
           eventId, homeTeam, awayTeam, matchType,
-          h1Home, h1Away, scoreHome, scoreAway,
+          h1Home, h1Away, h1Home, h1Away,  // score_home/away same as h1 for live
           isH2, minute,
           hc.line, hc.homeOdds, hc.awayOdds,
-          ou.line, ou.overOdds, ou.underOdds,
+          ou.line, ou.homeOdds, ou.awayOdds,
           yellowHome, yellowAway, redHome, redAway,
           cornersHome, cornersAway,
         ]
@@ -213,10 +219,11 @@ async function logLiveOdds(events) {
   return count
 }
 
-// After gs_matches_history is updated, back-fill tt_home/tt_away into odds log rows
-// for matches that ended (outcome_filled = false)
+// After gs_matches_history is updated, back-fill outcomes into odds log rows
+// and back-fill event_id into gs_matches_history from gs_match_odds_log
 async function fillOddsOutcomes() {
   try {
+    // Back-fill tt_home/tt_away into gs_match_odds_log
     await pool.query(`
       UPDATE gs_match_odds_log ol
       SET
@@ -233,6 +240,29 @@ async function fillOddsOutcomes() {
     `)
   } catch (e) {
     // Table may not exist yet; silently skip
+  }
+
+  try {
+    // Back-fill event_id into gs_matches_history using gs_match_odds_log as source
+    await pool.query(`
+      UPDATE gs_matches_history mh
+      SET event_id = subq.event_id
+      FROM (
+        SELECT DISTINCT ON (mol.home_team, mol.away_team, DATE(mol.recorded_at AT TIME ZONE 'Asia/Ho_Chi_Minh'))
+          mol.home_team, mol.away_team,
+          DATE(mol.recorded_at AT TIME ZONE 'Asia/Ho_Chi_Minh') AS match_date,
+          mol.event_id
+        FROM gs_match_odds_log mol
+        WHERE mol.event_id IS NOT NULL
+        ORDER BY mol.home_team, mol.away_team, DATE(mol.recorded_at AT TIME ZONE 'Asia/Ho_Chi_Minh'), mol.recorded_at ASC
+      ) subq
+      WHERE mh.event_id IS NULL
+        AND mh.home_team = subq.home_team
+        AND mh.away_team = subq.away_team
+        AND DATE(mh.match_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = subq.match_date
+    `)
+  } catch (e) {
+    // Silently skip — event_id column may not exist on older deployments
   }
 }
 

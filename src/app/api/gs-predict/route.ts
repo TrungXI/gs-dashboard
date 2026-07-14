@@ -17,6 +17,7 @@ function getPool(): Pool | null {
 interface PredictBody {
   homeTeam: string;
   awayTeam: string;
+  eventId?: number;
   h1Home: number;
   h1Away: number;
   isH2: boolean;
@@ -82,13 +83,14 @@ function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
   const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
   pool.query(
     `INSERT INTO gs_ml_predictions
-       (home_team, away_team, h1_home, h1_away, is_h2, minute_elapsed,
+       (event_id, home_team, away_team, h1_home, h1_away, is_h2, minute_elapsed,
         home_form_pts, away_form_pts, h2h_home_win_rate,
         hc_line, hc_home_odds, ou_line,
         red_home, red_away,
         predicted_home_pct, predicted_away_pct, model_version)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
     [
+      b.eventId ?? null,
       b.homeTeam, b.awayTeam, b.h1Home, b.h1Away, b.isH2, b.minuteElapsed ?? null,
       homeFormPts, awayFormPts, h2hRate,
       b.hcLine ? parseFloat(b.hcLine) : null,
@@ -215,7 +217,9 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null): stri
     lines.push(`   HC ${hcLine}: ${oddsSignal === 'home' ? homeTeam : oddsSignal === 'away' ? awayTeam : 'hai đội cân bằng'} được kèo`);
 
   lines.push('');
-  lines.push(`📋 Phong độ (5 trận)`);
+  const homeTotal = homeW + homeD + homeL;
+  const awayTotal = awayW + awayD + awayL;
+  lines.push(`📋 Phong độ (${Math.min(homeTotal, awayTotal)} trận gần nhất)`);
   lines.push(`   ${homeTeam}: ${homeW}W ${homeD}D ${homeL}L · TB ${homeAvgGoals.toFixed(1)} bàn/trận`);
   lines.push(`   ${awayTeam}: ${awayW}W ${awayD}D ${awayL}L · TB ${awayAvgGoals.toFixed(1)} bàn/trận`);
   if (h2hTotal > 0)

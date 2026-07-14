@@ -1208,20 +1208,20 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const homeDbName = resolveDbName(live.homeTeam);
   const awayDbName = resolveDbName(live.awayTeam);
 
-  // Form: last 5 for each team
+  // Form: last 100 for each team
   const homeMatches = matches
-    ? matches.filter(m => m.homeTeam === homeDbName || m.awayTeam === homeDbName).slice(0, 5)
+    ? matches.filter(m => m.homeTeam === homeDbName || m.awayTeam === homeDbName).slice(0, 100)
     : [];
   const awayMatches = matches
-    ? matches.filter(m => m.homeTeam === awayDbName || m.awayTeam === awayDbName).slice(0, 5)
+    ? matches.filter(m => m.homeTeam === awayDbName || m.awayTeam === awayDbName).slice(0, 100)
     : [];
 
-  // H2H: matches between both teams, last 5
+  // H2H: matches between both teams, last 100
   const h2hMatches = matches
     ? matches.filter(m =>
         (m.homeTeam === homeDbName && m.awayTeam === awayDbName) ||
         (m.homeTeam === awayDbName && m.awayTeam === homeDbName)
-      ).slice(0, 5)
+      ).slice(0, 100)
     : [];
 
   // Day stats
@@ -1367,6 +1367,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           hcLine: live.hcLines[0]?.line ?? null,
           hcHome: live.hcLines[0]?.home ?? null,
           ouLine: live.ouLines[0]?.line ?? null,
+          eventId: live.eventId,
           homeW, homeD, homeL, homeAvgGoals,
           awayW, awayD, awayL, awayAvgGoals,
           h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
