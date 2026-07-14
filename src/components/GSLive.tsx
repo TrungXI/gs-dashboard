@@ -1237,6 +1237,30 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const awayW = awayMatches.filter(m => resultFor(m, awayDbName) === 'W').length;
   const awayD = awayMatches.filter(m => resultFor(m, awayDbName) === 'D').length;
   const awayL = awayMatches.filter(m => resultFor(m, awayDbName) === 'L').length;
+
+  // Goals conceded avg & hold rate (when leading at H1, did they win full time?)
+  const homeAvgConceded = homeMatches.length
+    ? homeMatches.reduce((s, m) => s + (m.homeTeam === homeDbName ? +m.ttAway : +m.ttHome), 0) / homeMatches.length
+    : 0;
+  const awayAvgConceded = awayMatches.length
+    ? awayMatches.reduce((s, m) => s + (m.homeTeam === awayDbName ? +m.ttAway : +m.ttHome), 0) / awayMatches.length
+    : 0;
+  const homeHoldW = homeMatches.filter(m => {
+    const isHome = m.homeTeam === homeDbName;
+    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, homeDbName) === 'W';
+  }).length;
+  const homeHoldTotal = homeMatches.filter(m => {
+    const isHome = m.homeTeam === homeDbName;
+    return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
+  }).length;
+  const awayHoldW = awayMatches.filter(m => {
+    const isHome = m.homeTeam === awayDbName;
+    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, awayDbName) === 'W';
+  }).length;
+  const awayHoldTotal = awayMatches.filter(m => {
+    const isHome = m.homeTeam === awayDbName;
+    return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
+  }).length;
   const h2hHomeW = h2hMatches.filter(m => {
     const hs = +m.ttHome; const as = +m.ttAway;
     return m.homeTeam === homeDbName ? hs > as : as > hs;
@@ -1369,6 +1393,14 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           ouLine: live.ouLines[0]?.line ?? null,
           eventId: live.eventId,
           matchType: live.matchType,
+          yellowHome: live.yellowHome,
+          yellowAway: live.yellowAway,
+          cornersHome: live.cornersHome,
+          cornersAway: live.cornersAway,
+          homeAvgConceded: Math.round(homeAvgConceded * 10) / 10,
+          awayAvgConceded: Math.round(awayAvgConceded * 10) / 10,
+          homeHoldW, homeHoldTotal,
+          awayHoldW, awayHoldTotal,
           homeW, homeD, homeL, homeAvgGoals,
           awayW, awayD, awayL, awayAvgGoals,
           h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,

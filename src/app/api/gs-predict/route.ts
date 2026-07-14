@@ -29,6 +29,11 @@ interface PredictBody {
   awayW: number; awayD: number; awayL: number; awayAvgGoals: number;
   h2hHomeW: number; h2hDraws: number; h2hAwayW: number; h2hTotal: number;
   redHome?: number; redAway?: number;
+  yellowHome?: number; yellowAway?: number;
+  cornersHome?: number; cornersAway?: number;
+  homeAvgConceded?: number; awayAvgConceded?: number;
+  homeHoldW?: number; homeHoldTotal?: number;
+  awayHoldW?: number; awayHoldTotal?: number;
   matchType?: string;
 }
 
@@ -193,12 +198,14 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
 
   const matchTypeLabel = b.matchType ? ` · loại ${b.matchType}` : '';
   lines.push(`Đang: ${homeTeam} ${h1Home}-${h1Away} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'${matchTypeLabel}`);
-  if ((b.redHome ?? 0) > 0 || (b.redAway ?? 0) > 0) {
-    const parts: string[] = [];
-    if ((b.redHome ?? 0) > 0) parts.push(`${homeTeam} bị thẻ đỏ (−${b.redHome} người)`);
-    if ((b.redAway ?? 0) > 0) parts.push(`${awayTeam} bị thẻ đỏ (−${b.redAway} người)`);
-    lines.push(`⚠️ ${parts.join(' · ')}`);
-  }
+  const liveMeta: string[] = [];
+  if ((b.redHome ?? 0) > 0) liveMeta.push(`⚠️ ${homeTeam} thẻ đỏ −${b.redHome}`);
+  if ((b.redAway ?? 0) > 0) liveMeta.push(`⚠️ ${awayTeam} thẻ đỏ −${b.redAway}`);
+  if ((b.yellowHome ?? 0) > 0 || (b.yellowAway ?? 0) > 0)
+    liveMeta.push(`🟨 Vàng: ${homeTeam} ${b.yellowHome ?? 0} · ${awayTeam} ${b.yellowAway ?? 0}`);
+  if ((b.cornersHome ?? 0) > 0 || (b.cornersAway ?? 0) > 0)
+    liveMeta.push(`Góc: ${homeTeam} ${b.cornersHome ?? 0} · ${awayTeam} ${b.cornersAway ?? 0}`);
+  if (liveMeta.length) lines.push(liveMeta.join('  '));
   lines.push('');
 
   lines.push(`⚽ Ghi bàn tiếp theo`);
@@ -245,8 +252,12 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
   const homeTotal = homeW + homeD + homeL;
   const awayTotal = awayW + awayD + awayL;
   lines.push(`📋 Phong độ (${Math.min(homeTotal, awayTotal)} trận gần nhất)`);
-  lines.push(`   ${homeTeam}: ${homeW}W ${homeD}D ${homeL}L · TB ${homeAvgGoals.toFixed(1)} bàn/trận`);
-  lines.push(`   ${awayTeam}: ${awayW}W ${awayD}D ${awayL}L · TB ${awayAvgGoals.toFixed(1)} bàn/trận`);
+  const homeConcStr = b.homeAvgConceded != null ? ` · thua TB ${b.homeAvgConceded.toFixed(1)}` : '';
+  const awayConcStr = b.awayAvgConceded != null ? ` · thua TB ${b.awayAvgConceded.toFixed(1)}` : '';
+  lines.push(`   ${homeTeam}: ${homeW}W ${homeD}D ${homeL}L · ghi TB ${homeAvgGoals.toFixed(1)}${homeConcStr}`);
+  lines.push(`   ${awayTeam}: ${awayW}W ${awayD}D ${awayL}L · ghi TB ${awayAvgGoals.toFixed(1)}${awayConcStr}`);
+  if ((b.homeHoldTotal ?? 0) > 0)
+    lines.push(`   Giữ khi dẫn H1: ${homeTeam} ${b.homeHoldW}/${b.homeHoldTotal} · ${awayTeam} ${b.awayHoldW}/${b.awayHoldTotal ?? 0}`);
   if (h2hTotal > 0)
     lines.push(`   H2H: ${homeTeam} ${h2hHomeW}W · ${h2hDraws}D · ${h2hAwayW}W ${awayTeam}`);
 
