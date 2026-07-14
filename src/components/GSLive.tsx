@@ -1895,11 +1895,11 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
                   <div>
                     <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{homeDbName}</div>
-                    <FormList recentMatches={homeMatches} team={homeDbName} />
+                    <FormList recentMatches={homeMatches.slice(0, 5)} team={homeDbName} />
                   </div>
                   <div>
                     <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{awayDbName}</div>
-                    <FormList recentMatches={awayMatches} team={awayDbName} />
+                    <FormList recentMatches={awayMatches.slice(0, 5)} team={awayDbName} />
                   </div>
                 </div>
               </div>
@@ -1907,7 +1907,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               {/* Section: H2H full width */}
               <div className="px-3 py-3 md:px-4 md:py-4">
                 <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
-                <H2HList h2h={h2hMatches} />
+                <H2HList h2h={h2hMatches.slice(0, 5)} />
               </div>
             </div>
           )}
