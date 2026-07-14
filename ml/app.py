@@ -4,6 +4,7 @@ Loads model.pkl on startup (trains from DB if missing).
 DB is only needed for training; /predict is pure numpy.
 """
 
+import asyncio
 import os
 import pickle
 import logging
@@ -140,6 +141,45 @@ def train_from_db() -> dict:
     return bundle
 
 
+def db_row_count() -> int:
+    """Return current row count in gs_matches_history (with tt_home filled)."""
+    import psycopg2
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        return 0
+    try:
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM gs_matches_history WHERE tt_home IS NOT NULL")
+        count = cur.fetchone()[0]
+        cur.close()
+        conn.close()
+        return int(count)
+    except Exception as e:
+        log.warning("db_row_count error: %s", e)
+        return 0
+
+
+async def auto_retrain_loop():
+    """Every 30 min: retrain if DB has 5+ new samples since last train."""
+    INTERVAL = 2 * 60  # 2 minutes
+    THRESHOLD = 5       # retrain when at least 5 new samples
+    while True:
+        await asyncio.sleep(INTERVAL)
+        try:
+            current_n = _state["bundle"]["n_samples"] if _state["bundle"] else 0
+            db_n = await asyncio.get_event_loop().run_in_executor(None, db_row_count)
+            if db_n >= current_n + THRESHOLD:
+                log.info("Auto-retrain: DB has %d rows, model has %d samples — retraining…", db_n, current_n)
+                bundle = await asyncio.get_event_loop().run_in_executor(None, train_from_db)
+                _state["bundle"] = bundle
+                log.info("Auto-retrain done: v%d, %d samples, %.3f acc", bundle["version"], bundle["n_samples"], bundle["accuracy"])
+            else:
+                log.info("Auto-retrain check: DB %d vs model %d — no retrain needed", db_n, current_n)
+        except Exception as e:
+            log.warning("Auto-retrain failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     bundle = load_model()
@@ -152,7 +192,10 @@ async def lifespan(app: FastAPI):
     else:
         log.info("Loaded model v%d (%.3f acc, %d samples)", bundle["version"], bundle["accuracy"], bundle["n_samples"])
     _state["bundle"] = bundle
+
+    task = asyncio.create_task(auto_retrain_loop())
     yield
+    task.cancel()
     _state["bundle"] = None
 
 
