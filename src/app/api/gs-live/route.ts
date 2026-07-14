@@ -62,6 +62,7 @@ export interface GsLiveMatch {
   h1Away: number;
   minuteElapsed: number | null;
   secondsElapsed: number | null; // e-sports: ms elapsed in current period → seconds
+  totalMsElapsed: number | null; // raw ms elapsed in current period (used by frontend for realtime interpolation)
   bettingOpen: boolean;
   period: number;          // ev['10']: 2=H1, 4=Halftime, 8=H2
   isH2: boolean;           // true = second half underway (ev['10']===8)
@@ -227,7 +228,8 @@ function buildMatch(
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
     minuteElapsed,
-    secondsElapsed: null,
+    secondsElapsed: ev6ms !== null ? Math.floor(ev6ms / 1000) % 60 : null,
+    totalMsElapsed: ev6ms,
     bettingOpen: ev['11'] !== true,
     period: typeof ev['10'] === 'number' ? (ev['10'] as number) : 0,
     isH2,

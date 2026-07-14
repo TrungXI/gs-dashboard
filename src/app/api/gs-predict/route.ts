@@ -344,6 +344,7 @@ const CLAUDE_PROMPTS = {
 Đặc điểm:
 - Trận 16p chỉ có 16 phút thực tế, bàn thắng đến rất nhanh.
 - Trận 20p có 20 phút thực tế.
+- **Bóng đá ảo tốc độ cực kỳ biến động — bàn thắng có thể xảy ra trong vòng 30 giây bất kỳ lúc nào, kể cả khi tỉ số đang ổn định.** Không bao giờ loại trừ khả năng ghi bàn chỉ vì "ít thời gian còn lại" — 1-2 phút trong bóng đá ảo có thể thay đổi hoàn toàn kết quả.
 - Phân tích ngắn gọn, cụ thể, bằng tiếng Việt.
 - Luôn tính đến ảnh hưởng của thẻ vàng, thẻ đỏ và thời gian còn lại.
 - Không dự đoán theo cảm tính; ưu tiên odds hiện tại, biến động odds, thống kê trận đấu, phong độ, lịch sử đối đầu và dữ liệu lịch sử tương tự.

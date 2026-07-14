@@ -260,8 +260,8 @@ export default function GSLive() {
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
-  const [similarMatch, setSimilarMatch] = useState<GsLiveMatch | null>(null);
-  const [analysisMatch, setAnalysisMatch] = useState<GsLiveMatch | null>(null);
+  const [similarMatchId, setSimilarMatchId] = useState<number | null>(null);
+  const [analysisMatchId, setAnalysisMatchId] = useState<number | null>(null);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
 
@@ -496,8 +496,16 @@ export default function GSLive() {
         </button>
       </div>
 
-      {similarMatch && <SimilarMatchesDrawer live={similarMatch} onClose={() => setSimilarMatch(null)} />}
-      {analysisMatch && <LiveAnalysisDrawer live={analysisMatch} onClose={() => setAnalysisMatch(null)} />}
+      {(() => {
+        const simLive = similarMatchId != null ? matches.find(m => m.eventId === similarMatchId) ?? null : null;
+        const anaLive = analysisMatchId != null ? matches.find(m => m.eventId === analysisMatchId) ?? null : null;
+        return (
+          <>
+            {simLive && <SimilarMatchesDrawer live={simLive} onClose={() => setSimilarMatchId(null)} />}
+            {anaLive && <LiveAnalysisDrawer live={anaLive} onClose={() => setAnalysisMatchId(null)} />}
+          </>
+        );
+      })()}
 
       {error && (
         <div className="mb-4 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[13px] text-[#f87171]">
@@ -523,8 +531,8 @@ export default function GSLive() {
             globalReloadKey={globalReloadKey}
             h1Finals={h1Finals}
             autoStream={autoStream}
-            onSimilar={setSimilarMatch}
-            onAnalysis={setAnalysisMatch}
+            onSimilar={(m) => setSimilarMatchId(m.eventId)}
+            onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -537,8 +545,8 @@ export default function GSLive() {
             globalReloadKey={globalReloadKey}
             h1Finals={h1Finals}
             autoStream={autoStream}
-            onSimilar={setSimilarMatch}
-            onAnalysis={setAnalysisMatch}
+            onSimilar={(m) => setSimilarMatchId(m.eventId)}
+            onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
           />
         </>
       )}
