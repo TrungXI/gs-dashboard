@@ -45,15 +45,20 @@ export async function GET(req: NextRequest) {
        ORDER BY updated_at ASC`,
       [Number(eventId)],
     );
+    console.log(`[gs-history] GET event=${eventId} found ${rows.length} records`);
     return NextResponse.json({ ok: true, predictions: rows });
-  } catch {
-    return NextResponse.json({ ok: true, predictions: [] });
+  } catch (e) {
+    console.error('[gs-history] GET error', String(e));
+    return NextResponse.json({ ok: false, error: String(e), predictions: [] });
   }
 }
 
 export async function POST(req: NextRequest) {
   const pool = getPool();
-  if (!pool) return NextResponse.json({ ok: false, error: 'no db' });
+  if (!pool) {
+    console.error('[gs-history] POST: no ANALYSIS_DATABASE_URL configured');
+    return NextResponse.json({ ok: false, error: 'no db' });
+  }
 
   const { eventId, scoreHome, scoreAway, half, minute, predictionText } = await req.json();
   if (!eventId || predictionText == null) {
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   try {
     await ensureTable(pool);
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO gs_claude_predictions
          (event_id, score_home, score_away, half, minute, prediction_text, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, now())
@@ -70,11 +75,15 @@ export async function POST(req: NextRequest) {
          half            = EXCLUDED.half,
          minute          = EXCLUDED.minute,
          prediction_text = EXCLUDED.prediction_text,
-         updated_at      = now()`,
+         updated_at      = now()
+       RETURNING id, (xmax = 0) AS inserted`,
       [eventId, scoreHome ?? 0, scoreAway ?? 0, half ?? null, minute ?? null, predictionText],
     );
-    return NextResponse.json({ ok: true });
+    const row = result.rows[0];
+    console.log(`[gs-history] saved event=${eventId} score=${scoreHome}-${scoreAway} id=${row?.id} action=${row?.inserted ? 'INSERT' : 'UPDATE'}`);
+    return NextResponse.json({ ok: true, id: row?.id, action: row?.inserted ? 'insert' : 'update' });
   } catch (e) {
+    console.error('[gs-history] POST error', String(e));
     return NextResponse.json({ ok: false, error: String(e) });
   }
 }

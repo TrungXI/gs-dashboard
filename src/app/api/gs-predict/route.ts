@@ -460,12 +460,12 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
 
     // Append ✏️ ĐIỀU CHỈNH section after the original format (extra section only when history exists)
     userContent +=
-      `\n\n✏️ ĐIỀU CHỈNH TỪ DỰ ĐOÁN TRƯỚC\n` +
-      `- Dự đoán trước đúng hay sai ở điểm nào? Tỉ số thực tế có khớp không?\n` +
-      `- Điều chỉnh gì trong lần phân tích này dựa trên những gì đã xảy ra?`;
+      `\n\n✏️ ĐIỀU CHỈNH TỪ DỰ ĐOÁN TRƯỚC (tối đa 2 dòng bullet, mỗi dòng 1 câu ngắn)\n` +
+      `- Dự đoán trước đúng/sai điểm nào? (1 câu)\n` +
+      `- Điều chỉnh chính cho lần này? (1 câu)`;
   }
 
-  const maxTokens = prevPreds && prevPreds.length > 0 ? 950 : 650;
+  const maxTokens = prevPreds && prevPreds.length > 0 ? 750 : 650;
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: maxTokens,

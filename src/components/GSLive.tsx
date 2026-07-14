@@ -363,12 +363,12 @@ export default function GSLive() {
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('goal', '⚽ Ghi bàn!', `${nm.homeTeam} ghi bàn — ${nm.h1Home}–${nm.h1Away} ${nm.awayTeam} (${matchTime})`, nm.eventId);
+              notifyOS('goal', `⚽ ${nm.homeTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
               pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('goal', '⚽ Ghi bàn!', `${nm.awayTeam} ghi bàn — ${nm.homeTeam} ${nm.h1Home}–${nm.h1Away} (${matchTime})`, nm.eventId);
+              notifyOS('goal', `⚽ ${nm.awayTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
             }
           }
           if (newScored.size > 0) {
@@ -1569,6 +1569,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
       // Save prediction after stream completes (fire-and-forget)
       if (fullClaudeText && live.eventId && !ctrl.signal.aborted) {
+        const saveKey = `event=${live.eventId} score=${live.h1Home}-${live.h1Away}`;
         fetch('/api/gs-claude-history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1580,8 +1581,13 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             minute: live.minuteElapsed ?? 0,
             predictionText: fullClaudeText,
           }),
-        }).then(() => {
-          setPrevPredCount(c => c + 1);
+        }).then(async (res) => {
+          const json = await res.json().catch(() => ({})) as { ok?: boolean; error?: string; action?: string };
+          if (!res.ok || json.ok === false) {
+            console.error('[gs-history] save failed', saveKey, res.status, json.error);
+            return;
+          }
+          console.log('[gs-history] saved', saveKey, json.action ?? '');
           const newEntry: PrevPred = {
             score_home: live.h1Home,
             score_away: live.h1Away,
@@ -1589,12 +1595,14 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             minute: live.minuteElapsed ?? 0,
             prediction_text: fullClaudeText,
           };
+          // Only increment count on INSERT (new score), not UPDATE (overwrite)
+          if (json.action === 'insert') setPrevPredCount(c => c + 1);
           setPredHistory(prev => {
             const idx = prev.findIndex(p => p.score_home === live.h1Home && p.score_away === live.h1Away);
             if (idx >= 0) { const u = [...prev]; u[idx] = newEntry; return u; }
             return [...prev, newEntry];
           });
-        }).catch(() => { /* non-fatal */ });
+        }).catch((err) => { console.error('[gs-history] fetch error', saveKey, err); });
       }
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError')) console.error('predict error', e);
@@ -1614,11 +1622,15 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [live.h1Home, live.h1Away]);
 
-  // Auto-load once when tab first opens or matches finish loading — no repeat after that
+  // Auto-load exactly once per drawer open — when data is ready and tab is suggest.
+  // useRef guards against re-firing every time user switches back to 'suggest' tab.
   const triggerRef = useRef<() => void>(triggerPrediction);
   useEffect(() => { triggerRef.current = triggerPrediction; });
+  const autoTriggeredRef = useRef(false);
   useEffect(() => {
     if (activeTab !== 'suggest' || !matches) return;
+    if (autoTriggeredRef.current) return; // already called once for this drawer session
+    autoTriggeredRef.current = true;
     triggerRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, matches]);
