@@ -1553,12 +1553,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     const isBalanced = Math.abs(homePct - awayPct) <= 8;
 
     const Dots = ({ w, d, l }: { w: number; d: number; l: number }) => {
-      const MAX = 20;
+      const MAX = 10;
       const total = w + d + l;
       const scale = total > MAX ? MAX / total : 1;
-      const sw = Math.round(w * scale);
-      const sl = Math.round(l * scale);
-      const sd = Math.max(0, MAX - sw - sl > d ? d : Math.round(d * scale));
+      const sw = Math.max(0, Math.round(w * scale));
+      const sl = Math.max(0, Math.round(l * scale));
+      const sd = Math.max(0, Math.min(Math.round(d * scale), MAX - sw - sl));
       return (
         <div className="flex gap-1">
           {Array.from({ length: sw }, (_, i) => <span key={`w${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
