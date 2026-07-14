@@ -1157,6 +1157,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [mlSamples, setMlSamples] = useState<number | null>(null);
   const predAbortRef = useRef<AbortController | null>(null);
   const [goalFlash, setGoalFlash] = useState(false);
+  const [activeDot, setActiveDot] = useState(0);
+  const carouselRef = useRef<HTMLDivElement>(null);
   const prevScoreRef = useRef(`${live.h1Home}-${live.h1Away}`);
 
   useEffect(() => {
@@ -1741,50 +1743,72 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               {/* Shared visual card */}
               <PredictCard />
 
-              {/* Box 1 — Claude AI */}
-              <div className={`rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
-                  <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Dự đoán Claude</span>
-                  {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
-                  <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[10px] text-[#3a2a5a] font-semibold">Claude Haiku</span>
-                    {!predicting && (
-                      <button
-                        onClick={triggerPrediction}
-                        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#1a0a3a] border border-[#4a2a7a] text-[#a78bfa] hover:bg-[#221040] active:scale-95 transition-all text-[18px] leading-none"
-                        title="Làm mới dự đoán"
-                      >↺</button>
+              {/* Boxes: desktop = 2-col grid | mobile = swipe carousel */}
+              <div
+                ref={carouselRef}
+                onScroll={() => {
+                  if (!carouselRef.current) return;
+                  const { scrollLeft, offsetWidth } = carouselRef.current;
+                  setActiveDot(scrollLeft > offsetWidth * 0.5 ? 1 : 0);
+                }}
+                className="flex overflow-x-auto snap-x snap-mandatory gap-3 md:grid md:grid-cols-2 md:overflow-x-visible md:snap-none"
+                style={{ scrollbarWidth: 'none' }}
+              >
+                {/* Claude box */}
+                <div className={`snap-start shrink-0 w-full md:w-auto md:shrink rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
+                    <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Claude</span>
+                    {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="text-[10px] text-[#3a2a5a] font-semibold">Haiku</span>
+                      {!predicting && (
+                        <button
+                          onClick={triggerPrediction}
+                          className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#1a0a3a] border border-[#4a2a7a] text-[#a78bfa] hover:bg-[#221040] active:scale-95 transition-all text-[16px] leading-none"
+                          title="Làm mới dự đoán"
+                        >↺</button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="px-3 py-2.5 md:max-h-[300px] md:overflow-y-auto">
+                    {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                    {claudePrediction && (
+                      <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                        {claudePrediction}
+                        {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
+                      </div>
                     )}
                   </div>
                 </div>
-                <div className="px-3 py-2.5">
-                  {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                  {claudePrediction && (
-                    <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                      {claudePrediction}
-                      {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
-                    </div>
-                  )}
+
+                {/* Python box */}
+                <div className={`snap-start shrink-0 w-full md:w-auto md:shrink rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
+                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
+                    <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Python ML</span>
+                    {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
+                    <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
+                  </div>
+                  <div className="px-3 py-2.5 md:max-h-[300px] md:overflow-y-auto">
+                    {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                    {pythonStats && (
+                      <div className="space-y-0.5">
+                        {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Box 2 — Python ML */}
-              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
-                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
-                  {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
-                  <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
-                  </div>
-                </div>
-                <div className="px-3 py-2.5">
-                  {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                  {pythonStats && (
-                    <div className="space-y-0.5">
-                      {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
-                    </div>
-                  )}
-                </div>
+              {/* Mobile dot indicators */}
+              <div className="flex justify-center gap-2 md:hidden">
+                <button
+                  onClick={() => carouselRef.current?.scrollTo({ left: 0, behavior: 'smooth' })}
+                  className={`h-2 rounded-full transition-all duration-300 ${activeDot === 0 ? 'w-5 bg-[#a78bfa]' : 'w-2 bg-[#333]'}`}
+                />
+                <button
+                  onClick={() => carouselRef.current?.scrollTo({ left: carouselRef.current.offsetWidth, behavior: 'smooth' })}
+                  className={`h-2 rounded-full transition-all duration-300 ${activeDot === 1 ? 'w-5 bg-[#4ade80]' : 'w-2 bg-[#333]'}`}
+                />
               </div>
             </div>
           )}
