@@ -1169,6 +1169,10 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const carouselRef = useRef<HTMLDivElement>(null);
   const prevScoreRef = useRef(`${live.h1Home}-${live.h1Away}`);
   const [prevPredCount, setPrevPredCount] = useState(0);
+  type PrevPred = { score_home: number; score_away: number; half: string | null; minute: number | null; prediction_text: string };
+  const [predHistory, setPredHistory] = useState<PrevPred[]>([]);
+  const [selectedHistPred, setSelectedHistPred] = useState<PrevPred | null>(null);
+  const [histDropdownOpen, setHistDropdownOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -1476,7 +1480,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     setPredicting(true);
 
     // Fetch previous Claude predictions for this live match
-    type PrevPred = { score_home: number; score_away: number; half: string | null; minute: number | null; prediction_text: string };
     let previousPredictions: PrevPred[] = [];
     try {
       if (live.eventId) {
@@ -1485,6 +1488,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           const histJson = await histRes.json() as { ok: boolean; predictions?: PrevPred[] };
           previousPredictions = histJson.predictions ?? [];
           setPrevPredCount(previousPredictions.length);
+          setPredHistory(previousPredictions);
+          setSelectedHistPred(null); // reset to live view on refresh
         }
       }
     } catch { /* non-fatal */ }
@@ -1575,7 +1580,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             minute: live.minuteElapsed ?? 0,
             predictionText: fullClaudeText,
           }),
-        }).then(() => setPrevPredCount(c => c + 1)).catch(() => { /* non-fatal */ });
+        }).then(() => {
+          setPrevPredCount(c => c + 1);
+          const newEntry: PrevPred = {
+            score_home: live.h1Home,
+            score_away: live.h1Away,
+            half: live.isH2 ? 'H2' : 'H1',
+            minute: live.minuteElapsed ?? 0,
+            prediction_text: fullClaudeText,
+          };
+          setPredHistory(prev => {
+            const idx = prev.findIndex(p => p.score_home === live.h1Home && p.score_away === live.h1Away);
+            if (idx >= 0) { const u = [...prev]; u[idx] = newEntry; return u; }
+            return [...prev, newEntry];
+          });
+        }).catch(() => { /* non-fatal */ });
       }
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError')) console.error('predict error', e);
@@ -1897,36 +1916,86 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                 style={{ scrollbarWidth: 'none' }}
               >
                 {/* Claude box */}
-                <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
-                  <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
-                    <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Claude</span>
-                    {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
-                    {prevPredCount > 0 && !predicting && (
-                      <span className="text-[10px] text-[#a78bfa]/50 font-semibold" title="Số dự đoán đã lưu trong trận này">
-                        📚 {prevPredCount}
-                      </span>
-                    )}
-                    <div className="ml-auto flex items-center gap-2">
-                      <span className="text-[10px] text-[#3a2a5a] font-semibold">Haiku</span>
-                      {!predicting && (
-                        <button
-                          onClick={triggerPrediction}
-                          className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#1a0a3a] border border-[#4a2a7a] text-[#a78bfa] hover:bg-[#221040] active:scale-95 transition-all text-[16px] leading-none"
-                          title="Làm mới dự đoán"
-                        >↺</button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="px-3 py-2.5">
-                    {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                    {claudePrediction && (
-                      <div className="space-y-0.5">
-                        {claudePrediction.split('\n').map((line, i) => renderClaudeLine(line, i))}
-                        {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
+                {(() => {
+                  const displayedPrediction = selectedHistPred ? selectedHistPred.prediction_text : claudePrediction;
+                  const histNewestFirst = [...predHistory].reverse();
+                  return (
+                    <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
+                      {/* Header */}
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
+                        <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Claude</span>
+                        {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
+                        <div className="ml-auto flex items-center gap-2">
+                          <span className="text-[10px] text-[#3a2a5a] font-semibold">Haiku</span>
+                          {!predicting && (
+                            <button
+                              onClick={triggerPrediction}
+                              className="flex items-center justify-center w-8 h-8 rounded-lg bg-[#1a0a3a] border border-[#4a2a7a] text-[#a78bfa] hover:bg-[#221040] active:scale-95 transition-all text-[16px] leading-none"
+                              title="Làm mới dự đoán"
+                            >↺</button>
+                          )}
+                        </div>
                       </div>
-                    )}
-                  </div>
-                </div>
+
+                      {/* History dropdown — inside box, below header */}
+                      {predHistory.length > 0 && (
+                        <div className="relative border-b border-[#2a1a4a]">
+                          <button
+                            onClick={() => setHistDropdownOpen(o => !o)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-[11px] hover:bg-[#160d2a] transition-colors"
+                          >
+                            <span className="text-[#a78bfa]/60">📚</span>
+                            <span className={`font-semibold ${selectedHistPred ? 'text-[#fbbf24]' : 'text-[#a78bfa]/50'}`}>
+                              {selectedHistPred
+                                ? `${selectedHistPred.score_home}-${selectedHistPred.score_away}${selectedHistPred.half ? ` · ${selectedHistPred.half}` : ''}${selectedHistPred.minute != null ? ` ${selectedHistPred.minute}'` : ''}`
+                                : `Lịch sử dự đoán (${predHistory.length})`}
+                            </span>
+                            <span className="ml-auto text-[10px] text-[#555]">{histDropdownOpen ? '▲' : '▼'}</span>
+                          </button>
+
+                          {histDropdownOpen && (
+                            <>
+                              <div className="fixed inset-0 z-10" onClick={() => setHistDropdownOpen(false)} />
+                              <div className="absolute left-0 right-0 top-full z-20 border border-[#3a2a5a] border-t-0 bg-[#0a0518] shadow-xl overflow-hidden rounded-b-lg">
+                                {/* Live / current */}
+                                <button
+                                  onClick={() => { setSelectedHistPred(null); setHistDropdownOpen(false); }}
+                                  className={`w-full text-left px-3 py-2 text-[11px] flex items-center gap-2 transition-colors ${selectedHistPred === null ? 'bg-[#1a0a3a] text-[#a78bfa] font-bold' : 'text-[#888] hover:bg-[#110830]'}`}
+                                >
+                                  <span className="text-[8px]">🔴</span> Hiện tại (live)
+                                </button>
+                                {histNewestFirst.map((p, i) => {
+                                  const label = `${p.score_home}-${p.score_away}${p.half ? ` · ${p.half}` : ''}${p.minute != null ? ` ${p.minute}'` : ''}`;
+                                  const isSelected = selectedHistPred === p;
+                                  return (
+                                    <button
+                                      key={i}
+                                      onClick={() => { setSelectedHistPred(p); setHistDropdownOpen(false); }}
+                                      className={`w-full text-left px-3 py-2 text-[11px] border-t border-[#2a1a4a] flex items-center gap-2 transition-colors ${isSelected ? 'bg-[#1a0a3a] text-[#fbbf24] font-bold' : 'text-[#888] hover:bg-[#110830]'}`}
+                                    >
+                                      <span className="text-[8px] text-[#555]">◷</span> {label}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Body */}
+                      <div className="px-3 py-2.5">
+                        {!displayedPrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                        {displayedPrediction && (
+                          <div className="space-y-0.5">
+                            {displayedPrediction.split('\n').map((line, i) => renderClaudeLine(line, i))}
+                            {predicting && !selectedHistPred && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Python box */}
                 <div className={`snap-start shrink-0 w-full rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
