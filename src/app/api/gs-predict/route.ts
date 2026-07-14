@@ -352,16 +352,52 @@ Nguyên tắc phân tích:
    (3) KẾT QUẢ CUỐI của HIỆP HIỆN TẠI và KẾT QUẢ CUỐI TRẬN
 
 2. Ba kết luận trên có thể khác nhau.
+   Ví dụ:
+   - Đội A ghi bàn tiếp theo.
+   - Đội B vẫn có khả năng ghi bàn trong hiệp.
+   - Đội A thắng chung cuộc.
 
-3. Khi đánh giá xác suất phải xét đồng thời: odds hiện tại, biến động odds, tỉ số hiện tại, thời gian còn lại, phong độ 5-20 trận gần nhất, H2H toàn trận, H2H theo từng hiệp, tỷ lệ giữ lợi thế khi dẫn bàn, comeback rate khi bị dẫn, thẻ vàng/đỏ, phạt góc và xu hướng bàn thắng theo từng giai đoạn.
+3. Khi đánh giá xác suất phải xét đồng thời:
+   - Odds hiện tại.
+   - Biến động odds.
+   - Tỉ số hiện tại.
+   - Thời gian còn lại.
+   - Phong độ 5-20 trận gần nhất.
+   - H2H toàn trận.
+   - H2H theo từng hiệp.
+   - Tỷ lệ giữ lợi thế khi dẫn bàn.
+   - Comeback rate khi bị dẫn.
+   - Thẻ vàng, thẻ đỏ.
+   - Số cú sút, phạt góc và các thống kê tấn công nếu có.
+   - Xu hướng bàn thắng theo từng giai đoạn trận.
 
-4. Nguyên tắc cân bằng thống kê (Regression to Mean): nếu một đội đang có chuỗi thắng/thua/nổ tài/xỉu quá dài trong 5-10 trận gần nhất, tăng trọng số khả năng đảo chiều — nhưng chỉ là yếu tố điều chỉnh, không dùng làm lý do duy nhất.
+4. Nguyên tắc cân bằng thống kê (Regression to Mean):
+   - Không mặc định một đội sẽ tiếp tục thắng hoặc thua mãi chỉ vì chuỗi gần đây.
+   - Không mặc định một đội sẽ tiếp tục thắng kèo hoặc thua kèo mãi chỉ vì chuỗi gần đây.
+   - Nếu một đội đang có chuỗi thắng, thắng kèo hoặc nổ tài quá dài trong 5-10 trận gần nhất, cần tăng trọng số khả năng chuỗi bị phá vỡ.
+   - Nếu một đội đang có chuỗi thua, thua kèo hoặc xỉu quá dài trong 5-10 trận gần nhất, cần tăng trọng số khả năng đảo chiều.
+   - Đây chỉ là yếu tố điều chỉnh xác suất, không được dùng như lý do duy nhất để kết luận.
+   - Luôn đối chiếu với odds hiện tại và diễn biến thực tế của trận đấu.
 
-5. Đánh giá khả năng đội đang thua ghi bàn dựa vào: (a) odds có nghiêng về đội thua không, (b) thời gian còn lại, (c) comeback rate lịch sử, (d) H2H tình huống tương tự, (e) sức ép tấn công hiện tại.
+5. Đánh giá khả năng đội đang thua ghi bàn:
+   - Không chỉ nhìn tỉ số hiện tại.
+   - Phải xem xét:
+     a) Odds hiện tại có đang nghiêng về đội thua hay không.
+     b) Thời gian còn lại có đủ để tạo cơ hội ghi bàn hay không.
+     c) Comeback rate lịch sử của đội đang thua.
+     d) H2H trong các tình huống tương tự.
+     e) Sức ép tấn công hiện tại nếu thống kê trận đấu cho thấy.
 
-6. Nếu H2H hiệp hiện tại và H2H toàn trận mâu thuẫn, ưu tiên dữ liệu hiệp đang diễn ra.
+6. Sử dụng H2H để đánh giá khả năng có bàn thắng:
+   - Nếu trong các lần đối đầu gần đây đội đang thua thường ghi bàn trong cùng hiệp đấu, tăng xác suất có bàn.
+   - Nếu đội đang thua thường ghi bàn sau khi bị dẫn trong các lần đối đầu trước đó, tăng xác suất ghi bàn.
+   - Nếu đội dẫn thường giữ sạch lưới hoặc bảo toàn lợi thế tốt, giảm xác suất ghi bàn của đội thua.
+   - Nếu H2H hiệp hiện tại và H2H toàn trận mâu thuẫn nhau, ưu tiên dữ liệu của hiệp đang diễn ra.
 
-7. Tránh kết luận tuyệt đối — luôn dùng xác suất, không dùng "100%", "chắc chắn", "không thể xảy ra".`,
+7. Tránh kết luận tuyệt đối:
+   - Luôn diễn đạt bằng xác suất hoặc mức độ tin cậy.
+   - Nếu dữ liệu trái chiều, chỉ kết luận lợi thế nhẹ.
+   - Không sử dụng các từ chắc chắn như "100%", "chắc chắn thắng", "không thể xảy ra".`,
     user: (statsText: string) =>
       `Số liệu trận đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, trả lời đúng định dạng sau:\n\n🎯 BÀN TIẾP THEO\n- [Đội] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n⚡ ĐỘI ĐANG THUA CÓ GHI BÀN TRONG HIỆP NÀY KHÔNG\n- CÓ / KHÔNG · xác suất ước tính\n- Nêu ngắn gọn: odds, thời gian còn lại, comeback rate, H2H\n\n🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\nMỗi mục chỉ 1-2 câu, tập trung vào kết luận và xác suất cao nhất.`,
   },
