@@ -167,61 +167,70 @@ function Summary({ matches }: { matches: MatchGroup[] }) {
 function Timeline({ snapshots, homeTeam, awayTeam }: { snapshots: Snapshot[]; homeTeam: string; awayTeam: string }) {
   return (
     <div className="overflow-x-auto border-t border-[#2a2a2a] bg-[#0f0f0f]">
-      <table className="w-full min-w-[560px] text-left">
+      <table className="w-full table-fixed min-w-[580px] text-left">
+        <colgroup>
+          <col className="w-[52px]" />
+          <col className="w-[168px]" />
+          <col className="w-[68px]" />
+          <col />
+          <col />
+          <col />
+          <col />
+        </colgroup>
         <thead>
-          <tr className="text-[10px] text-white/40">
-            <th className="px-2 py-1.5 font-medium">Phút</th>
-            <th className="px-2 py-1.5 font-medium">Sự kiện</th>
-            <th className="px-2 py-1.5 font-medium">Tỉ số</th>
-            <th className="px-2 py-1.5 font-medium">HC TT</th>
-            <th className="px-2 py-1.5 font-medium">OU TT</th>
-            <th className="px-2 py-1.5 font-medium">HC H1</th>
-            <th className="px-2 py-1.5 font-medium">OU H1</th>
+          <tr className="text-xs text-white/40 bg-[#111]">
+            <th className="px-3 py-2 font-medium">Phút</th>
+            <th className="px-3 py-2 font-medium">Sự kiện</th>
+            <th className="px-3 py-2 font-medium">Tỉ số</th>
+            <th className="px-3 py-2 font-medium">HC TT</th>
+            <th className="px-3 py-2 font-medium">OU TT</th>
+            <th className="px-3 py-2 font-medium">HC H1</th>
+            <th className="px-3 py-2 font-medium">OU H1</th>
           </tr>
         </thead>
         <tbody>
           {snapshots.map((s, i) => {
             const prev = i > 0 ? snapshots[i - 1] : null;
             const goal = isGoal(s.snapshotType);
-            // Determine which team scored by comparing scores with previous snapshot
             let scorer: string | null = null;
             if (goal && prev) {
               if (s.scoreHome > prev.scoreHome) scorer = homeTeam;
               else if (s.scoreAway > prev.scoreAway) scorer = awayTeam;
             }
-            // H2 minutes are within-half; display on 90' scale by adding 45
             const displayMinute = s.minute == null ? null : s.isH2 ? 45 + s.minute : s.minute;
             return (
               <tr
                 key={i}
-                className={`border-t border-[#1e1e1e] text-xs ${
+                className={`border-t border-[#1e1e1e] text-[13px] ${
                   goal ? 'bg-[#4ade80]/[0.07]' : ''
                 }`}
               >
-                <td className="px-2 py-1.5 text-white/60">
-                  {displayMinute == null ? '—' : `${displayMinute}'`}
+                <td className="px-3 py-2 text-white/55">
+                  {displayMinute == null ? '-' : `${displayMinute}'`}
                 </td>
-                <td className={`px-2 py-1.5 ${snapshotColor(s.snapshotType)}`}>
-                  {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
-                  {scorer && <span className="ml-1.5 text-[10px] text-[#aaa]">· {scorer}</span>}
+                <td className={`px-3 py-2 ${snapshotColor(s.snapshotType)}`}>
+                  <span className="truncate block">
+                    {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
+                    {scorer && <span className="ml-1.5 text-[11px] text-[#aaa]">· {scorer}</span>}
+                  </span>
                 </td>
-                <td className="px-2 py-1.5 font-semibold text-white">
+                <td className="px-3 py-2 font-semibold text-white">
                   {s.scoreHome}-{s.scoreAway}
                 </td>
-                <td className="px-2 py-1.5 text-white/80">
-                  {s.hcLine ?? '—'}
+                <td className="px-3 py-2 text-white/80">
+                  {s.hcLine ?? '-'}
                   <DriftArrow dir={driftDir(s.hcLine, prev?.hcLine ?? null)} />
                 </td>
-                <td className="px-2 py-1.5 text-white/80">
-                  {s.ouLine ?? '—'}
+                <td className="px-3 py-2 text-white/80">
+                  {s.ouLine ?? '-'}
                   <DriftArrow dir={driftDir(s.ouLine, prev?.ouLine ?? null)} />
                 </td>
-                <td className="px-2 py-1.5 text-white/80">
-                  {s.hcH1Line ?? '—'}
+                <td className="px-3 py-2 text-white/80">
+                  {s.hcH1Line ?? '-'}
                   <DriftArrow dir={driftDir(s.hcH1Line, prev?.hcH1Line ?? null)} />
                 </td>
-                <td className="px-2 py-1.5 text-white/80">
-                  {s.ouH1Line ?? '—'}
+                <td className="px-3 py-2 text-white/80">
+                  {s.ouH1Line ?? '-'}
                   <DriftArrow dir={driftDir(s.ouH1Line, prev?.ouH1Line ?? null)} />
                 </td>
               </tr>
@@ -244,30 +253,31 @@ function MatchRow({ match }: { match: MatchGroup }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
+        className="grid w-full items-center gap-x-2 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
+        style={{ gridTemplateColumns: '52px 1fr 56px 1fr 64px 100px 100px 18px' }}
       >
-        <span className="text-[10px] text-white/40">
-          📅 {fmtDate(match.matchDate)}
+        <span className="text-[11px] text-white/35 truncate">
+          {fmtDate(match.matchDate)}
         </span>
-        <span className="text-xs font-semibold text-white">
-          {match.homeTeam}{' '}
-          <span className="mx-1 text-[#fbbf24]">
-            {match.finalScore.home}–{match.finalScore.away}
-          </span>{' '}
+        <span className="text-[13px] font-semibold text-white truncate text-right">
+          {match.homeTeam}
+        </span>
+        <span className="text-[13px] font-bold text-[#fbbf24] text-center tabular-nums">
+          {match.finalScore.home}–{match.finalScore.away}
+        </span>
+        <span className="text-[13px] font-semibold text-white truncate">
           {match.awayTeam}
         </span>
-        {h1 && (
-          <span className="text-[10px] text-white/45">
-            H1: <span className="text-[#93c5fd]">{h1.home}–{h1.away}</span>
-          </span>
-        )}
-        <span className="text-[10px] text-white/50">
-          HC: {first?.hcLine ?? '—'} → {last?.hcLine ?? '—'}
+        <span className="text-[11px] text-white/40 tabular-nums">
+          H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span>
         </span>
-        <span className="text-[10px] text-white/50">
-          OU: {first?.ouLine ?? '—'} → {last?.ouLine ?? '—'}
+        <span className="text-[11px] text-white/40 tabular-nums">
+          HC: {first?.hcLine ?? '-'} → {last?.hcLine ?? '-'}
         </span>
-        <span className="ml-auto text-[10px] text-white/40">
+        <span className="text-[11px] text-white/40 tabular-nums">
+          OU: {first?.ouLine ?? '-'} → {last?.ouLine ?? '-'}
+        </span>
+        <span className="text-[11px] text-white/30 text-right">
           {open ? '▲' : '▼'}
         </span>
       </button>
