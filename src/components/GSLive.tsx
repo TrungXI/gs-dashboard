@@ -478,6 +478,7 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            activeMatchId={analysisMatchId}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
@@ -491,6 +492,7 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            activeMatchId={analysisMatchId}
           />
         </>
       )}
@@ -745,6 +747,7 @@ function LeagueSection({
   h1Finals,
   autoStream,
   onAnalysis,
+  activeMatchId,
 }: {
   title: string;
   matches: GsLiveMatch[];
@@ -757,6 +760,7 @@ function LeagueSection({
   h1Finals: Map<number, { home: number; away: number }>;
   autoStream: boolean;
   onAnalysis: (m: GsLiveMatch) => void;
+  activeMatchId?: number | null;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -839,7 +843,11 @@ function LeagueSection({
               <div
                 key={m.eventId}
                 data-event-id={m.eventId}
-                className={`rounded-lg border overflow-hidden ${scored ? 'border-[#2a2a2a] !bg-[#16a34a]/10' : isHT ? 'border-amber-500/50 bg-amber-900/25' : 'border-[#2a2a2a] bg-[#141414]'}`}
+                className={`rounded-lg border overflow-hidden transition-all ${
+                  activeMatchId === m.eventId
+                    ? 'border-[#17a2b8] bg-[#17a2b8]/10 shadow-[0_0_0_1px_#17a2b8]'
+                    : scored ? 'border-[#2a2a2a] !bg-[#16a34a]/10' : isHT ? 'border-amber-500/50 bg-amber-900/25' : 'border-[#2a2a2a] bg-[#141414]'
+                }`}
               >
                 {/* Header: teams + score + phase */}
                 <div className="flex items-start gap-2 px-3 py-2 border-b border-[#222]">
@@ -967,7 +975,9 @@ function LeagueSection({
                     key={m.eventId}
                     data-event-id={m.eventId}
                     className={`odd:bg-[#141414] even:bg-[#181818] transition-colors ${
-                      scored ? '!bg-[#16a34a]/10' : isHT ? '!bg-amber-900/25' : ''
+                      activeMatchId === m.eventId
+                        ? '!bg-[#17a2b8]/10 outline outline-1 outline-[#17a2b8]/40'
+                        : scored ? '!bg-[#16a34a]/10' : isHT ? '!bg-amber-900/25' : ''
                     }`}
                     style={{ height: DESKTOP_DISPLAY_H }}
                   >
