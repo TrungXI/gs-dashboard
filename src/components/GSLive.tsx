@@ -1438,37 +1438,16 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     }
   }
 
-  // Keep triggerPrediction reachable from effects without stale closure
-  const triggerRef = useRef<() => void>(triggerPrediction);
-  useEffect(() => { triggerRef.current = triggerPrediction; });
-
-  // Detect goal → flash all boxes + retrigger prediction regardless of active tab
+  // Detect goal → flash only (no auto-retrigger — manual refresh to save API tokens)
   useEffect(() => {
     const cur = `${live.h1Home}-${live.h1Away}`;
     if (cur !== prevScoreRef.current) {
       prevScoreRef.current = cur;
       setGoalFlash(true);
       setTimeout(() => setGoalFlash(false), 2000);
-      if (matches) triggerRef.current();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [live.h1Home, live.h1Away, matches]);
-
-  // Fires on: tab open, data load, non-goal events (half, HC/OU, red card)
-  const changeKey = `${live.isH2}-${live.redHome}-${live.redAway}-${live.hcLines[0]?.line ?? ''}-${live.hcLines[0]?.home ?? ''}-${live.ouLines[0]?.line ?? ''}`;
-  useEffect(() => {
-    if (activeTab !== 'suggest' || !matches) return;
-    triggerRef.current();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, matches, changeKey]);
-
-  // 2-min timer — periodic refresh even when nothing changed
-  useEffect(() => {
-    if (activeTab !== 'suggest' || !matches) return;
-    const id = setInterval(() => triggerRef.current(), 2 * 60 * 1000);
-    return () => clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, matches]);
+  }, [live.h1Home, live.h1Away]);
 
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
