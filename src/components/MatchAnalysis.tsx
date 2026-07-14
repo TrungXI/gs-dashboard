@@ -164,27 +164,45 @@ function Summary({ matches }: { matches: MatchGroup[] }) {
   );
 }
 
+function HcCell({
+  line, homeGives, homeTeam, awayTeam, prev, prevLine,
+}: {
+  line: string | null; homeGives: boolean; homeTeam: string; awayTeam: string;
+  prev?: Snapshot | null; prevLine: string | null;
+}) {
+  if (!line) return <span className="text-white/30">-</span>;
+  const giver = homeGives ? homeTeam : awayTeam;
+  return (
+    <span className="tabular-nums">
+      <span className="text-white/45 text-[11px]">{giver}</span>
+      {' '}
+      <span className="text-white/80">-{line}</span>
+      <DriftArrow dir={driftDir(line, prevLine)} />
+    </span>
+  );
+}
+
 function Timeline({ snapshots, homeTeam, awayTeam }: { snapshots: Snapshot[]; homeTeam: string; awayTeam: string }) {
   return (
     <div className="overflow-x-auto border-t border-[#2a2a2a] bg-[#0f0f0f]">
-      <table className="w-full table-fixed min-w-[580px] text-left">
+      <table className="w-full table-fixed min-w-[640px] text-left">
         <colgroup>
           <col className="w-[52px]" />
           <col className="w-[168px]" />
-          <col className="w-[68px]" />
+          <col className="w-[64px]" />
           <col />
+          <col className="w-[72px]" />
           <col />
-          <col />
-          <col />
+          <col className="w-[72px]" />
         </colgroup>
         <thead>
           <tr className="text-xs text-white/40 bg-[#111]">
             <th className="px-3 py-2 font-medium">Phút</th>
             <th className="px-3 py-2 font-medium">Sự kiện</th>
             <th className="px-3 py-2 font-medium">Tỉ số</th>
-            <th className="px-3 py-2 font-medium">HC TT</th>
+            <th className="px-3 py-2 font-medium">HC TT (chấp)</th>
             <th className="px-3 py-2 font-medium">OU TT</th>
-            <th className="px-3 py-2 font-medium">HC H1</th>
+            <th className="px-3 py-2 font-medium">HC H1 (chấp)</th>
             <th className="px-3 py-2 font-medium">OU H1</th>
           </tr>
         </thead>
@@ -214,22 +232,20 @@ function Timeline({ snapshots, homeTeam, awayTeam }: { snapshots: Snapshot[]; ho
                     {scorer && <span className="ml-1.5 text-[11px] text-[#aaa]">· {scorer}</span>}
                   </span>
                 </td>
-                <td className="px-3 py-2 font-semibold text-white">
+                <td className="px-3 py-2 font-semibold text-white tabular-nums">
                   {s.scoreHome}-{s.scoreAway}
                 </td>
-                <td className="px-3 py-2 text-white/80">
-                  {s.hcLine ?? '-'}
-                  <DriftArrow dir={driftDir(s.hcLine, prev?.hcLine ?? null)} />
+                <td className="px-3 py-2">
+                  <HcCell line={s.hcLine} homeGives={s.hcHomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcLine ?? null} />
                 </td>
-                <td className="px-3 py-2 text-white/80">
+                <td className="px-3 py-2 text-white/80 tabular-nums">
                   {s.ouLine ?? '-'}
                   <DriftArrow dir={driftDir(s.ouLine, prev?.ouLine ?? null)} />
                 </td>
-                <td className="px-3 py-2 text-white/80">
-                  {s.hcH1Line ?? '-'}
-                  <DriftArrow dir={driftDir(s.hcH1Line, prev?.hcH1Line ?? null)} />
+                <td className="px-3 py-2">
+                  <HcCell line={s.hcH1Line} homeGives={s.hcH1HomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcH1Line ?? null} />
                 </td>
-                <td className="px-3 py-2 text-white/80">
+                <td className="px-3 py-2 text-white/80 tabular-nums">
                   {s.ouH1Line ?? '-'}
                   <DriftArrow dir={driftDir(s.ouH1Line, prev?.ouH1Line ?? null)} />
                 </td>
@@ -272,7 +288,7 @@ function MatchRow({ match }: { match: MatchGroup }) {
           H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span>
         </span>
         <span className="text-[11px] text-white/40 tabular-nums">
-          HC: {first?.hcLine ?? '-'} → {last?.hcLine ?? '-'}
+          HC: <span className="text-white/55">{first ? (first.hcHomeGives ? match.homeTeam : match.awayTeam) : ''}</span> {first?.hcLine ?? '-'} → {last?.hcLine ?? '-'}
         </span>
         <span className="text-[11px] text-white/40 tabular-nums">
           OU: {first?.ouLine ?? '-'} → {last?.ouLine ?? '-'}
