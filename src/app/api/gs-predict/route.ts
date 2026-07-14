@@ -415,7 +415,7 @@ Nguyên tắc phân tích:
    - Dùng lịch sử như "bộ nhớ ngắn hạn" của trận — không lặp lại nguyên xi, chỉ học từ nó để cải thiện.
    - Luôn ưu tiên dữ liệu thực tế hiện tại hơn dự đoán cũ.`,
     user: (statsText: string) =>
-      `Số liệu trận đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, trả lời đúng định dạng sau:\n\n🎯 BÀN TIẾP THEO\n- [Đội] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n⚡ ĐỘI ĐANG THUA CÓ GHI BÀN TRONG HIỆP NÀY KHÔNG\n- CÓ / KHÔNG · xác suất ước tính\n- Nêu ngắn gọn: odds, thời gian còn lại, comeback rate, H2H\n\n🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\nMỗi mục chỉ 1-2 câu, tập trung vào kết luận và xác suất cao nhất.`,
+      `Số liệu trận đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, trả lời đúng định dạng sau:\n\n🎯 BÀN TIẾP THEO\n- [Tên đội cụ thể] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n⚡ KHẢ NĂNG GHI BÀN TIẾP THEO\n- Nếu đang HÒA: ghi rõ "[Tên đội A] CÓ/KHÔNG · X%" và "[Tên đội B] CÓ/KHÔNG · Y%" — không dùng "đội đang thua" khi tỉ số bằng nhau\n- Nếu đang có đội DẪN: ghi rõ tên đội đang thua và xác suất gỡ · odds, thời gian còn lại, comeback rate, H2H\n\n🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Tên đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\nMỗi mục chỉ 1-2 câu, tập trung vào kết luận và xác suất cao nhất. Luôn dùng tên đội cụ thể, không dùng "đội nhà / đội khách".`,
   },
 } as const;
 
