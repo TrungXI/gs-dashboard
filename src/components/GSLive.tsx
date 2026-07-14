@@ -1160,6 +1160,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [activeDot, setActiveDot] = useState(0);
   const carouselRef = useRef<HTMLDivElement>(null);
   const prevScoreRef = useRef(`${live.h1Home}-${live.h1Away}`);
+  const [prevPredCount, setPrevPredCount] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -1466,6 +1467,20 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     setPythonStats('');
     setPredicting(true);
 
+    // Fetch previous Claude predictions for this live match
+    type PrevPred = { score_home: number; score_away: number; half: string | null; minute: number | null; prediction_text: string };
+    let previousPredictions: PrevPred[] = [];
+    try {
+      if (live.eventId) {
+        const histRes = await fetch(`/api/gs-claude-history?eventId=${live.eventId}`);
+        if (histRes.ok) {
+          const histJson = await histRes.json() as { ok: boolean; predictions?: PrevPred[] };
+          previousPredictions = histJson.predictions ?? [];
+          setPrevPredCount(previousPredictions.length);
+        }
+      }
+    } catch { /* non-fatal */ }
+
     const homeAvgGoals = homeMatches.length
       ? homeMatches.reduce((s, m) => s + (m.homeTeam === homeDbName ? +m.ttHome : +m.ttAway), 0) / homeMatches.length
       : 0;
@@ -1507,6 +1522,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       homeW, homeD, homeL, homeAvgGoals,
       awayW, awayD, awayL, awayAvgGoals,
       h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
+      previousPredictions: previousPredictions.length > 0 ? previousPredictions : undefined,
     });
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctrl.signal };
 
@@ -1528,11 +1544,30 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       if (!claudeRes.body) return;
       const reader = claudeRes.body.getReader();
       const decoder = new TextDecoder();
+      let fullClaudeText = '';
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         if (ctrl.signal.aborted) break;
-        setClaudePrediction(prev => prev + decoder.decode(value, { stream: true }));
+        const chunk = decoder.decode(value, { stream: true });
+        fullClaudeText += chunk;
+        setClaudePrediction(prev => prev + chunk);
+      }
+
+      // Save prediction after stream completes (fire-and-forget)
+      if (fullClaudeText && live.eventId && !ctrl.signal.aborted) {
+        fetch('/api/gs-claude-history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            eventId: live.eventId,
+            scoreHome: live.h1Home,
+            scoreAway: live.h1Away,
+            half: live.isH2 ? 'H2' : 'H1',
+            minute: live.minuteElapsed ?? 0,
+            predictionText: fullClaudeText,
+          }),
+        }).then(() => setPrevPredCount(c => c + 1)).catch(() => { /* non-fatal */ });
       }
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError')) console.error('predict error', e);
@@ -1858,6 +1893,11 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                   <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
                     <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Claude</span>
                     {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
+                    {prevPredCount > 0 && !predicting && (
+                      <span className="text-[10px] text-[#a78bfa]/50 font-semibold" title="Số dự đoán đã lưu trong trận này">
+                        📚 {prevPredCount}
+                      </span>
+                    )}
                     <div className="ml-auto flex items-center gap-2">
                       <span className="text-[10px] text-[#3a2a5a] font-semibold">Haiku</span>
                       {!predicting && (

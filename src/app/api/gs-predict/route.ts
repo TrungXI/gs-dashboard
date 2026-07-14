@@ -44,6 +44,13 @@ interface PredictBody {
   homeHoldW?: number; homeHoldTotal?: number;
   awayHoldW?: number; awayHoldTotal?: number;
   matchType?: string;
+  previousPredictions?: Array<{
+    score_home: number;
+    score_away: number;
+    half: string | null;
+    minute: number | null;
+    prediction_text: string;
+  }>;
 }
 
 interface MlPrediction {
@@ -408,13 +415,27 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const client = new Anthropic();
   const statsText = buildStatisticalAnalysis(b, ml, historical);
   const prompt = CLAUDE_PROMPTS[CLAUDE_PROMPT_VERSION];
+
+  let userContent = prompt.user(statsText);
+  const prevPreds = b.previousPredictions;
+  if (prevPreds && prevPreds.length > 0) {
+    const historyBlock = prevPreds.map(p => {
+      const scoreLabel = `${p.score_home}-${p.score_away}`;
+      const timeLabel = p.half && p.minute != null ? `${p.half} phút ${p.minute}'` : '';
+      const truncated = p.prediction_text.slice(0, 300).trim();
+      return `— Tại tỉ số ${scoreLabel}${timeLabel ? ` (${timeLabel})` : ''}:\n${truncated}${p.prediction_text.length > 300 ? '…' : ''}`;
+    }).join('\n\n');
+    userContent += `\n\n📚 Dự đoán trước của bạn trong trận này (context để bạn tự đánh giá lại):\n${historyBlock}\n→ Nếu dự đoán trước có sai lệch so với diễn biến thực tế, hãy điều chỉnh và nhận xét ngắn.`;
+  }
+
+  const maxTokens = prevPreds && prevPreds.length > 0 ? 800 : 650;
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 650,
+    max_tokens: maxTokens,
     system: prompt.system,
     messages: [{
       role: 'user',
-      content: prompt.user(statsText),
+      content: userContent,
     }],
   });
   const encoder = new TextEncoder();
