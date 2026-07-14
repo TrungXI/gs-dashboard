@@ -1552,13 +1552,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     const homeLeads = homePct > awayPct;
     const isBalanced = Math.abs(homePct - awayPct) <= 8;
 
-    const Dots = ({ w, d, l }: { w: number; d: number; l: number }) => (
-      <div className="flex gap-1">
-        {Array.from({ length: w }, (_, i) => <span key={`w${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
-        {Array.from({ length: d }, (_, i) => <span key={`d${i}`} className="w-2.5 h-2.5 rounded-full bg-[#fbbf24] inline-block" />)}
-        {Array.from({ length: l }, (_, i) => <span key={`l${i}`} className="w-2.5 h-2.5 rounded-full bg-[#f87171] inline-block" />)}
-      </div>
-    );
+    const Dots = ({ w, d, l }: { w: number; d: number; l: number }) => {
+      const MAX = 20;
+      const total = w + d + l;
+      const scale = total > MAX ? MAX / total : 1;
+      const sw = Math.round(w * scale);
+      const sl = Math.round(l * scale);
+      const sd = Math.max(0, MAX - sw - sl > d ? d : Math.round(d * scale));
+      return (
+        <div className="flex gap-1">
+          {Array.from({ length: sw }, (_, i) => <span key={`w${i}`} className="w-2.5 h-2.5 rounded-full bg-[#4ade80] inline-block" />)}
+          {Array.from({ length: sd }, (_, i) => <span key={`d${i}`} className="w-2.5 h-2.5 rounded-full bg-[#fbbf24] inline-block" />)}
+          {Array.from({ length: sl }, (_, i) => <span key={`l${i}`} className="w-2.5 h-2.5 rounded-full bg-[#f87171] inline-block" />)}
+        </div>
+      );
+    };
 
     return (
       <div className="rounded-lg border border-[#2a2a2a] bg-[#161616] px-3 py-2">
