@@ -118,6 +118,15 @@ function lastSnapshot(m: MatchGroup): Snapshot | undefined {
   return m.snapshots[m.snapshots.length - 1];
 }
 
+/** H1 final score = score at kickoff_h2, or last non-H2 snapshot. */
+function h1Score(m: MatchGroup): { home: number; away: number } | null {
+  const ht = m.snapshots.find((s) => s.snapshotType === 'kickoff_h2');
+  if (ht) return { home: ht.scoreHome, away: ht.scoreAway };
+  const lastH1 = [...m.snapshots].reverse().find((s) => !s.isH2);
+  if (lastH1) return { home: lastH1.scoreHome, away: lastH1.scoreAway };
+  return null;
+}
+
 function Summary({ matches }: { matches: MatchGroup[] }) {
   const hcAvg = avg(
     matches
@@ -228,6 +237,7 @@ function MatchRow({ match }: { match: MatchGroup }) {
   const [open, setOpen] = useState(false);
   const first = firstSnapshot(match);
   const last = lastSnapshot(match);
+  const h1 = h1Score(match);
 
   return (
     <div className="overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#141414]">
@@ -246,6 +256,11 @@ function MatchRow({ match }: { match: MatchGroup }) {
           </span>{' '}
           {match.awayTeam}
         </span>
+        {h1 && (
+          <span className="text-[10px] text-white/45">
+            H1: <span className="text-[#93c5fd]">{h1.home}–{h1.away}</span>
+          </span>
+        )}
         <span className="text-[10px] text-white/50">
           HC: {first?.hcLine ?? '—'} → {last?.hcLine ?? '—'}
         </span>
