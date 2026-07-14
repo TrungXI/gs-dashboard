@@ -1754,31 +1754,25 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 px-4 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
-          <button
-            onClick={() => setActiveTab('stats')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'stats' ? 'text-white border-[#fbbf24]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            📊 Thống kê
-          </button>
-          <button
-            onClick={() => setActiveTab('suggest')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'suggest' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            💡 Gợi ý
-          </button>
-          <button
-            onClick={() => setActiveTab('python')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'python' ? 'text-white border-[#4ade80]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            🤖 Python
-          </button>
-          <button
-            onClick={() => setActiveTab('confront')}
-            className={`px-3 py-1.5 text-[13px] font-semibold rounded-t border-b-2 transition-colors ${activeTab === 'confront' ? 'text-white border-[#17a2b8]' : 'text-[#666] border-transparent hover:text-[#aaa]'}`}
-          >
-            ⚔️ Đối Kháng
-          </button>
+        <div className="flex gap-0.5 overflow-x-auto scrollbar-none px-2 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
+          {([
+            ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
+            ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
+            ['python',   '🤖', 'Python',     'border-[#4ade80]'],
+            ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
+          ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key as typeof activeTab)}
+              className={`flex-shrink-0 whitespace-nowrap px-2.5 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${
+                activeTab === key
+                  ? `text-white ${activeBorder}`
+                  : 'text-[#666] border-transparent hover:text-[#aaa]'
+              }`}
+            >
+              {icon} {label}
+            </button>
+          ))}
         </div>
 
         {/* Body */}

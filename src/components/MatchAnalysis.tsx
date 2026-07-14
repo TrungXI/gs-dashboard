@@ -184,76 +184,123 @@ function HcCell({
 
 function Timeline({ snapshots, homeTeam, awayTeam }: { snapshots: Snapshot[]; homeTeam: string; awayTeam: string }) {
   return (
-    <div className="overflow-x-auto border-t border-[#2a2a2a] bg-[#0f0f0f]">
-      <table className="w-full table-fixed min-w-[640px] text-left">
-        <colgroup>
-          <col className="w-[52px]" />
-          <col className="w-[168px]" />
-          <col className="w-[64px]" />
-          <col />
-          <col className="w-[72px]" />
-          <col />
-          <col className="w-[72px]" />
-        </colgroup>
-        <thead>
-          <tr className="text-xs text-white/40 bg-[#111]">
-            <th className="px-3 py-2 font-medium">Phút</th>
-            <th className="px-3 py-2 font-medium">Sự kiện</th>
-            <th className="px-3 py-2 font-medium">Tỉ số</th>
-            <th className="px-3 py-2 font-medium">HC TT (chấp)</th>
-            <th className="px-3 py-2 font-medium">OU TT</th>
-            <th className="px-3 py-2 font-medium">HC H1 (chấp)</th>
-            <th className="px-3 py-2 font-medium">OU H1</th>
-          </tr>
-        </thead>
-        <tbody>
-          {snapshots.map((s, i) => {
-            const prev = i > 0 ? snapshots[i - 1] : null;
-            const goal = isGoal(s.snapshotType);
-            let scorer: string | null = null;
-            if (goal && prev) {
-              if (s.scoreHome > prev.scoreHome) scorer = homeTeam;
-              else if (s.scoreAway > prev.scoreAway) scorer = awayTeam;
-            }
-            const displayMinute = s.minute == null ? null : s.isH2 ? 45 + s.minute : s.minute;
-            return (
-              <tr
-                key={i}
-                className={`border-t border-[#1e1e1e] text-[13px] ${
-                  goal ? 'bg-[#4ade80]/[0.07]' : ''
-                }`}
-              >
-                <td className="px-3 py-2 text-white/55">
+    <div className="border-t border-[#2a2a2a] bg-[#0f0f0f]">
+      {/* ── Mobile: card per snapshot ── */}
+      <div className="md:hidden divide-y divide-[#1a1a1a]">
+        {snapshots.map((s, i) => {
+          const prev = i > 0 ? snapshots[i - 1] : null;
+          const goal = isGoal(s.snapshotType);
+          let scorer: string | null = null;
+          if (goal && prev) {
+            if (s.scoreHome > prev.scoreHome) scorer = homeTeam;
+            else if (s.scoreAway > prev.scoreAway) scorer = awayTeam;
+          }
+          const displayMinute = s.minute == null ? null : s.isH2 ? 45 + s.minute : s.minute;
+          return (
+            <div key={i} className={`px-3 py-2 ${goal ? 'bg-[#4ade80]/[0.06]' : ''}`}>
+              {/* Row 1: minute · event · score */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-white/45 tabular-nums w-8 shrink-0">
                   {displayMinute == null ? '-' : `${displayMinute}'`}
-                </td>
-                <td className={`px-3 py-2 ${snapshotColor(s.snapshotType)}`}>
-                  <span className="truncate block">
-                    {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
-                    {scorer && <span className="ml-1.5 text-[11px] text-[#aaa]">· {scorer}</span>}
-                  </span>
-                </td>
-                <td className="px-3 py-2 font-semibold text-white tabular-nums">
+                </span>
+                <span className={`text-[12px] flex-1 ${snapshotColor(s.snapshotType)}`}>
+                  {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
+                  {scorer && <span className="ml-1 text-[11px] text-[#aaa]">· {scorer}</span>}
+                </span>
+                <span className="text-[13px] font-bold text-white tabular-nums shrink-0">
                   {s.scoreHome}-{s.scoreAway}
-                </td>
-                <td className="px-3 py-2">
+                </span>
+              </div>
+              {/* Row 2: HC TT + OU TT */}
+              <div className="mt-1 grid grid-cols-2 gap-x-2 text-[11px]">
+                <div>
+                  <span className="text-white/30">HC TT </span>
                   <HcCell line={s.hcLine} homeGives={s.hcHomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcLine ?? null} />
-                </td>
-                <td className="px-3 py-2 text-white/80 tabular-nums">
+                </div>
+                <div className="text-white/65 tabular-nums">
+                  <span className="text-white/30">OU TT </span>
                   {s.ouLine ?? '-'}
                   <DriftArrow dir={driftDir(s.ouLine, prev?.ouLine ?? null)} />
-                </td>
-                <td className="px-3 py-2">
+                </div>
+              </div>
+              {/* Row 3: HC H1 + OU H1 */}
+              <div className="mt-0.5 grid grid-cols-2 gap-x-2 text-[11px]">
+                <div>
+                  <span className="text-white/30">HC H1 </span>
                   <HcCell line={s.hcH1Line} homeGives={s.hcH1HomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcH1Line ?? null} />
-                </td>
-                <td className="px-3 py-2 text-white/80 tabular-nums">
+                </div>
+                <div className="text-white/65 tabular-nums">
+                  <span className="text-white/30">OU H1 </span>
                   {s.ouH1Line ?? '-'}
                   <DriftArrow dir={driftDir(s.ouH1Line, prev?.ouH1Line ?? null)} />
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* ── Desktop: table ── */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full table-fixed min-w-[640px] text-left">
+          <colgroup>
+            <col className="w-[52px]" />
+            <col className="w-[168px]" />
+            <col className="w-[64px]" />
+            <col />
+            <col className="w-[72px]" />
+            <col />
+            <col className="w-[72px]" />
+          </colgroup>
+          <thead>
+            <tr className="text-xs text-white/40 bg-[#111]">
+              <th className="px-3 py-2 font-medium">Phút</th>
+              <th className="px-3 py-2 font-medium">Sự kiện</th>
+              <th className="px-3 py-2 font-medium">Tỉ số</th>
+              <th className="px-3 py-2 font-medium">HC TT (chấp)</th>
+              <th className="px-3 py-2 font-medium">OU TT</th>
+              <th className="px-3 py-2 font-medium">HC H1 (chấp)</th>
+              <th className="px-3 py-2 font-medium">OU H1</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshots.map((s, i) => {
+              const prev = i > 0 ? snapshots[i - 1] : null;
+              const goal = isGoal(s.snapshotType);
+              let scorer: string | null = null;
+              if (goal && prev) {
+                if (s.scoreHome > prev.scoreHome) scorer = homeTeam;
+                else if (s.scoreAway > prev.scoreAway) scorer = awayTeam;
+              }
+              const displayMinute = s.minute == null ? null : s.isH2 ? 45 + s.minute : s.minute;
+              return (
+                <tr key={i} className={`border-t border-[#1e1e1e] text-[13px] ${goal ? 'bg-[#4ade80]/[0.07]' : ''}`}>
+                  <td className="px-3 py-2 text-white/55">{displayMinute == null ? '-' : `${displayMinute}'`}</td>
+                  <td className={`px-3 py-2 ${snapshotColor(s.snapshotType)}`}>
+                    <span className="truncate block">
+                      {SNAPSHOT_LABEL[s.snapshotType] ?? s.snapshotType}
+                      {scorer && <span className="ml-1.5 text-[11px] text-[#aaa]">· {scorer}</span>}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 font-semibold text-white tabular-nums">{s.scoreHome}-{s.scoreAway}</td>
+                  <td className="px-3 py-2">
+                    <HcCell line={s.hcLine} homeGives={s.hcHomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcLine ?? null} />
+                  </td>
+                  <td className="px-3 py-2 text-white/80 tabular-nums">
+                    {s.ouLine ?? '-'}<DriftArrow dir={driftDir(s.ouLine, prev?.ouLine ?? null)} />
+                  </td>
+                  <td className="px-3 py-2">
+                    <HcCell line={s.hcH1Line} homeGives={s.hcH1HomeGives} homeTeam={homeTeam} awayTeam={awayTeam} prev={prev} prevLine={prev?.hcH1Line ?? null} />
+                  </td>
+                  <td className="px-3 py-2 text-white/80 tabular-nums">
+                    {s.ouH1Line ?? '-'}<DriftArrow dir={driftDir(s.ouH1Line, prev?.ouH1Line ?? null)} />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -269,33 +316,48 @@ function MatchRow({ match }: { match: MatchGroup }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="grid w-full items-center gap-x-2 px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
-        style={{ gridTemplateColumns: '52px 1fr 56px 1fr 64px 100px 100px 18px' }}
+        className="w-full px-3 py-2.5 text-left transition-colors hover:bg-white/[0.03]"
       >
-        <span className="text-[11px] text-white/35 truncate">
-          {fmtDate(match.matchDate)}
-        </span>
-        <span className="text-[13px] font-semibold text-white truncate text-right">
-          {match.homeTeam}
-        </span>
-        <span className="text-[13px] font-bold text-[#fbbf24] text-center tabular-nums">
-          {match.finalScore.home}–{match.finalScore.away}
-        </span>
-        <span className="text-[13px] font-semibold text-white truncate">
-          {match.awayTeam}
-        </span>
-        <span className="text-[11px] text-white/40 tabular-nums">
-          H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span>
-        </span>
-        <span className="text-[11px] text-white/40 tabular-nums">
-          HC: <span className="text-white/55">{first ? (first.hcHomeGives ? match.homeTeam : match.awayTeam) : ''}</span> {first?.hcLine ?? '-'} → {last?.hcLine ?? '-'}
-        </span>
-        <span className="text-[11px] text-white/40 tabular-nums">
-          OU: {first?.ouLine ?? '-'} → {last?.ouLine ?? '-'}
-        </span>
-        <span className="text-[11px] text-white/30 text-right">
-          {open ? '▲' : '▼'}
-        </span>
+        {/* ── Mobile layout ── */}
+        <div className="md:hidden">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-white/30 shrink-0">{fmtDate(match.matchDate)}</span>
+            <span className="text-[13px] font-semibold text-white flex-1 truncate text-right">{match.homeTeam}</span>
+            <span className="text-[13px] font-bold text-[#fbbf24] tabular-nums shrink-0 px-1">
+              {match.finalScore.home}–{match.finalScore.away}
+            </span>
+            <span className="text-[13px] font-semibold text-white flex-1 truncate">{match.awayTeam}</span>
+            <span className="text-[11px] text-white/30 shrink-0 ml-1">{open ? '▲' : '▼'}</span>
+          </div>
+          <div className="mt-1 flex gap-3 text-[11px] text-white/40 tabular-nums">
+            <span>H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span></span>
+            <span>HC: <span className="text-white/60">{first ? (first.hcHomeGives ? match.homeTeam : match.awayTeam) : '-'}</span> -{first?.hcLine ?? '-'}→{last?.hcLine ?? '-'}</span>
+            <span>OU: {first?.ouLine ?? '-'}→{last?.ouLine ?? '-'}</span>
+          </div>
+        </div>
+
+        {/* ── Desktop layout: 8-column grid ── */}
+        <div
+          className="hidden md:grid items-center gap-x-2"
+          style={{ gridTemplateColumns: '52px 1fr 56px 1fr 64px 100px 100px 18px' }}
+        >
+          <span className="text-[11px] text-white/35 truncate">{fmtDate(match.matchDate)}</span>
+          <span className="text-[13px] font-semibold text-white truncate text-right">{match.homeTeam}</span>
+          <span className="text-[13px] font-bold text-[#fbbf24] text-center tabular-nums">
+            {match.finalScore.home}–{match.finalScore.away}
+          </span>
+          <span className="text-[13px] font-semibold text-white truncate">{match.awayTeam}</span>
+          <span className="text-[11px] text-white/40 tabular-nums">
+            H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span>
+          </span>
+          <span className="text-[11px] text-white/40 tabular-nums">
+            HC: <span className="text-white/55">{first ? (first.hcHomeGives ? match.homeTeam : match.awayTeam) : ''}</span> {first?.hcLine ?? '-'} → {last?.hcLine ?? '-'}
+          </span>
+          <span className="text-[11px] text-white/40 tabular-nums">
+            OU: {first?.ouLine ?? '-'} → {last?.ouLine ?? '-'}
+          </span>
+          <span className="text-[11px] text-white/30 text-right">{open ? '▲' : '▼'}</span>
+        </div>
       </button>
       {open && <Timeline snapshots={match.snapshots} homeTeam={match.homeTeam} awayTeam={match.awayTeam} />}
     </div>
