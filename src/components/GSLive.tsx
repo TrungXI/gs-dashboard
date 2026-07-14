@@ -1151,7 +1151,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'suggest'>('suggest');
-  const [prediction, setPrediction] = useState('');
+  const [claudePrediction, setClaudePrediction] = useState('');
+  const [pythonStats, setPythonStats] = useState('');
   const [predicting, setPredicting] = useState(false);
   const [mlSamples, setMlSamples] = useState<number | null>(null);
   const predAbortRef = useRef<AbortController | null>(null);
@@ -1367,7 +1368,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     if (predAbortRef.current) predAbortRef.current.abort();
     const ctrl = new AbortController();
     predAbortRef.current = ctrl;
-    setPrediction('');
+    setClaudePrediction('');
+    setPythonStats('');
     setPredicting(true);
 
     const homeAvgGoals = homeMatches.length
@@ -1377,46 +1379,55 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       ? awayMatches.reduce((s, m) => s + (m.homeTeam === awayDbName ? +m.ttHome : +m.ttAway), 0) / awayMatches.length
       : 0;
 
+    const body = JSON.stringify({
+      homeTeam: homeDbName,
+      awayTeam: awayDbName,
+      h1Home: live.h1Home,
+      h1Away: live.h1Away,
+      isH2: live.isH2,
+      minuteElapsed: live.minuteElapsed ?? 0,
+      hcLine: live.hcLines[0]?.line ?? null,
+      hcHome: live.hcLines[0]?.home ?? null,
+      ouLine: live.ouLines[0]?.line ?? null,
+      eventId: live.eventId,
+      matchType: live.matchType,
+      yellowHome: live.yellowHome,
+      yellowAway: live.yellowAway,
+      cornersHome: live.cornersHome,
+      cornersAway: live.cornersAway,
+      homeAvgConceded: Math.round(homeAvgConceded * 10) / 10,
+      awayAvgConceded: Math.round(awayAvgConceded * 10) / 10,
+      homeHoldW, homeHoldTotal,
+      awayHoldW, awayHoldTotal,
+      homeW, homeD, homeL, homeAvgGoals,
+      awayW, awayD, awayL, awayAvgGoals,
+      h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
+    });
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctrl.signal };
+
     try {
-      const res = await fetch('/api/gs-predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          homeTeam: homeDbName,
-          awayTeam: awayDbName,
-          h1Home: live.h1Home,
-          h1Away: live.h1Away,
-          isH2: live.isH2,
-          minuteElapsed: live.minuteElapsed ?? 0,
-          hcLine: live.hcLines[0]?.line ?? null,
-          hcHome: live.hcLines[0]?.home ?? null,
-          ouLine: live.ouLines[0]?.line ?? null,
-          eventId: live.eventId,
-          matchType: live.matchType,
-          yellowHome: live.yellowHome,
-          yellowAway: live.yellowAway,
-          cornersHome: live.cornersHome,
-          cornersAway: live.cornersAway,
-          homeAvgConceded: Math.round(homeAvgConceded * 10) / 10,
-          awayAvgConceded: Math.round(awayAvgConceded * 10) / 10,
-          homeHoldW, homeHoldTotal,
-          awayHoldW, awayHoldTotal,
-          homeW, homeD, homeL, homeAvgGoals,
-          awayW, awayD, awayL, awayAvgGoals,
-          h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
-        }),
-        signal: ctrl.signal,
-      });
-      if (!res.body) return;
-      const samples = res.headers.get('X-ML-Samples');
-      if (samples) setMlSamples(Number(samples));
-      const reader = res.body.getReader();
+      // Parallel: Claude stream + Python stats
+      const [claudeRes, pythonRes] = await Promise.all([
+        fetch('/api/gs-predict', opts),
+        fetch('/api/gs-predict?python=1', opts),
+      ]);
+
+      // Python stats — read all at once (no animation needed)
+      if (pythonRes.ok && pythonRes.body) {
+        const samples = pythonRes.headers.get('X-ML-Samples');
+        if (samples) setMlSamples(Number(samples));
+        pythonRes.text().then(t => { if (!ctrl.signal.aborted) setPythonStats(t); });
+      }
+
+      // Claude — stream with typing animation
+      if (!claudeRes.body) return;
+      const reader = claudeRes.body.getReader();
       const decoder = new TextDecoder();
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
         if (ctrl.signal.aborted) break;
-        setPrediction(prev => prev + decoder.decode(value, { stream: true }));
+        setClaudePrediction(prev => prev + decoder.decode(value, { stream: true }));
       }
     } catch (e) {
       if (!(e instanceof Error && e.name === 'AbortError')) console.error('predict error', e);
@@ -1730,50 +1741,49 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               {/* Shared visual card */}
               <PredictCard />
 
-              {/* Box 1 — Python ML */}
-              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
-                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
-                  {predicting && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
+              {/* Box 1 — Claude AI */}
+              <div className={`rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
+                  <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Dự đoán Claude</span>
+                  {predicting && !claudePrediction && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang phân tích…</span>}
                   <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
+                    <span className="text-[10px] text-[#3a2a5a] font-semibold">Claude Haiku</span>
                     {!predicting && (
                       <button
                         onClick={triggerPrediction}
-                        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#1a3a1a] border border-[#3a6a3a] text-[#4ade80] hover:bg-[#223a22] active:scale-95 transition-all text-[18px] leading-none"
+                        className="flex items-center justify-center w-9 h-9 rounded-lg bg-[#1a0a3a] border border-[#4a2a7a] text-[#a78bfa] hover:bg-[#221040] active:scale-95 transition-all text-[18px] leading-none"
                         title="Làm mới dự đoán"
                       >↺</button>
                     )}
                   </div>
                 </div>
                 <div className="px-3 py-2.5">
-                  {!prediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                  {prediction && (
-                    <div className="space-y-0.5">
-                      {predicting
-                        ? <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
-                            {prediction}
-                            <span className="inline-block w-1.5 h-3.5 bg-[#4ade80] ml-0.5 animate-pulse align-middle" />
-                          </div>
-                        : prediction.split('\n').map((line, i) => renderLine(line, i))
-                      }
+                  {!claudePrediction && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                  {claudePrediction && (
+                    <div className="text-[13px] text-[#ccc] leading-relaxed whitespace-pre-wrap">
+                      {claudePrediction}
+                      {predicting && <span className="inline-block w-1.5 h-3.5 bg-[#a78bfa] ml-0.5 animate-pulse align-middle" />}
                     </div>
                   )}
                 </div>
               </div>
 
-              {/* Box 3 — Claude AI */}
-              <div className={`rounded-xl border bg-[#0f0a1a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#2a1a4a]'}`}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2a1a4a]">
-                  <span className="text-[12px] font-extrabold text-[#a78bfa]">✨ Dự đoán Claude</span>
-                  <span className="ml-auto text-[10px] text-[#3a2a5a] font-semibold">Claude Haiku</span>
-                </div>
-                <div className="flex items-center gap-3 px-3 py-4">
-                  <div className="text-2xl">🔒</div>
-                  <div>
-                    <div className="text-[13px] text-[#666]">Đang phát triển</div>
-                    <div className="text-[11px] text-[#3a2a5a] mt-0.5">Nạp <span className="text-[#a78bfa]">ANTHROPIC_API_KEY</span> để kích hoạt</div>
+              {/* Box 2 — Python ML */}
+              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
+                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
+                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Dự đoán Python</span>
+                  {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
+                  <div className="ml-auto flex items-center gap-2">
+                    <span className="text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
                   </div>
+                </div>
+                <div className="px-3 py-2.5">
+                  {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
+                  {pythonStats && (
+                    <div className="space-y-0.5">
+                      {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
