@@ -405,7 +405,15 @@ Nguyên tắc phân tích:
 7. Tránh kết luận tuyệt đối:
    - Luôn diễn đạt bằng xác suất hoặc mức độ tin cậy.
    - Nếu dữ liệu trái chiều, chỉ kết luận lợi thế nhẹ.
-   - Không sử dụng các từ chắc chắn như "100%", "chắc chắn thắng", "không thể xảy ra".`,
+   - Không sử dụng các từ chắc chắn như "100%", "chắc chắn thắng", "không thể xảy ra".
+
+8. Tích hợp lịch sử dự đoán trong cùng trận (khi được cung cấp):
+   - Đọc kỹ các dự đoán trước của bạn trong trận này.
+   - So sánh với tỉ số và diễn biến thực tế hiện tại để xác định dự đoán trước đúng hay sai.
+   - Nếu đúng → giữ hướng phân tích, tinh chỉnh thêm với dữ liệu mới nhất.
+   - Nếu sai → nhận ra điểm sai (odds đổi? ghi bàn bất ngờ? comeback?), điều chỉnh trọng số cho lần này.
+   - Dùng lịch sử như "bộ nhớ ngắn hạn" của trận — không lặp lại nguyên xi, chỉ học từ nó để cải thiện.
+   - Luôn ưu tiên dữ liệu thực tế hiện tại hơn dự đoán cũ.`,
     user: (statsText: string) =>
       `Số liệu trận đang diễn ra:\n\n${statsText}\n\nDựa vào số liệu trên, trả lời đúng định dạng sau:\n\n🎯 BÀN TIẾP THEO\n- [Đội] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n⚡ ĐỘI ĐANG THUA CÓ GHI BÀN TRONG HIỆP NÀY KHÔNG\n- CÓ / KHÔNG · xác suất ước tính\n- Nêu ngắn gọn: odds, thời gian còn lại, comeback rate, H2H\n\n🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\nMỗi mục chỉ 1-2 câu, tập trung vào kết luận và xác suất cao nhất.`,
   },
@@ -417,19 +425,37 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
   const statsText = buildStatisticalAnalysis(b, ml, historical);
   const prompt = CLAUDE_PROMPTS[CLAUDE_PROMPT_VERSION];
 
-  let userContent = prompt.user(statsText);
   const prevPreds = b.previousPredictions;
+  let userContent: string;
+
   if (prevPreds && prevPreds.length > 0) {
-    const historyBlock = prevPreds.map(p => {
+    // Last 3 predictions, full text — no truncation
+    const recentPreds = prevPreds.slice(-3);
+    const historyBlock = recentPreds.map(p => {
       const scoreLabel = `${p.score_home}-${p.score_away}`;
       const timeLabel = p.half && p.minute != null ? `${p.half} phút ${p.minute}'` : '';
-      const truncated = p.prediction_text.slice(0, 300).trim();
-      return `— Tại tỉ số ${scoreLabel}${timeLabel ? ` (${timeLabel})` : ''}:\n${truncated}${p.prediction_text.length > 300 ? '…' : ''}`;
-    }).join('\n\n');
-    userContent += `\n\n📚 Dự đoán trước của bạn trong trận này (context để bạn tự đánh giá lại):\n${historyBlock}\n→ Nếu dự đoán trước có sai lệch so với diễn biến thực tế, hãy điều chỉnh và nhận xét ngắn.`;
+      return `[Tỉ số ${scoreLabel}${timeLabel ? ` · ${timeLabel}` : ''}]\n${p.prediction_text.trim()}`;
+    }).join('\n\n---\n\n');
+
+    // Structure: stats → history → instructions (Claude reads history BEFORE the task)
+    userContent =
+      `Số liệu trận đang diễn ra:\n\n${statsText}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `📚 LỊCH SỬ DỰ ĐOÁN CỦA BẠN TRONG TRẬN NÀY:\n` +
+      `(Đọc kỹ để tự đánh giá đúng/sai trước khi phân tích mới)\n\n` +
+      `${historyBlock}\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+      `Dựa vào số liệu HIỆN TẠI và lịch sử dự đoán trên, trả lời đúng định dạng:\n\n` +
+      `🎯 BÀN TIẾP THEO\n- [Đội] · xác suất ước tính\n- Lý do ngắn gọn (odds, phong độ, áp lực tỉ số)\n\n` +
+      `⚡ ĐỘI ĐANG THUA CÓ GHI BÀN TRONG HIỆP NÀY KHÔNG\n- CÓ / KHÔNG · xác suất ước tính\n- Nêu ngắn gọn: odds, thời gian còn lại, comeback rate, H2H\n\n` +
+      `🏆 KẾT QUẢ CUỐI HIỆP / CUỐI TRẬN\n- [Đội thắng / Hòa] · xác suất ước tính\n- Lý do ngắn gọn\n\n` +
+      `✏️ ĐIỀU CHỈNH TỪ DỰ ĐOÁN TRƯỚC\n- Dự đoán trước đúng hay sai ở điểm nào? Điều chỉnh gì cho lần này?\n\n` +
+      `Mỗi mục 1-2 câu, tập trung vào kết luận và xác suất cao nhất.`;
+  } else {
+    userContent = prompt.user(statsText);
   }
 
-  const maxTokens = prevPreds && prevPreds.length > 0 ? 800 : 650;
+  const maxTokens = prevPreds && prevPreds.length > 0 ? 950 : 650;
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: maxTokens,
