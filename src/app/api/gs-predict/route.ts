@@ -125,6 +125,76 @@ async function resolveTeamId(pool: Pool, name: string): Promise<number | null> {
   return rows[0]?.id ?? null;
 }
 
+/** Fetch historical odds snapshots from match_odds_log for a pair of teams.
+ *  Returns a formatted text block for the Claude prompt, or null if unavailable. */
+async function fetchOddsHistory(homeTeam: string, awayTeam: string): Promise<string | null> {
+  const pool = getPool();
+  if (!pool) return null;
+  try {
+    const [homeId, awayId] = await Promise.all([
+      resolveTeamId(pool, homeTeam),
+      resolveTeamId(pool, awayTeam),
+    ]);
+    if (!homeId || !awayId) return null;
+
+    const { rows } = await pool.query<{
+      snapshot_type: string; score_home: number; score_away: number; is_h2: boolean;
+      hc_line: string | null; hc_home_odds: string | null; hc_away_odds: string | null;
+      ou_line: string | null; ou_over: string | null; ou_under: string | null;
+      event_id: number | null; home_team: string; away_team: string; recorded_at: string;
+    }>(
+      `SELECT snapshot_type, score_home, score_away, is_h2,
+              hc_line, hc_home_odds, hc_away_odds,
+              ou_line, ou_over, ou_under,
+              event_id, home_team, away_team, recorded_at
+       FROM match_odds_log
+       WHERE (home_team_id = $1 AND away_team_id = $2)
+          OR (home_team_id = $2 AND away_team_id = $1)
+       ORDER BY recorded_at DESC
+       LIMIT 60`,
+      [homeId, awayId],
+    );
+    if (!rows.length) return null;
+
+    // Group by event_id, keep last 5 distinct events
+    const eventMap = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = row.event_id ? String(row.event_id) : row.recorded_at.slice(0, 10);
+      if (!eventMap.has(key)) {
+        if (eventMap.size >= 5) break;
+        eventMap.set(key, []);
+      }
+      eventMap.get(key)!.push(row);
+    }
+
+    const lines: string[] = ['📈 KÈO LỊCH SỬ CẶP ĐỘI (match_odds_log):'];
+    let matchNum = 1;
+    for (const [, snapshots] of eventMap) {
+      // Reverse to show chronological order within each match
+      const ordered = [...snapshots].reverse();
+      const first = ordered[0];
+      const matchLabel = `${first.home_team} vs ${first.away_team}`;
+      lines.push(`\nTrận ${matchNum} — ${matchLabel}:`);
+      for (const s of ordered) {
+        const score = `${s.score_home}-${s.score_away}`;
+        const half = s.is_h2 ? 'H2' : 'H1';
+        const hc = s.hc_line != null
+          ? `HC ${s.hc_line} Home ${s.hc_home_odds ?? '-'}/Away ${s.hc_away_odds ?? '-'}`
+          : 'HC -';
+        const ou = s.ou_line != null
+          ? `OU ${s.ou_line} Tài ${s.ou_over ?? '-'}/Xỉu ${s.ou_under ?? '-'}`
+          : 'OU -';
+        lines.push(`  • [${s.snapshot_type}] ${half} ${score} | ${hc} | ${ou}`);
+      }
+      matchNum++;
+    }
+
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
 function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
   const pool = getPool();
   if (!pool) return;
@@ -438,7 +508,7 @@ Nguyên tắc phân tích:
   },
 } as const;
 
-async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical: string | null = null): Promise<Response> {
+async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical: string | null = null, oddsHistory: string | null = null): Promise<Response> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic();
   const statsText = buildStatisticalAnalysis(b, ml, historical);
@@ -484,6 +554,21 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
       `- Điều chỉnh chính cho lần này? (1 câu)`;
   }
 
+  // Inject odds history block if available
+  if (oddsHistory) {
+    const splitMarker = 'Dựa vào số liệu trên, trả lời đúng định dạng sau:';
+    const splitIdx = userContent.indexOf(splitMarker);
+    const oddsBlock = `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${oddsHistory}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    if (splitIdx !== -1) {
+      userContent =
+        userContent.slice(0, splitIdx) +
+        oddsBlock + '\n' +
+        userContent.slice(splitIdx);
+    } else {
+      userContent += '\n\n' + oddsBlock;
+    }
+  }
+
   const maxTokens = prevPreds && prevPreds.length > 0 ? 750 : 650;
   const stream = await client.messages.stream({
     model: 'claude-haiku-4-5-20251001',
@@ -515,10 +600,11 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as PredictBody;
   const isPython = new URL(req.url).searchParams.get('python') === '1';
 
-  // Call ML predict + historical analyze in parallel
-  const [ml, historical] = await Promise.all([
+  // Call ML predict + historical analyze + odds history in parallel
+  const [ml, historical, oddsHistory] = await Promise.all([
     callMlService(body),
     callMlAnalyze(body),
+    fetchOddsHistory(body.homeTeam, body.awayTeam),
   ]);
 
   // Log prediction fire-and-forget (only on main call, not python sidecar)
@@ -530,7 +616,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (process.env.ANTHROPIC_API_KEY) {
-    return claudeStream(body, ml, historical);
+    return claudeStream(body, ml, historical, oddsHistory);
   }
   return statsStream(buildStatisticalAnalysis(body, ml, historical), ml);
 }
