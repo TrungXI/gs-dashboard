@@ -74,6 +74,20 @@ async function fetchDay(date) {
   return all
 }
 
+async function getOrCreateTeamId(name) {
+  const m = name.match(/^(.+?)\s+\(([VS])\)$/)
+  if (!m) return null
+  const base = m[1].trim()
+  const type = m[2]
+  const { rows } = await pool.query(
+    `INSERT INTO gs_teams (name, type) VALUES ($1, $2)
+     ON CONFLICT (name, type) DO UPDATE SET name = EXCLUDED.name
+     RETURNING id`,
+    [base, type]
+  )
+  return rows[0]?.id ?? null
+}
+
 async function upsertMatches(matches) {
   let count = 0
   for (const m of matches) {
@@ -87,17 +101,26 @@ async function upsertMatches(matches) {
     const ttHome    = parseInt(m['6'], 10) || 0
     const ttAway    = parseInt(m['7'], 10) || 0
 
+    const [homeTeamId, awayTeamId] = await Promise.all([
+      getOrCreateTeamId(homeTeam),
+      getOrCreateTeamId(awayTeam),
+    ])
+
     await pool.query(
       `INSERT INTO gs_matches_history
-         (match_time, match_type, league, home_team, away_team, h1_home, h1_away, tt_home, tt_away)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         (match_time, match_type, league, home_team, away_team,
+          h1_home, h1_away, tt_home, tt_away, home_team_id, away_team_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (match_time, home_team, away_team) DO UPDATE SET
-         h1_home    = EXCLUDED.h1_home,
-         h1_away    = EXCLUDED.h1_away,
-         tt_home    = EXCLUDED.tt_home,
-         tt_away    = EXCLUDED.tt_away,
-         updated_at = now()`,
-      [matchTime, matchType, league, homeTeam, awayTeam, h1Home, h1Away, ttHome, ttAway]
+         h1_home      = EXCLUDED.h1_home,
+         h1_away      = EXCLUDED.h1_away,
+         tt_home      = EXCLUDED.tt_home,
+         tt_away      = EXCLUDED.tt_away,
+         home_team_id = COALESCE(gs_matches_history.home_team_id, EXCLUDED.home_team_id),
+         away_team_id = COALESCE(gs_matches_history.away_team_id, EXCLUDED.away_team_id),
+         updated_at   = now()`,
+      [matchTime, matchType, league, homeTeam, awayTeam,
+       h1Home, h1Away, ttHome, ttAway, homeTeamId, awayTeamId]
     )
     count++
   }
