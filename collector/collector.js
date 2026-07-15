@@ -8,20 +8,18 @@ const POLL_MS       = 2000
 
 const TG_BOT_TOKEN  = process.env.TG_BOT_TOKEN || '8867426775:AAE1_oibMcHUUHL8VaiJIPPZz4XyTMz5zhw'
 const TG_CHAT_ID    = process.env.TG_CHAT_ID   || '738682531'
-let   tgAlertSent   = false
+let tokenExpired = false  // true khi đang trong trạng thái hết hạn
 
-async function sendTelegramAlert(msg) {
-  if (tgAlertSent) return
-  tgAlertSent = true
+async function tgSend(msg) {
   try {
     await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ chat_id: TG_CHAT_ID, text: msg }),
     })
-    console.log('[TG ALERT SENT]', msg)
+    console.log('[TG]', msg)
   } catch (e) {
-    console.error('[TG ALERT ERROR]', e.message)
+    console.error('[TG ERROR]', e.message)
   }
 }
 
@@ -186,7 +184,10 @@ async function fetchMatches() {
     { headers: { token: GS_TOKEN, accept: 'application/json', lng: 'vi' } }
   )
   if (res.status === 401 || res.status === 403) {
-    await sendTelegramAlert(`⚠️ GS Token hết hạn!\nHTTP ${res.status} từ API\nCần update token mới tại m.zenandfe.com`)
+    if (!tokenExpired) {
+      tokenExpired = true
+      await tgSend(`⚠️ GS Token hết hạn!\nHTTP ${res.status} từ API\nCần update token mới tại m.zenandfe.com`)
+    }
     throw new Error(`GS API ${res.status} — token expired`)
   }
   if (!res.ok) throw new Error(`GS API ${res.status}`)
@@ -333,6 +334,12 @@ async function logSnapshot(match, snapshotType) {
 async function poll() {
   try {
     const matches = await fetchMatches()
+
+    // Token hoạt động lại → reset flag, bắn 1 noti phục hồi
+    if (tokenExpired) {
+      tokenExpired = false
+      await tgSend('✅ GS Token đã hoạt động trở lại!')
+    }
 
     for (const match of matches) {
       if (!match.isLive) continue
