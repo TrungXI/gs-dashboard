@@ -70,7 +70,7 @@ async function handleUpdate(update) {
   const newToken = match[1]
   try {
     updateEnvToken(newToken)
-    execSync('pm2 restart gs-collector gs-matches-collector --update-env', { stdio: 'pipe' })
+    execSync(`GS_TOKEN=${newToken} pm2 restart gs-collector gs-matches-collector --update-env`, { stdio: 'pipe' })
     await tgSend(`✅ Token đã update!\n\`${newToken}\`\n\nCollector đã restart.`)
     console.log(`[BOT] Token updated to ${newToken}`)
   } catch (e) {
