@@ -3,8 +3,27 @@
 require('dotenv').config()
 
 const { Pool } = require('pg')
-const GS_TOKEN      = process.env.GS_TOKEN || '69-940214f0e803120fcfc9183ee4df89d5'
+const GS_TOKEN      = process.env.GS_TOKEN || '69-aa116c3c7df75dbf33f2931adf208164'
 const POLL_MS       = 2000
+
+const TG_BOT_TOKEN  = process.env.TG_BOT_TOKEN || '8867426775:AAE1_oibMcHUUHL8VaiJIPPZz4XyTMz5zhw'
+const TG_CHAT_ID    = process.env.TG_CHAT_ID   || '738682531'
+let   tgAlertSent   = false
+
+async function sendTelegramAlert(msg) {
+  if (tgAlertSent) return
+  tgAlertSent = true
+  try {
+    await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ chat_id: TG_CHAT_ID, text: msg }),
+    })
+    console.log('[TG ALERT SENT]', msg)
+  } catch (e) {
+    console.error('[TG ALERT ERROR]', e.message)
+  }
+}
 
 const GS_LEAGUE_IDS = new Set([2140, 2125])
 const MATCH_TYPE    = { 2140: '16p', 2125: '20p' }
@@ -166,6 +185,10 @@ async function fetchMatches() {
     'https://be.sb21.net/api/v2/getEvent?sportType=3_1&timezoneOffset=-420',
     { headers: { token: GS_TOKEN, accept: 'application/json', lng: 'vi' } }
   )
+  if (res.status === 401 || res.status === 403) {
+    await sendTelegramAlert(`⚠️ GS Token hết hạn!\nHTTP ${res.status} từ API\nCần update token mới tại m.zenandfe.com`)
+    throw new Error(`GS API ${res.status} — token expired`)
+  }
   if (!res.ok) throw new Error(`GS API ${res.status}`)
   const json = await res.json()
   const matches = []

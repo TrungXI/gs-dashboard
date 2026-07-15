@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const DEFAULT_TOKEN = '69-940214f0e803120fcfc9183ee4df89d5';
+const DEFAULT_TOKEN = '69-aa116c3c7df75dbf33f2931adf208164';
 
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get('eventId');
