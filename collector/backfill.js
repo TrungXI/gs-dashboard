@@ -3,7 +3,7 @@
 require('dotenv').config()
 const { Pool } = require('pg')
 
-const GS_TOKEN = process.env.GS_TOKEN || '69-4da0041e12f5643e1537a1495bb1db3d'
+const GS_TOKEN = process.env.GS_TOKEN || '69-aa116c3c7df75dbf33f2931adf208164'
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 const VN_TO_EN = {
@@ -105,7 +105,10 @@ async function upsertMatches(matches) {
 }
 
 async function main() {
-  const dates = getDates('2026-06-21', '2026-07-13')
+  const [fromArg, toArg] = process.argv.slice(2)
+  const from  = fromArg || '2026-06-21'
+  const to    = toArg   || '2026-07-13'
+  const dates = getDates(from, to)
   console.log(`Backfill ${dates.length} ngày: ${dates[0]} → ${dates[dates.length - 1]}`)
   let total = 0
   for (const date of dates) {
