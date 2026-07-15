@@ -239,8 +239,13 @@ function detectSnapshotType(match, key) {
     return match.period === 8 ? 'goal_h2' : 'goal_h1'
   }
   if (prevData.period !== match.period) {
+    console.log(`[PERIOD] ${match.homeTeam} vs ${match.awayTeam} | ${prevData.period} → ${match.period}`)
     if (match.period === 2) return 'kickoff_h1'
     if (match.period === 8) return 'kickoff_h2'
+    // prevPeriod=2, newPeriod not 2 and not 8 → HT bắt đầu
+    if (prevData.period === 2) {
+      triggerHtCapture(match)
+    }
   }
   return null
 }
@@ -327,6 +332,41 @@ async function logSnapshot(match, snapshotType) {
     ` | ${match.h1Home}-${match.h1Away}` +
     ` | HC:${match.hcLines[0]?.line ?? '-'} OU:${match.ouLines[0]?.line ?? '-'}`
   )
+}
+
+// ─── HT Screenshot trigger ───────────────────────────────────────────────────
+
+const VERCEL_URL    = process.env.VERCEL_URL || 'https://gs-dashboard-two.vercel.app'
+const htTriggered   = new Set() // tránh trigger 2 lần cùng 1 trận
+
+function triggerHtCapture(match) {
+  if (!match.eventId || htTriggered.has(match.eventId)) return
+  htTriggered.add(match.eventId)
+
+  const ts = new Date().toLocaleTimeString('vi-VN')
+  console.log(`[HT] ${match.homeTeam} vs ${match.awayTeam} — chụp ảnh sau 5s`)
+
+  // Delay 5s trước khi bắt đầu chụp (Vercel sẽ loop 20 frames × 2s = 40s)
+  setTimeout(async () => {
+    try {
+      const res = await fetch(`${VERCEL_URL}/api/ht-capture`, {
+        method:  'POST',
+        headers: { 'content-type': 'application/json' },
+        body:    JSON.stringify({
+          eventId:  match.eventId,
+          homeTeam: match.homeTeam,
+          awayTeam: match.awayTeam,
+          h1Home:   match.h1Home,
+          h1Away:   match.h1Away,
+          token:    GS_TOKEN,
+        }),
+      })
+      const data = await res.json()
+      console.log(`[HT] capture done — eventId=${match.eventId} frames=${data.frames ?? '?'} ok=${data.ok}`)
+    } catch (e) {
+      console.error(`[HT] capture error — ${e.message}`)
+    }
+  }, 5000)
 }
 
 // ─── Poll loop ────────────────────────────────────────────────────────────────
