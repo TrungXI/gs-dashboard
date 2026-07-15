@@ -14,12 +14,12 @@ export async function fetchAllMatches(): Promise<Match[]> {
   const db = getPool();
   const { rows } = await db.query(`
     SELECT mh.match_time, mh.match_type, mh.league,
-           ht.name || ' (' || ht.type || ')' AS home_team,
-           at.name || ' (' || at.type || ')' AS away_team,
+           COALESCE(ht.name || ' (' || ht.type || ')', mh.home_team) AS home_team,
+           COALESCE(at.name || ' (' || at.type || ')', mh.away_team) AS away_team,
            mh.h1_home, mh.h1_away, mh.tt_home, mh.tt_away
     FROM gs_matches_history mh
-    JOIN gs_teams ht ON ht.id = mh.home_team_id
-    JOIN gs_teams at ON at.id = mh.away_team_id
+    LEFT JOIN gs_teams ht ON ht.id = mh.home_team_id
+    LEFT JOIN gs_teams at ON at.id = mh.away_team_id
     ORDER BY mh.match_time DESC
   `);
 
