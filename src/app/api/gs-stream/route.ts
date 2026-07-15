@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const DEFAULT_TOKEN = '69-aa116c3c7df75dbf33f2931adf208164';
-
 export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get('eventId');
-  const token = req.nextUrl.searchParams.get('token') ?? DEFAULT_TOKEN;
+  const token = req.nextUrl.searchParams.get('token');
 
   if (!eventId) return NextResponse.json({ ok: false, error: 'eventId required' }, { status: 400 });
 

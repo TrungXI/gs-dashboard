@@ -3,7 +3,7 @@
 require('dotenv').config()
 
 const { Pool } = require('pg')
-const GS_TOKEN      = process.env.GS_TOKEN || '69-aa116c3c7df75dbf33f2931adf208164'
+const GS_TOKEN      = process.env.GS_TOKEN
 const POLL_MS       = 2000
 
 const TG_BOT_TOKEN  = process.env.TG_BOT_TOKEN || '8867426775:AAE1_oibMcHUUHL8VaiJIPPZz4XyTMz5zhw'
