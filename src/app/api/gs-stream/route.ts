@@ -4,7 +4,7 @@ export async function GET(req: NextRequest) {
   const eventId = req.nextUrl.searchParams.get('eventId');
   const token = req.nextUrl.searchParams.get('token');
 
-  if (!eventId) return NextResponse.json({ ok: false, error: 'eventId required' }, { status: 400 });
+  if (!eventId || !token) return NextResponse.json({ ok: false, error: 'eventId and token required' }, { status: 400 });
 
   const agentId = token.split('-')[0] ?? '69';
 

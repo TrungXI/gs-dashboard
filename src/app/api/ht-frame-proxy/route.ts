@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { issueSignedToken, presignUrl } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
 
-const BLOB_HOST = 'blob.vercel-storage.com';
+const VPS_HOST = '103.82.23.48';
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get('url');
@@ -13,23 +12,25 @@ export async function GET(req: NextRequest) {
   try { parsed = new URL(url); } catch {
     return NextResponse.json({ error: 'invalid url' }, { status: 400 });
   }
-  if (!parsed.hostname.endsWith(BLOB_HOST)) {
-    return NextResponse.json({ error: 'disallowed host' }, { status: 403 });
+
+  if (parsed.hostname !== VPS_HOST || parsed.port !== '9999' || !parsed.pathname.startsWith('/frames/')) {
+    return NextResponse.json({ error: 'disallowed' }, { status: 403 });
   }
 
-  const pathname = parsed.pathname; // e.g. /ht-frames/5458679/00.jpg
-
-  const signedToken = await issueSignedToken({
-    pathname,
-    operations: ['get'],
-    validUntil: Date.now() + 3600 * 1000,
-  });
-
-  const { presignedUrl } = await presignUrl(signedToken, {
-    pathname,
-    operation: 'get',
-    access: 'private',
-  }) as { presignedUrl: string };
-
-  return NextResponse.redirect(presignedUrl, { status: 302 });
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return NextResponse.json({ error: `vps ${res.status}` }, { status: 502 });
+    const buf = await res.arrayBuffer();
+    return new NextResponse(buf, {
+      headers: {
+        'content-type': res.headers.get('content-type') || 'image/jpeg',
+        'cache-control': 'public, max-age=3600',
+      },
+    });
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 502 });
+  }
 }
