@@ -3,7 +3,6 @@ import { Pool } from 'pg';
 
 export const dynamic = 'force-dynamic';
 
-const ML_SERVICE_URL = process.env.ML_SERVICE_URL; // e.g. http://103.82.23.48:8001
 const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
 
 // Lazy pool for prediction logging — only created when DB URL is set
@@ -53,66 +52,7 @@ interface PredictBody {
   }>;
 }
 
-interface MlPrediction {
-  home_pct: number;
-  draw_pct: number;
-  away_pct: number;
-  model_version: number;
-  confidence: string;
-  n_samples: number;
-}
-
-// ── ML service call ───────────────────────────────────────────────────────────
-
-async function callMlService(b: PredictBody): Promise<MlPrediction | null> {
-  if (!ML_SERVICE_URL) return null;
-  try {
-    const homeFormPts = b.homeW * 3 + b.homeD;
-    const awayFormPts = b.awayW * 3 + b.awayD;
-    const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
-    const res = await fetch(`${ML_SERVICE_URL}/predict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        h1_home: b.h1Home,
-        h1_away: b.h1Away,
-        match_type: b.matchType ?? '16p',
-        home_form_pts: homeFormPts,
-        away_form_pts: awayFormPts,
-        h2h_home_win_rate: h2hRate,
-        hc_line: b.hcHome ? parseFloat(b.hcHome) : 0.0,
-        is_h2: b.isH2,
-        minute: b.minuteElapsed ?? 45,
-        red_home: b.redHome ?? 0,
-        red_away: b.redAway ?? 0,
-      }),
-      signal: AbortSignal.timeout(2000),
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as MlPrediction;
-  } catch {
-    return null;
-  }
-}
-
-async function callMlAnalyze(b: PredictBody): Promise<string | null> {
-  if (!ML_SERVICE_URL) return null;
-  try {
-    const res = await fetch(`${ML_SERVICE_URL}/analyze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ home_team: b.homeTeam, away_team: b.awayTeam, match_type: b.matchType ?? '' }),
-      signal: AbortSignal.timeout(3000),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { text: string };
-    return data.text || null;
-  } catch {
-    return null;
-  }
-}
-
-// ── Fire-and-forget prediction log ───────────────────────────────────────────
+// ── Team resolution ───────────────────────────────────────────────────────────
 
 /** Resolve team name (already canonical English "Japan (V)") → gs_teams.id */
 async function resolveTeamId(pool: Pool, name: string): Promise<number | null> {
@@ -195,44 +135,9 @@ async function fetchOddsHistory(homeTeam: string, awayTeam: string): Promise<str
   }
 }
 
-function logPrediction(b: PredictBody, ml: MlPrediction | null): void {
-  const pool = getPool();
-  if (!pool) return;
-  const homeFormPts = b.homeW * 3 + b.homeD;
-  const awayFormPts = b.awayW * 3 + b.awayD;
-  const h2hRate = b.h2hTotal > 0 ? (b.h2hHomeW + b.h2hDraws * 0.5) / b.h2hTotal : 0.5;
-
-  // Resolve team IDs async then insert — fire-and-forget, errors are non-critical
-  Promise.all([resolveTeamId(pool, b.homeTeam), resolveTeamId(pool, b.awayTeam)])
-    .then(([homeTeamId, awayTeamId]) =>
-      pool.query(
-        `INSERT INTO gs_ml_predictions
-           (event_id, home_team, away_team, home_team_id, away_team_id,
-            h1_home, h1_away, is_h2, minute_elapsed,
-            home_form_pts, away_form_pts, h2h_home_win_rate,
-            hc_line, hc_home_odds, ou_line,
-            red_home, red_away,
-            predicted_home_pct, predicted_away_pct, model_version)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
-        [
-          b.eventId ?? null,
-          b.homeTeam, b.awayTeam, homeTeamId, awayTeamId,
-          b.h1Home, b.h1Away, b.isH2, b.minuteElapsed ?? null,
-          homeFormPts, awayFormPts, h2hRate,
-          b.hcLine ? parseFloat(b.hcLine) : null,
-          b.hcHome ? parseFloat(b.hcHome) : null,
-          b.ouLine ? parseFloat(b.ouLine) : null,
-          b.redHome ?? 0, b.redAway ?? 0,
-          ml?.home_pct ?? null, ml?.away_pct ?? null, ml?.model_version ?? null,
-        ]
-      )
-    )
-    .catch(() => { /* non-critical */ });
-}
-
 // ── Statistical engine ────────────────────────────────────────────────────────
 
-function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, historical: string | null = null): string {
+function buildStatisticalAnalysis(b: PredictBody): string {
   const {
     homeTeam, awayTeam, h1Home, h1Away, isH2, minuteElapsed,
     hcLine, hcHome, ouLine,
@@ -292,14 +197,6 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
   const halfLabel = isH2 ? `H2 phút ${displayMinute}'` : `H1 phút ${displayMinute}'`;
 
   const lines: string[] = [];
-
-  // ML header
-  if (ml) {
-    const confEmoji = ml.confidence === 'high' ? '🟢' : ml.confidence === 'medium' ? '🟡' : '🔴';
-    lines.push(`[ML v${ml.model_version} · ${ml.n_samples} mẫu · ${confEmoji} ${ml.confidence}]`);
-    lines.push(`${homeTeam}: ${ml.home_pct}% thắng · Hòa: ${ml.draw_pct}% · ${awayTeam}: ${ml.away_pct}% thắng`);
-    lines.push('');
-  }
 
   const matchTypeLabel = b.matchType ? ` · loại ${b.matchType}` : '';
   lines.push(`Đang: ${homeTeam} ${h1Home}-${h1Away} ${awayTeam} · ${halfLabel} · còn ~${timeLeft}'${matchTypeLabel}`);
@@ -386,15 +283,10 @@ function buildStatisticalAnalysis(b: PredictBody, ml: MlPrediction | null, histo
   if (h2hTotal > 0)
     lines.push(`   H2H: ${homeTeam} ${h2hHomeW}W · ${h2hDraws}D · ${h2hAwayW}W ${awayTeam}`);
 
-  if (historical) {
-    lines.push('');
-    lines.push(historical);
-  }
-
   return lines.join('\n');
 }
 
-function statsStream(text: string, ml: MlPrediction | null): Response {
+function statsStream(text: string): Response {
   const encoder = new TextEncoder();
   let i = 0;
   const stream = new ReadableStream({
@@ -409,7 +301,6 @@ function statsStream(text: string, ml: MlPrediction | null): Response {
     },
   });
   const headers: Record<string, string> = { 'Content-Type': 'text/plain; charset=utf-8' };
-  if (ml) headers['X-ML-Samples'] = String(ml.n_samples);
   return new Response(stream, { headers });
 }
 
@@ -508,10 +399,10 @@ Nguyên tắc phân tích:
   },
 } as const;
 
-async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical: string | null = null, oddsHistory: string | null = null): Promise<Response> {
+async function claudeStream(b: PredictBody, oddsHistory: string | null = null): Promise<Response> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic();
-  const statsText = buildStatisticalAnalysis(b, ml, historical);
+  const statsText = buildStatisticalAnalysis(b);
   const prompt = CLAUDE_PROMPTS[CLAUDE_PROMPT_VERSION];
 
   const prevPreds = b.previousPredictions;
@@ -598,25 +489,10 @@ async function claudeStream(b: PredictBody, ml: MlPrediction | null, historical:
 
 export async function POST(req: NextRequest) {
   const body = (await req.json()) as PredictBody;
-  const isPython = new URL(req.url).searchParams.get('python') === '1';
-
-  // Call ML predict + historical analyze + odds history in parallel
-  const [ml, historical, oddsHistory] = await Promise.all([
-    callMlService(body),
-    callMlAnalyze(body),
-    fetchOddsHistory(body.homeTeam, body.awayTeam),
-  ]);
-
-  // Log prediction fire-and-forget (only on main call, not python sidecar)
-  if (!isPython) logPrediction(body, ml);
-
-  // ?python=1 → always return Python stats text (no Claude)
-  if (isPython) {
-    return statsStream(buildStatisticalAnalysis(body, ml, historical), ml);
-  }
+  const oddsHistory = await fetchOddsHistory(body.homeTeam, body.awayTeam);
 
   if (process.env.ANTHROPIC_API_KEY) {
-    return claudeStream(body, ml, historical, oddsHistory);
+    return claudeStream(body, oddsHistory);
   }
-  return statsStream(buildStatisticalAnalysis(body, ml, historical), ml);
+  return statsStream(buildStatisticalAnalysis(body));
 }

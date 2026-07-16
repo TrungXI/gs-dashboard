@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type React from 'react';
 import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
@@ -1094,11 +1094,37 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'python' | 'confront'>('confront');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames'>('confront');
+  type HtFrame = { frame_index: number; frame_url: string; video_url: string };
+  const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
+  const [htFramesLoading, setHtFramesLoading] = useState(false);
+  const htFramesFetchedRef = useRef(false);
+  const [lightboxFrame, setLightboxFrame] = useState<HtFrame | null>(null);
+              const touchStartX = useRef<number | null>(null);
+              const lightboxPrev = useCallback(() => {
+                if (!htFrames || !lightboxFrame) return;
+                const idx = lightboxFrame.frame_index;
+                if (idx > 0) setLightboxFrame(htFrames[idx - 1]);
+              }, [htFrames, lightboxFrame]);
+              const lightboxNext = useCallback(() => {
+                if (!htFrames || !lightboxFrame) return;
+                const idx = lightboxFrame.frame_index;
+                if (idx < htFrames.length - 1) setLightboxFrame(htFrames[idx + 1]);
+              }, [htFrames, lightboxFrame]);
+
+              useEffect(() => {
+                if (!lightboxFrame) return;
+                const handler = (e: KeyboardEvent) => {
+                  if (e.key === 'ArrowLeft') lightboxPrev();
+                  if (e.key === 'ArrowRight') lightboxNext();
+                  if (e.key === 'Escape') setLightboxFrame(null);
+                };
+                window.addEventListener('keydown', handler);
+                return () => window.removeEventListener('keydown', handler);
+              }, [lightboxFrame, lightboxPrev, lightboxNext]);
+
   const [claudePrediction, setClaudePrediction] = useState('');
-  const [pythonStats, setPythonStats] = useState('');
   const [predicting, setPredicting] = useState(false);
-  const [mlSamples, setMlSamples] = useState<number | null>(null);
   const predAbortRef = useRef<AbortController | null>(null);
   const [goalFlash, setGoalFlash] = useState(false);
   const [activeDot, setActiveDot] = useState(0);
@@ -1188,101 +1214,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   }).length;
   const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
   const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
-
-  // Which team has scoring advantage (null = balanced)
-  const favoredTeam = useMemo<string | null>(() => {
-    const homeFormPts = homeW * 3 + homeD;
-    const awayFormPts = awayW * 3 + awayD;
-    const total = homeFormPts + awayFormPts;
-    let p = total > 0 ? homeFormPts / total : 0.5;
-    if (h2hMatches.length > 0) {
-      p = p * 0.7 + ((h2hHomeW + h2hDraws * 0.5) / h2hMatches.length) * 0.3;
-    }
-    const diff = live.h1Home - live.h1Away;
-    if (diff > 0) p -= 0.08;
-    if (diff < 0) p += 0.08;
-    const hcVal = live.hcLines[0]?.home ? parseFloat(live.hcLines[0].home) : null;
-    if (hcVal !== null && hcVal < -0.2) p += 0.05;
-    if (hcVal !== null && hcVal > 0.2) p -= 0.05;
-    p = Math.min(Math.max(p, 0.2), 0.8);
-    const homePct = Math.round(p * 100);
-    if (Math.abs(homePct - (100 - homePct)) <= 8) return null;
-    return homePct > 50 ? live.homeTeam : live.awayTeam;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [homeW, homeD, awayW, awayD, h2hMatches.length, h2hHomeW, h2hDraws, live.h1Home, live.h1Away, live.hcLines[0]?.home, live.homeTeam, live.awayTeam]);
-
-  // Tokenize one line: highlight team names + numbers
-  function renderLine(line: string, idx: number) {
-    if (!line.trim()) return <div key={idx} className="h-2" />;
-
-    const isHeader = /^[⚽🔄🎯📋]/.test(line);
-    const isArrow = line.trim().startsWith('→');
-    const isBracket = line.trim().startsWith('[');
-
-    if (isHeader) {
-      return (
-        <div key={idx} className="text-[14px] font-extrabold text-white mt-3 first:mt-0 tracking-tight">
-          {line}
-        </div>
-      );
-    }
-
-    const otherTeam = favoredTeam === live.homeTeam ? live.awayTeam : live.homeTeam;
-    type Tok = { text: string; cls?: string };
-    const tokens: Tok[] = [];
-    let rem = line.trim();
-
-    const namedPatterns: { str: string; cls: string }[] = [];
-    if (favoredTeam) namedPatterns.push({ str: favoredTeam, cls: 'font-extrabold text-[#4ade80]' });
-    if (otherTeam) namedPatterns.push({ str: otherTeam, cls: 'text-[#555] font-normal' });
-    namedPatterns.sort((a, b) => b.str.length - a.str.length);
-
-    while (rem.length > 0) {
-      let found = false;
-      for (const p of namedPatterns) {
-        if (rem.startsWith(p.str)) {
-          tokens.push({ text: p.str, cls: p.cls });
-          rem = rem.slice(p.str.length);
-          found = true;
-          break;
-        }
-      }
-      if (found) continue;
-
-      const pct = rem.match(/^\d+%/);
-      if (pct) {
-        tokens.push({ text: pct[0], cls: 'font-extrabold text-[#fbbf24]' });
-        rem = rem.slice(pct[0].length);
-        continue;
-      }
-
-      const num = rem.match(/^\d+\.\d+/);
-      if (num) {
-        tokens.push({ text: num[0], cls: 'font-bold text-[#17a2b8]' });
-        rem = rem.slice(num[0].length);
-        continue;
-      }
-
-      const last = tokens.at(-1);
-      if (last && !last.cls) last.text += rem[0];
-      else tokens.push({ text: rem[0] });
-      rem = rem.slice(1);
-    }
-
-    const wrapCls = isArrow
-      ? 'text-[13px] text-[#fbbf24] pl-3 leading-relaxed'
-      : isBracket
-        ? 'text-[12px] text-[#666] leading-relaxed'
-        : 'text-[13px] text-[#bbb] pl-3 leading-relaxed';
-
-    return (
-      <div key={idx} className={wrapCls}>
-        {tokens.map((t, ti) =>
-          t.cls ? <span key={ti} className={t.cls}>{t.text}</span> : t.text
-        )}
-      </div>
-    );
-  }
 
   function renderClaudeLine(line: string, idx: number) {
     const trimmed = line.trim();
@@ -1381,7 +1312,6 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     const ctrl = new AbortController();
     predAbortRef.current = ctrl;
     setClaudePrediction('');
-    setPythonStats('');
     setPredicting(true);
 
     // Fetch previous Claude predictions for this live match
@@ -1445,20 +1375,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctrl.signal };
 
     try {
-      // Parallel: Claude stream + Python stats
-      const [claudeRes, pythonRes] = await Promise.all([
-        fetch('/api/gs-predict', opts),
-        fetch('/api/gs-predict?python=1', opts),
-      ]);
-
-      // Python stats — read all at once (no animation needed)
-      if (pythonRes.ok && pythonRes.body) {
-        const samples = pythonRes.headers.get('X-ML-Samples');
-        if (samples) setMlSamples(Number(samples));
-        pythonRes.text().then(t => { if (!ctrl.signal.aborted) setPythonStats(t); });
-      }
-
       // Claude — stream with typing animation
+      const claudeRes = await fetch('/api/gs-predict', opts);
       if (!claudeRes.body) return;
       const reader = claudeRes.body.getReader();
       const decoder = new TextDecoder();
@@ -1539,6 +1457,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     triggerRef.current();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, matches]);
+
+  // Fetch HT frames once when the frames tab is opened
+  useEffect(() => {
+    if (activeTab !== 'frames' || htFramesFetchedRef.current || !live.eventId) return;
+    htFramesFetchedRef.current = true;
+    let alive = true;
+    setHtFramesLoading(true);
+    fetch(`/api/ht-frames?eventId=${live.eventId}`)
+      .then(r => r.json())
+      .then((json: { frames?: HtFrame[] }) => { if (alive) setHtFrames(json.frames ?? []); })
+      .catch(() => { if (alive) setHtFrames([]); })
+      .finally(() => { if (alive) setHtFramesLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, live.eventId]);
 
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
@@ -1758,8 +1691,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           {([
             ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
             ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
-            ['python',   '🤖', 'Python',     'border-[#4ade80]'],
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
+            ...(live.period >= 4 ? [['frames', '📷', 'HT', 'border-[#a78bfa]']] as [string, string, string, string][] : []),
           ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
             <button
               key={key}
@@ -1924,32 +1857,105 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             </div>
           )}
 
-          {!loading && matches !== null && activeTab === 'python' && (
-            <div className="px-4 py-4">
-              <div className={`rounded-xl border bg-[#0a1a0a] overflow-hidden transition-all duration-300 ${goalFlash ? 'border-[#fbbf24]/60' : 'border-[#1a3a1a]'}`}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b border-[#1a3a1a]">
-                  <span className="text-[12px] font-extrabold text-[#4ade80]">🤖 Python ML</span>
-                  {predicting && !pythonStats && <span className="text-[10px] text-[#fbbf24] animate-pulse ml-1">đang tính…</span>}
-                  <span className="ml-auto text-[10px] text-[#2a4a2a] font-semibold">ML{mlSamples ? ` · ${mlSamples} mẫu` : ''}</span>
-                </div>
-                <div className="px-3 py-2.5">
-                  {!pythonStats && !predicting && <div className="text-[13px] text-[#555]">Đang tải…</div>}
-                  {pythonStats && (
-                    <div className="space-y-0.5">
-                      {pythonStats.split('\n').map((line, i) => renderLine(line, i))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'confront' && (
             <MatchAnalysis
               embedded
               initialTeamA={live.homeTeam}
               initialTeamB={live.awayTeam}
             />
+          )}
+
+          {activeTab === 'frames' && (
+            <div className="px-3 py-3 md:px-4 md:py-4">
+              {htFramesLoading && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+                  {Array.from({ length: 8 }, (_, i) => (
+                    <div key={i} className="rounded-lg bg-[#1a1a1a] w-full aspect-video animate-pulse" />
+                  ))}
+                </div>
+              )}
+
+              {!htFramesLoading && htFrames !== null && htFrames.length === 0 && (
+                <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Chưa có ảnh HT</div>
+              )}
+
+              {!htFramesLoading && htFrames !== null && htFrames.length > 0 && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+                  {htFrames.map((frame) => (
+                    <button
+                      key={frame.frame_index}
+                      onClick={() => setLightboxFrame(frame)}
+                      className="group flex flex-col gap-1 text-left"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={frame.frame_url}
+                        alt={`Shot ${frame.frame_index + 1}`}
+                        className="rounded-lg object-cover w-full aspect-video group-hover:opacity-80 transition-opacity cursor-zoom-in"
+                      />
+                      <span className="text-[10px] text-[#666] text-center w-full">Shot {frame.frame_index + 1}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Lightbox */}
+              {lightboxFrame && (
+                <div
+                  className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                  onClick={() => setLightboxFrame(null)}
+                >
+                  <div
+                    className="relative w-full md:max-w-3xl md:rounded-xl overflow-hidden"
+                    onClick={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+                    onTouchEnd={(e) => {
+                      if (touchStartX.current === null) return;
+                      const dx = e.changedTouches[0].clientX - touchStartX.current;
+                      touchStartX.current = null;
+                      if (dx < -50) lightboxNext();
+                      else if (dx > 50) lightboxPrev();
+                    }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={lightboxFrame.frame_url}
+                      alt={`Shot ${lightboxFrame.frame_index + 1}`}
+                      className="w-full object-contain max-h-screen md:max-h-[80vh]"
+                    />
+                    {/* Prev button — desktop only */}
+                    {lightboxFrame.frame_index > 0 && (
+                      <button
+                        onClick={lightboxPrev}
+                        className="hidden md:flex absolute left-2 top-1/2 -translate-y-1/2 items-center justify-center w-9 h-9 bg-black/60 rounded-full text-white hover:bg-black/80 text-lg"
+                      >
+                        ‹
+                      </button>
+                    )}
+                    {/* Next button — desktop only */}
+                    {htFrames && lightboxFrame.frame_index < htFrames.length - 1 && (
+                      <button
+                        onClick={lightboxNext}
+                        className="hidden md:flex absolute right-2 top-1/2 -translate-y-1/2 items-center justify-center w-9 h-9 bg-black/60 rounded-full text-white hover:bg-black/80 text-lg"
+                      >
+                        ›
+                      </button>
+                    )}
+                    <div className="absolute top-2 right-2">
+                      <button
+                        onClick={() => setLightboxFrame(null)}
+                        className="px-2 py-1 bg-black/60 rounded text-[11px] text-white hover:bg-black/80"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/60 px-3 py-1 rounded text-[12px] text-white">
+                      Shot {lightboxFrame.frame_index + 1} / {htFrames?.length ?? '?'}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
