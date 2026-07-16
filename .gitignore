@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# collector deps (chạy trên VPS, không cần track)
+collector/node_modules/
