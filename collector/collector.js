@@ -386,7 +386,7 @@ async function doCapture(match, attempt = 1) {
 async function triggerHtCapture(match) {
   if (!match.eventId) return
 
-  // Skip nếu chấp Toàn Trận (HC TT) ở first screen >= 1.5 -> không chụp, không gửi Telegram
+  // Skip nếu chấp Toàn Trận (HC TT) ở first screen >= 2.5 -> không chụp, không gửi Telegram
   const { rows: fsRows } = await pool.query(
     `SELECT hc_line FROM match_odds_log
      WHERE event_id=$1 AND hc_line IS NOT NULL AND hc_line <> ''
@@ -394,8 +394,8 @@ async function triggerHtCapture(match) {
     [match.eventId]
   )
   const fsMag = lineMagnitude(fsRows[0]?.hc_line)
-  if (fsMag != null && fsMag >= 1.5) {
-    console.log(`[HT] skip ${match.eventId} — HC TT first_screen=${fsRows[0].hc_line} (|${fsMag}|>=1.5), no capture/telegram`)
+  if (fsMag != null && fsMag >= 2.5) {
+    console.log(`[HT] skip ${match.eventId} — HC TT first_screen=${fsRows[0].hc_line} (|${fsMag}|>=2.5), no capture/telegram`)
     return
   }
 
