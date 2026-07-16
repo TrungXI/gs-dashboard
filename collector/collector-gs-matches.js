@@ -3,7 +3,7 @@
 require('dotenv').config({ override: true })
 const { Pool } = require('pg')
 
-const GS_TOKEN = process.env.GS_TOKEN
+const GS_TOKEN = process.env.GS_TOKEN || '69-aa116c3c7df75dbf33f2931adf208164'
 const POLL_MS  = 2 * 60 * 1000 // 2 minutes
 
 if (!process.env.DATABASE_URL) {

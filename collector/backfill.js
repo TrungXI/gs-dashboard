@@ -3,7 +3,7 @@
 require('dotenv').config()
 const { Pool } = require('pg')
 
-const GS_TOKEN = process.env.GS_TOKEN
+const GS_TOKEN = process.env.GS_TOKEN || '69-aa116c3c7df75dbf33f2931adf208164'
 const pool = new Pool({ connectionString: process.env.DATABASE_URL })
 
 const VN_TO_EN = {

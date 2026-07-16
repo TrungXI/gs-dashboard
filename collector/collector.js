@@ -78,6 +78,17 @@ function decToMalay(dec) {
   return (-(1 / (dec - 1))).toFixed(2)
 }
 
+// Độ lớn line chấp (magnitude) — hỗ trợ cả line lẻ dạng "1-1.5"
+function lineMagnitude(lineStr) {
+  if (lineStr == null) return null
+  const m = String(lineStr).trim().match(/^(-?\d+(?:\.\d+)?)(?:-(-?\d+(?:\.\d+)?))?$/)
+  if (!m) return null
+  const a = parseFloat(m[1])
+  const b = m[2] != null ? parseFloat(m[2]) : a
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null
+  return Math.abs((a + b) / 2)
+}
+
 function parse1x2(market7) {
   const empty = { home: null, away: null, draw: null }
   if (!market7 || typeof market7 !== 'object') return empty
@@ -228,7 +239,7 @@ function oddsKey(match) {
   })
 }
 
-function detectSnapshotType(match, key) {
+async function detectSnapshotType(match, key) {
   const prev = prevState.get(match.eventId)
   if (!prev) return 'first_seen'
 
@@ -244,7 +255,7 @@ function detectSnapshotType(match, key) {
     if (match.period === 8) return 'kickoff_h2'
     // prevPeriod=2, newPeriod not 2 and not 8 → HT bắt đầu
     if (prevData.period === 2) {
-      triggerHtCapture(match)
+      await triggerHtCapture(match)
     }
   }
   return null
@@ -336,37 +347,88 @@ async function logSnapshot(match, snapshotType) {
 
 // ─── HT Screenshot trigger ───────────────────────────────────────────────────
 
-const VERCEL_URL    = process.env.VERCEL_URL || 'https://gs-dashboard-two.vercel.app'
-const htTriggered   = new Set() // tránh trigger 2 lần cùng 1 trận
+const CAPTURE_URL   = 'http://localhost:9998/capture'
 
-function triggerHtCapture(match) {
-  if (!match.eventId || htTriggered.has(match.eventId)) return
-  htTriggered.add(match.eventId)
-
-  const ts = new Date().toLocaleTimeString('vi-VN')
-  console.log(`[HT] ${match.homeTeam} vs ${match.awayTeam} — chụp ảnh sau 5s`)
-
-  // Delay 5s trước khi bắt đầu chụp (Vercel sẽ loop 20 frames × 2s = 40s)
-  setTimeout(async () => {
-    try {
-      const res = await fetch(`${VERCEL_URL}/api/ht-capture`, {
-        method:  'POST',
-        headers: { 'content-type': 'application/json' },
-        body:    JSON.stringify({
-          eventId:  match.eventId,
-          homeTeam: match.homeTeam,
-          awayTeam: match.awayTeam,
-          h1Home:   match.h1Home,
-          h1Away:   match.h1Away,
-          token:    GS_TOKEN,
-        }),
-      })
-      const data = await res.json()
-      console.log(`[HT] capture done — eventId=${match.eventId} frames=${data.frames ?? '?'} ok=${data.ok}`)
-    } catch (e) {
-      console.error(`[HT] capture error — ${e.message}`)
+async function doCapture(match, attempt = 1) {
+  const body = JSON.stringify({
+    eventId:  match.eventId,
+    homeTeam: match.homeTeam,
+    awayTeam: match.awayTeam,
+    h1Home:   match.h1Home,
+    h1Away:   match.h1Away,
+    token:    GS_TOKEN,
+  })
+  try {
+    const res  = await fetch(CAPTURE_URL, {
+      method:  'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      signal:  AbortSignal.timeout(200_000),
+    })
+    const data = await res.json()
+    if (data.ok) {
+      console.log(`[HT] capture done — eventId=${match.eventId} frames=${data.frames} attempt=${attempt}`)
+    } else {
+      console.error(`[HT] attempt ${attempt} failed — eventId=${match.eventId} error=${data.error}`)
+      throw new Error(data.error || 'ok=false')
     }
-  }, 5000)
+  } catch (e) {
+    if (attempt < 3) {
+      const delay = attempt * 30_000
+      console.log(`[HT] retry in ${delay/1000}s — eventId=${match.eventId} (attempt ${attempt + 1}/3)`)
+      await new Promise(r => setTimeout(r, delay))
+      return doCapture(match, attempt + 1)
+    }
+    console.error(`[HT] all attempts failed — eventId=${match.eventId}: ${e.message}`)
+  }
+}
+
+async function triggerHtCapture(match) {
+  if (!match.eventId) return
+
+  // Skip nếu chấp Toàn Trận (HC TT) ở first screen >= 1.5 -> không chụp, không gửi Telegram
+  const { rows: fsRows } = await pool.query(
+    `SELECT hc_line FROM match_odds_log
+     WHERE event_id=$1 AND hc_line IS NOT NULL AND hc_line <> ''
+     ORDER BY id ASC LIMIT 1`,
+    [match.eventId]
+  )
+  const fsMag = lineMagnitude(fsRows[0]?.hc_line)
+  if (fsMag != null && fsMag >= 1.5) {
+    console.log(`[HT] skip ${match.eventId} — HC TT first_screen=${fsRows[0].hc_line} (|${fsMag}|>=1.5), no capture/telegram`)
+    return
+  }
+
+  // Check DB: đã có đủ frames chưa? (dedup bền vững qua restart)
+  const { rows } = await pool.query(
+    `SELECT COUNT(*) as cnt FROM gs_ht_frames WHERE event_id=$1`,
+    [match.eventId]
+  )
+  if (parseInt(rows[0].cnt) >= 20) {
+    console.log(`[HT] skip ${match.eventId} — already has ${rows[0].cnt} frames`)
+    return
+  }
+
+  // Check đã có event record chưa (đang trigger hoặc đã trigger)
+  const { rows: evRows } = await pool.query(
+    `SELECT event_id FROM gs_ht_events WHERE event_id=$1`,
+    [match.eventId]
+  )
+  if (evRows.length > 0) {
+    console.log(`[HT] skip ${match.eventId} — already triggered`)
+    return
+  }
+
+  // Insert ngay để poll sau skip — không chờ 40s mới dedup
+  await pool.query(
+    `INSERT INTO gs_ht_events (event_id, home_team, away_team, h1_home, h1_away, video_url)
+     VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (event_id) DO NOTHING`,
+    [match.eventId, match.homeTeam, match.awayTeam, match.h1Home ?? 0, match.h1Away ?? 0, '']
+  )
+
+  console.log(`[HT] ${match.homeTeam} vs ${match.awayTeam} — chụp ảnh sau 40s`)
+
+  setTimeout(() => doCapture(match), 40_000)
 }
 
 // ─── Poll loop ────────────────────────────────────────────────────────────────
@@ -385,7 +447,7 @@ async function poll() {
       if (!match.isLive) continue
 
       const key = oddsKey(match)
-      const snapshotType = detectSnapshotType(match, key)
+      const snapshotType = await detectSnapshotType(match, key)
       if (snapshotType) {
         await logSnapshot(match, snapshotType)
       }

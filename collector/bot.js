@@ -1,4 +1,6 @@
 'use strict'
+ require('dns').setDefaultResultOrder('ipv4first')
+require('net').setDefaultAutoSelectFamily(false)
 
 require('dotenv').config()
 const { execSync } = require('child_process')
@@ -6,7 +8,7 @@ const fs           = require('fs')
 const path         = require('path')
 
 const TG_BOT_TOKEN  = process.env.TG_BOT_TOKEN || '8867426775:AAE1_oibMcHUUHL8VaiJIPPZz4XyTMz5zhw'
-const TG_CHAT_ID    = String(process.env.TG_CHAT_ID || '738682531')
+const OWNER_CHAT_ID = String(process.env.TG_CHAT_ID || '738682531')
 const ENV_PATH      = path.join(__dirname, '.env')
 const OFFSET_PATH   = path.join(__dirname, '.tg-offset')
 const POLL_MS       = 3000
@@ -26,25 +28,20 @@ async function tgGet(method, params = {}) {
   return res.json()
 }
 
-async function tgSend(text) {
+async function tgSend(chatId, text) {
   await fetch(`https://api.telegram.org/bot${TG_BOT_TOKEN}/sendMessage`, {
     method:  'POST',
     headers: { 'content-type': 'application/json' },
-    body:    JSON.stringify({ chat_id: TG_CHAT_ID, text }),
+    body:    JSON.stringify({ chat_id: chatId, text }),
   })
 }
 
-function updateEnvToken(newToken) {
-  let content = ''
-  if (fs.existsSync(ENV_PATH)) {
-    content = fs.readFileSync(ENV_PATH, 'utf8')
-    if (content.match(/^GS_TOKEN=.*/m)) {
-      content = content.replace(/^GS_TOKEN=.*/m, `GS_TOKEN=${newToken}`)
-    } else {
-      content += `\nGS_TOKEN=${newToken}`
-    }
+function updateEnvKey(key, value) {
+  let content = fs.existsSync(ENV_PATH) ? fs.readFileSync(ENV_PATH, 'utf8') : ''
+  if (content.match(new RegExp(`^${key}=.*`, 'm'))) {
+    content = content.replace(new RegExp(`^${key}=.*`, 'm'), `${key}=${value}`)
   } else {
-    content = `GS_TOKEN=${newToken}\n`
+    content += `\n${key}=${value}`
   }
   fs.writeFileSync(ENV_PATH, content)
 }
@@ -53,29 +50,54 @@ async function handleUpdate(update) {
   const msg = update.message
   if (!msg || !msg.text) return
 
-  // Chỉ chấp nhận từ owner
-  if (String(msg.chat.id) !== TG_CHAT_ID) return
+  const chatId = String(msg.chat.id)
+  const text   = msg.text.trim()
+  const isOwner = chatId === OWNER_CHAT_ID || String(msg.from?.id) === OWNER_CHAT_ID
 
-  const text = msg.text.trim()
+  // /chatid — bất kỳ ai, bất kỳ chat nào
+  if (text === '/chatid' || text.startsWith('/chatid@')) {
+    await tgSend(chatId, `Chat ID: \`${chatId}\`\nType: ${msg.chat.type}\nTitle: ${msg.chat.title || msg.chat.first_name || ''}`)
+    return
+  }
 
-  // /settoken 69-abc123...
-  const match = text.match(/^\/settoken\s+(69-[a-f0-9]+)$/i)
-  if (!match) {
-    if (text.startsWith('/settoken')) {
-      await tgSend('❌ Format sai. Dùng:\n/settoken 69-<token>')
+  // Các lệnh còn lại chỉ owner
+  if (!isOwner) return
+
+  // /settoken 69-abc...
+  const tokenMatch = text.match(/^\/settoken\s+(69-[a-f0-9]+)$/i)
+  if (tokenMatch) {
+    const newToken = tokenMatch[1]
+    try {
+      updateEnvKey('GS_TOKEN', newToken)
+      execSync(`GS_TOKEN=${newToken} pm2 restart gs-collector gs-matches-collector --update-env`, { stdio: 'pipe' })
+      await tgSend(chatId, `✅ Token đã update!\n${newToken}\n\nCollector đã restart.`)
+      console.log(`[BOT] Token updated to ${newToken}`)
+    } catch (e) {
+      await tgSend(chatId, `❌ Lỗi khi update token: ${e.message}`)
     }
     return
   }
 
-  const newToken = match[1]
-  try {
-    updateEnvToken(newToken)
-    execSync(`GS_TOKEN=${newToken} pm2 restart gs-collector gs-matches-collector --update-env`, { stdio: 'pipe' })
-    await tgSend(`✅ Token đã update!\n\`${newToken}\`\n\nCollector đã restart.`)
-    console.log(`[BOT] Token updated to ${newToken}`)
-  } catch (e) {
-    await tgSend(`❌ Lỗi khi update: ${e.message}`)
-    console.error('[BOT ERROR]', e.message)
+  // /setchat <chat_id> — set group nhận HT notification
+  const chatMatch = text.match(/^\/setchat\s+(-?\d+)$/)
+  if (chatMatch) {
+    const newChatId = chatMatch[1]
+    try {
+      updateEnvKey('TELEGRAM_NOTIFY_CHAT', newChatId)
+      execSync('pm2 restart gs-capture --update-env', { stdio: 'pipe' })
+      await tgSend(chatId, `✅ Group chat đã set: ${newChatId}\ngs-capture đã restart — HT notification sẽ gửi vào group đó.`)
+      console.log(`[BOT] Notify chat set to ${newChatId}`)
+    } catch (e) {
+      await tgSend(chatId, `❌ Lỗi: ${e.message}`)
+    }
+    return
+  }
+
+  if (text.startsWith('/settoken')) {
+    await tgSend(chatId, '❌ Format sai. Dùng:\n/settoken 69-<token>')
+  }
+  if (text.startsWith('/setchat')) {
+    await tgSend(chatId, '❌ Format sai. Dùng:\n/setchat <chat_id>\nVí dụ: /setchat -1001234567890')
   }
 }
 
@@ -93,7 +115,7 @@ async function poll() {
   }
 }
 
-console.log('GS Bot started — waiting for /settoken command')
-tgSend('🤖 GS Bot online!\nGửi /settoken 69-<token> để update token mới.')
+console.log('GS Bot started')
+tgSend(OWNER_CHAT_ID, "🤖 GS Bot online! /settoken /setchat /chatid")
 setInterval(poll, POLL_MS)
 poll()
