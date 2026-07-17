@@ -7,6 +7,7 @@ import { resultFor } from '../lib/stats';
 import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats, type DayOfWeek } from '../lib/dayStats';
 import { TypeBadge, ResultTag } from './badges';
 import MatchAnalysis from './MatchAnalysis';
+import type { GsBetsResponse } from '../app/api/gs-bets/route';
 
 
 interface GsLiveMatch {
@@ -1094,11 +1095,14 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames'>('confront');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo'>('confront');
   type HtFrame = { frame_index: number; frame_url: string; video_url: string };
   const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
   const [htFramesLoading, setHtFramesLoading] = useState(false);
   const htFramesFetchedRef = useRef(false);
+  const [bets, setBets] = useState<GsBetsResponse | null>(null);
+  const [betsLoading, setBetsLoading] = useState(false);
+  const betsFetchedRef = useRef(false);
   const [lightboxFrame, setLightboxFrame] = useState<HtFrame | null>(null);
               const touchStartX = useRef<number | null>(null);
               const lightboxPrev = useCallback(() => {
@@ -1473,6 +1477,21 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, live.eventId]);
 
+  // Fetch bets/kèo once when the keo tab is opened
+  useEffect(() => {
+    if (activeTab !== 'keo' || betsFetchedRef.current || !live.eventId) return;
+    betsFetchedRef.current = true;
+    let alive = true;
+    setBetsLoading(true);
+    fetch(`/api/gs-bets?eventId=${live.eventId}`)
+      .then(r => r.json())
+      .then((json: GsBetsResponse) => { if (alive) setBets(json); })
+      .catch(() => { if (alive) setBets({ ok: false, error: 'fetch failed' }); })
+      .finally(() => { if (alive) setBetsLoading(false); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, live.eventId]);
+
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
     const t = todayStats(stats);
@@ -1692,6 +1711,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
             ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
+            ['keo',      '🎯', 'Kèo',       'border-[#f59e0b]'],
             ...(live.period >= 4 ? [['frames', '📷', 'HT', 'border-[#a78bfa]']] as [string, string, string, string][] : []),
           ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
             <button
@@ -1957,9 +1977,216 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               )}
             </div>
           )}
+
+          {activeTab === 'keo' && (
+            <KeoPanel loading={betsLoading} bets={bets} homeName={live.homeTeam} awayName={live.awayTeam} />
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+// ── Kèo tab ─────────────────────────────────────────────────────────────────
+
+function HitBadge({ hit, label }: { hit: boolean | null; label: string }) {
+  const cls = hit === true
+    ? 'bg-[#16a34a]/15 border-[#16a34a]/40 text-[#4ade80]'
+    : hit === false
+      ? 'bg-[#dc2626]/15 border-[#dc2626]/40 text-[#f87171]'
+      : 'bg-[#555]/15 border-[#555]/40 text-[#aaa]';
+  const text = hit === true ? 'ĂN' : hit === false ? 'THUA' : 'HÒA/PUSH';
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>
+      <span className="text-[#666]">{label}</span> {text}
+    </span>
+  );
+}
+
+function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bets: GsBetsResponse | null; homeName: string; awayName: string }) {
+  if (loading || bets === null) {
+    return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải kèo…</div>;
+  }
+  if (bets.ok === false) {
+    return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Không tải được kèo</div>;
+  }
+
+  const pick = bets.pick ?? null;
+  const stats = bets.stats ?? null;
+  const calibration = bets.calibration ?? [];
+  const recent = bets.recent ?? [];
+
+  // Chỉ số H1 rows: [label, home, away]
+  type StatRow = [string, string | number | null, string | number | null];
+  const statRows: StatRow[] = (stats ? ([
+    ['xG', stats.home_xg, stats.away_xg],
+    ['Shots', stats.home_shots, stats.away_shots],
+    ['SOT', stats.home_sot, stats.away_sot],
+    ['Shot Acc', stats.home_shot_acc, stats.away_shot_acc],
+    ['Poss', stats.home_poss, stats.away_poss],
+    ['Passes', stats.home_passes, stats.away_passes],
+    ['Pass Acc', stats.home_pass_acc, stats.away_pass_acc],
+    ['Corners', stats.home_corners, stats.away_corners],
+    ['Tackles', stats.home_tackles, stats.away_tackles],
+    ['Interceptions', stats.home_interceptions, stats.away_interceptions],
+    ['Saves', stats.home_saves, stats.away_saves],
+    ['Fouls', stats.home_fouls, stats.away_fouls],
+    ['Offsides', stats.home_offsides, stats.away_offsides],
+    ['Yellow', stats.home_yellow, stats.away_yellow],
+    ['Red', stats.home_red, stats.away_red],
+  ] as StatRow[]) : []).filter(([, h, a]) => h != null || a != null);
+
+  const numeric = (v: string | number | null): number | null => {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  return (
+    <div className="flex flex-col gap-0">
+      {/* 1. Kèo card */}
+      <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+        <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">🎯 Kèo đã ra</div>
+        {!pick ? (
+          <div className="text-[12px] text-[#555] py-1">Chưa ra kèo cho trận này</div>
+        ) : (
+          <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-2.5">
+            <div className="flex items-center flex-wrap gap-2 mb-2">
+              {pick.side_pick && (
+                <span className="px-2 py-1 rounded-lg bg-[#f59e0b]/15 border border-[#f59e0b]/40 text-[#fbbf24] text-[12px] font-extrabold">
+                  {pick.side_pick}
+                </span>
+              )}
+              {pick.ou_pick && (
+                <span className="px-2 py-1 rounded-lg bg-[#17a2b8]/15 border border-[#17a2b8]/40 text-[#5fd0e0] text-[12px] font-extrabold">
+                  {pick.ou_pick}
+                </span>
+              )}
+              {pick.confidence && (
+                <span className="ml-auto px-2 py-0.5 rounded bg-[#a78bfa]/15 border border-[#a78bfa]/40 text-[#a78bfa] text-[11px] font-bold">
+                  {pick.confidence}
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#aaa] mb-1.5">
+              {pick.hc_line != null && (
+                <span>HC <span className="text-[#ccc] font-semibold">{pick.hc_line}</span>
+                  {pick.hc_home_odds != null && <span className="text-[#666]"> · nhà {pick.hc_home_odds}</span>}
+                  {pick.hc_away_odds != null && <span className="text-[#666]"> · khách {pick.hc_away_odds}</span>}
+                </span>
+              )}
+              {pick.ou_line != null && (
+                <span>OU <span className="text-[#ccc] font-semibold">{pick.ou_line}</span>
+                  {pick.ou_over_odds != null && <span className="text-[#666]"> · tài {pick.ou_over_odds}</span>}
+                  {pick.ou_under_odds != null && <span className="text-[#666]"> · xỉu {pick.ou_under_odds}</span>}
+                </span>
+              )}
+              {(pick.ht_score || pick.ft_score) && (
+                <span className="tabular-nums text-[#ccc]">
+                  {pick.ht_score ?? '?'}{pick.ft_score ? ` → ${pick.ft_score}` : ''}
+                </span>
+              )}
+            </div>
+
+            {pick.ft_score && (
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                {pick.side_pick && <HitBadge hit={pick.side_hit} label="HC" />}
+                {pick.ou_pick && <HitBadge hit={pick.ou_hit} label="OU" />}
+              </div>
+            )}
+
+            {pick.verdict && (
+              <div className="text-[12px] text-[#bbb] leading-relaxed">{pick.verdict}</div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 2. Chỉ số H1 */}
+      <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+        <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
+        {!stats ? (
+          <div className="text-[12px] text-[#555] py-1">Chưa có chỉ số (chưa OCR)</div>
+        ) : (
+          <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
+            <div className="flex items-center px-3 py-1.5 text-[10px] font-bold text-[#888] border-b border-[#222]">
+              <span className="flex-1 text-left truncate text-[#4ade80]">{stats.home_team ?? homeName}</span>
+              <span className="w-[30%] text-center text-[#555]">Chỉ số</span>
+              <span className="flex-1 text-right truncate text-[#f87171]">{stats.away_team ?? awayName}</span>
+            </div>
+            {statRows.map(([label, h, a], i) => {
+              const hn = numeric(h);
+              const an = numeric(a);
+              const hHi = hn != null && an != null && hn > an;
+              const aHi = hn != null && an != null && an > hn;
+              return (
+                <div key={i} className="flex items-center px-3 py-1 text-[12px] border-b border-[#1a1a1a]/60 last:border-0">
+                  <span className={`flex-1 text-left tabular-nums font-semibold ${hHi ? 'text-[#4ade80]' : 'text-[#bbb]'}`}>{h ?? '—'}</span>
+                  <span className="w-[30%] text-center text-[10px] text-[#666]">{label}</span>
+                  <span className={`flex-1 text-right tabular-nums font-semibold ${aHi ? 'text-[#f87171]' : 'text-[#bbb]'}`}>{a ?? '—'}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 3. Track record */}
+      <div className="px-3 py-3 md:px-4 md:py-4">
+        <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📈 Track record</div>
+
+        {calibration.length === 0 ? (
+          <div className="text-[12px] text-[#555] py-1">Chưa có dữ liệu thống kê</div>
+        ) : (
+          <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden mb-3">
+            <div className="flex items-center px-3 py-1.5 text-[10px] font-bold text-[#888] border-b border-[#222]">
+              <span className="w-[22%] text-left">Line</span>
+              <span className="w-[14%] text-center">n</span>
+              <span className="flex-1 text-center">W/L/P</span>
+              <span className="w-[20%] text-right">Win%</span>
+            </div>
+            {calibration.map((c, i) => {
+              const decided = c.win + c.loss;
+              const winPct = decided > 0 ? Math.round((c.win / decided) * 100) : 0;
+              return (
+                <div key={i} className="flex items-center px-3 py-1 text-[12px] border-b border-[#1a1a1a]/60 last:border-0">
+                  <span className="w-[22%] text-left tabular-nums text-[#ccc]">{c.hc_line ?? '—'}</span>
+                  <span className="w-[14%] text-center tabular-nums text-[#888]">{c.n}</span>
+                  <span className="flex-1 text-center tabular-nums">
+                    <span className="text-[#4ade80]">{c.win}</span>
+                    <span className="text-[#555]">/</span>
+                    <span className="text-[#f87171]">{c.loss}</span>
+                    <span className="text-[#555]">/</span>
+                    <span className="text-[#aaa]">{c.push}</span>
+                  </span>
+                  <span className={`w-[20%] text-right tabular-nums font-bold ${winPct >= 50 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
+                    {decided > 0 ? `${winPct}%` : '—'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {recent.length > 0 && (
+          <div className="flex flex-col divide-y divide-[#1e1e1e]">
+            {recent.map((r, i) => (
+              <div key={i} className="flex items-center gap-1.5 py-1 text-[11px]">
+                <span className="flex-1 min-w-0 text-[#bbb] truncate">
+                  {r.home_team ?? '?'} <span className="text-[#444]">vs</span> {r.away_team ?? '?'}
+                </span>
+                <span className="tabular-nums text-[#888] flex-shrink-0">
+                  {r.ht_score ?? '?'}{r.ft_score ? `→${r.ft_score}` : ''}
+                </span>
+                {r.side_pick && <span className="text-[10px] text-[#fbbf24] font-semibold flex-shrink-0">{r.side_pick}</span>}
+                <HitBadge hit={r.side_hit} label="HC" />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
