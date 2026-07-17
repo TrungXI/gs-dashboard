@@ -2003,6 +2003,44 @@ function HitBadge({ hit, label }: { hit: boolean | null; label: string }) {
   );
 }
 
+// Plain result badge (no "HC"/"OU" prefix); optional short label for combined rows
+function ResultBadge({ hit, label }: { hit: boolean | null; label?: string }) {
+  const cls = hit === true
+    ? 'bg-[#16a34a]/15 border-[#16a34a]/40 text-[#4ade80]'
+    : hit === false
+      ? 'bg-[#dc2626]/15 border-[#dc2626]/40 text-[#f87171]'
+      : 'bg-[#555]/15 border-[#555]/40 text-[#aaa]';
+  const text = hit === true ? 'ĂN' : hit === false ? 'THUA' : 'HÒA';
+  return (
+    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>
+      {label && <span className="text-[#666] font-semibold">{label}</span>}{text}
+    </span>
+  );
+}
+
+// Parse predict.js verdict: pull the reason text after "[HC] ... ::" and "[OU] ... ::"
+function parseVerdictReasons(verdict: string | null): { hc: string | null; ou: string | null } {
+  if (!verdict) return { hc: null, ou: null };
+  const grab = (tag: string): string | null => {
+    // e.g. "[HC] BỎ :: xG-trap: Laos dominant but LOSING → BỎ"
+    const re = new RegExp(`\\[${tag}\\][^:\\n]*::\\s*([^\\n]+)`);
+    const m = verdict.match(re);
+    return m ? m[1].trim() : null;
+  };
+  return { hc: grab('HC'), ou: grab('OU') };
+}
+
+// Parse "3-1" → winner side. Returns 'home' | 'away' | 'draw' | null.
+function ftWinner(ft: string | null): 'home' | 'away' | 'draw' | null {
+  if (!ft) return null;
+  const m = ft.match(/(\d+)\s*-\s*(\d+)/);
+  if (!m) return null;
+  const h = Number(m[1]);
+  const a = Number(m[2]);
+  if (h === a) return 'draw';
+  return h > a ? 'home' : 'away';
+}
+
 function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bets: GsBetsResponse | null; homeName: string; awayName: string }) {
   if (loading || bets === null) {
     return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải kèo…</div>;
@@ -2096,9 +2134,31 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
               </div>
             )}
 
-            {pick.verdict && (
-              <div className="text-[12px] text-[#bbb] leading-relaxed">{pick.verdict}</div>
-            )}
+            {pick.verdict && (() => {
+              const { hc, ou } = parseVerdictReasons(pick.verdict);
+              const hasParsed = hc || ou;
+              return (
+                <div className="flex flex-col gap-1 mt-1">
+                  {(pick.side_pick || hc) && (
+                    <div className="text-[12px] leading-snug">
+                      <span className="text-[#666] font-semibold">Kèo chấp: </span>
+                      {pick.side_pick && <span className="text-[#fbbf24] font-bold">{pick.side_pick}</span>}
+                      {hc && <span className="text-[#ddd]">{pick.side_pick ? ' — ' : ''}{hc}</span>}
+                    </div>
+                  )}
+                  {(pick.ou_pick || ou) && (
+                    <div className="text-[12px] leading-snug">
+                      <span className="text-[#666] font-semibold">Tài/Xỉu: </span>
+                      {pick.ou_pick && <span className="text-[#5fd0e0] font-bold">{pick.ou_pick}</span>}
+                      {ou && <span className="text-[#ddd]">{pick.ou_pick ? ' — ' : ''}{ou}</span>}
+                    </div>
+                  )}
+                  {!hasParsed && (
+                    <div className="text-[12px] text-[#ddd] leading-snug">{pick.verdict}</div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
@@ -2171,18 +2231,47 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
 
         {recent.length > 0 && (
           <div className="flex flex-col divide-y divide-[#1e1e1e]">
-            {recent.map((r, i) => (
-              <div key={i} className="flex items-center gap-1.5 py-1 text-[11px]">
-                <span className="flex-1 min-w-0 text-[#bbb] truncate">
-                  {r.home_team ?? '?'} <span className="text-[#444]">vs</span> {r.away_team ?? '?'}
-                </span>
-                <span className="tabular-nums text-[#888] flex-shrink-0">
-                  {r.ht_score ?? '?'}{r.ft_score ? `→${r.ft_score}` : ''}
-                </span>
-                {r.side_pick && <span className="text-[10px] text-[#fbbf24] font-semibold flex-shrink-0">{r.side_pick}</span>}
-                <HitBadge hit={r.side_hit} label="HC" />
-              </div>
-            ))}
+            {/* header */}
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#555]">
+              <span className="text-left">Trận</span>
+              <span className="text-center">HT→FT</span>
+              <span className="text-left">Kèo</span>
+              <span className="text-right">KQ</span>
+            </div>
+            {recent.map((r, i) => {
+              const win = ftWinner(r.ft_score);
+              const homeCls = win === 'home' ? 'text-[#4ade80] font-bold' : 'text-[#bbb]';
+              const awayCls = win === 'away' ? 'text-[#4ade80] font-bold' : 'text-[#bbb]';
+              const keo = [r.side_pick, r.ou_pick].filter(Boolean).join(' · ') || '—';
+              const hasHc = !!r.side_pick;
+              const hasOu = !!r.ou_pick;
+              return (
+                <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 py-1 text-[11px]">
+                  <span className="min-w-0 truncate">
+                    <span className={homeCls}>{r.home_team ?? '?'}</span>
+                    <span className="text-[#444]"> vs </span>
+                    <span className={awayCls}>{r.away_team ?? '?'}</span>
+                    <span className="ml-1 text-[10px]" title={r.has_stats ? 'Có chỉ số H1' : 'Chưa có chỉ số'}>{r.has_stats ? '📊' : '—'}</span>
+                  </span>
+                  <span className="tabular-nums text-[#888] text-center whitespace-nowrap">
+                    {r.ht_score ?? '?'}{r.ft_score ? `→${r.ft_score}` : ''}
+                  </span>
+                  <span className="text-[10px] text-[#fbbf24] font-semibold whitespace-nowrap">{keo}</span>
+                  <span className="flex items-center justify-end gap-1 flex-shrink-0">
+                    {hasHc && hasOu ? (
+                      <>
+                        <ResultBadge hit={r.side_hit} label="Chấp" />
+                        <ResultBadge hit={r.ou_hit} label="T/X" />
+                      </>
+                    ) : hasOu ? (
+                      <ResultBadge hit={r.ou_hit} />
+                    ) : (
+                      <ResultBadge hit={r.side_hit} />
+                    )}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

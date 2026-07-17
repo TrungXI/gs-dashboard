@@ -87,6 +87,7 @@ export interface GsBetRecentRow {
   side_hit: boolean | null;
   ou_hit: boolean | null;
   confidence: string | null;
+  has_stats: boolean;
 }
 
 export interface GsBetsResponse {
@@ -130,11 +131,12 @@ export async function GET(req: NextRequest) {
          GROUP BY hc_line ORDER BY hc_line`,
       ),
       pool.query<GsBetRecentRow>(
-        `SELECT event_id, home_team, away_team, ht_score, ft_score,
-                side_pick, ou_pick, side_hit, ou_hit, confidence
-         FROM gs_ht_analysis
-         WHERE settled_at IS NOT NULL
-         ORDER BY settled_at DESC LIMIT 8`,
+        `SELECT a.event_id, a.home_team, a.away_team, a.ht_score, a.ft_score,
+                a.side_pick, a.ou_pick, a.side_hit, a.ou_hit, a.confidence,
+                EXISTS (SELECT 1 FROM gs_ht_stats s WHERE s.event_id = a.event_id) AS has_stats
+         FROM gs_ht_analysis a
+         WHERE a.settled_at IS NOT NULL
+         ORDER BY a.settled_at DESC LIMIT 8`,
       ),
     ]);
 
