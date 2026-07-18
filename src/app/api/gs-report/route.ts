@@ -231,12 +231,19 @@ function deriveSideResult(row: GsReportRowRaw): AsianResult {
   return gradePick(h2Home, homeSignedLine);
 }
 
-/** Derive the granular O/U result (Xỉu/Under only per spec) for H2. */
+/**
+ * Derive the granular O/U (Tài/Xỉu) result.
+ *
+ * The O/U pick is a FULL-MATCH total line (the "⚡H2 bùng" picks bet the whole-match
+ * over line on the expectation the 2nd half delivers goals), so it is graded against
+ * the full-time total — matching how settle.js on the VPS stores `ou_hit`. Grading
+ * against 2nd-half-only goals (FT − HT) understates the total and wrongly flips winning
+ * Tài picks to THUA whenever the first half already scored.
+ */
 function deriveOuResult(row: GsReportRowRaw): AsianResult {
   if (isSkip(row.ou_pick)) return 'skip';
   const ft = parseScore(row.ft_score);
   if (!ft) return 'pending';
-  const ht = parseScore(row.ht_score) ?? [0, 0];
   const mag = lineMagnitude(row.ou_line);
   if (mag == null) {
     if (row.ou_hit === true) return 'win';
@@ -244,13 +251,13 @@ function deriveOuResult(row: GsReportRowRaw): AsianResult {
     return 'pending';
   }
 
-  const h2Total = (ft[0] + ft[1]) - (ht[0] + ht[1]);
+  const ftTotal = ft[0] + ft[1];
   const pickText = (row.ou_pick ?? '').toLowerCase();
   const isOver = /tài|over/.test(pickText) && !/xỉu|under/.test(pickText);
 
   const frac = Math.round((mag - Math.floor(mag)) * 100) / 100;
   const grade = (line: number): 'win' | 'push' | 'loss' => {
-    const diff = h2Total - line;
+    const diff = ftTotal - line;
     if (isOver) {
       if (diff > 0) return 'win';
       if (diff < 0) return 'loss';
