@@ -8,7 +8,9 @@ import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_F
 import { TypeBadge, ResultTag } from './badges';
 import { LoadingState } from './Spinner';
 import MatchAnalysis from './MatchAnalysis';
+import SearchDropdown from './SearchDropdown';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
+import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
 
 
 interface GsLiveMatch {
@@ -1096,7 +1098,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo'>('confront');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo' | 'history'>('confront');
   type HtFrame = { frame_index: number; frame_url: string; video_url: string };
   const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
   const [htFramesLoading, setHtFramesLoading] = useState(false);
@@ -1104,6 +1106,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [bets, setBets] = useState<GsBetsResponse | null>(null);
   const [betsLoading, setBetsLoading] = useState(false);
   const betsFetchedRef = useRef(false);
+  // History tab: 2 selectable teams, each showing their last 10 matches
+  const [histLeftTeam, setHistLeftTeam] = useState(live.homeTeam);
+  const [histRightTeam, setHistRightTeam] = useState(live.awayTeam);
+  const [histData, setHistData] = useState<Record<string, GsTeamHistoryRow[] | null>>({});
+  const [histLoading, setHistLoading] = useState<Record<string, boolean>>({});
+  const histCacheRef = useRef<Record<string, GsTeamHistoryRow[]>>({});
   const [lightboxFrame, setLightboxFrame] = useState<HtFrame | null>(null);
               const touchStartX = useRef<number | null>(null);
               const lightboxPrev = useCallback(() => {
@@ -1175,6 +1183,13 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         (m.homeTeam === live.awayTeam && m.awayTeam === live.homeTeam)
       ).slice(0, 100)
     : [];
+
+  // History tab: team-options list — union of teams seen in fetched data + the 2 match teams.
+  const histTeamOptions = (() => {
+    const set = new Set<string>([live.homeTeam, live.awayTeam]);
+    for (const m of matches ?? []) { set.add(m.homeTeam); set.add(m.awayTeam); }
+    return Array.from(set).sort((a, b) => a.localeCompare(b)).map(t => ({ value: t, label: t }));
+  })();
 
   // Day stats
   const today = todayDayOfWeek();
@@ -1493,6 +1508,29 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, live.eventId]);
 
+  // History tab: fetch last-10 for each selected team (fetch-once per team, refetch on change).
+  useEffect(() => {
+    if (activeTab !== 'history') return;
+    const teams = [histLeftTeam, histRightTeam].filter((t, i, a) => t && a.indexOf(t) === i);
+    let alive = true;
+    for (const team of teams) {
+      if (histCacheRef.current[team] || histLoading[team]) continue;
+      setHistLoading(s => ({ ...s, [team]: true }));
+      fetch(`/api/gs-team-history?team=${encodeURIComponent(team)}`)
+        .then(r => r.json())
+        .then((json: GsTeamHistoryResponse) => {
+          if (!alive) return;
+          const rows = json.ok ? (json.matches ?? []) : [];
+          histCacheRef.current[team] = rows;
+          setHistData(s => ({ ...s, [team]: rows }));
+        })
+        .catch(() => { if (alive) setHistData(s => ({ ...s, [team]: [] })); })
+        .finally(() => { if (alive) setHistLoading(s => ({ ...s, [team]: false })); });
+    }
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, histLeftTeam, histRightTeam]);
+
   function DayBar({ stats, team }: { stats: DayStats[]; team: string }) {
     const { best, worst } = bestAndWorstDay(stats);
     const t = todayStats(stats);
@@ -1712,6 +1750,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
             ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
             // ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],   // tạm ẩn tab Gợi ý (bật lại: bỏ comment dòng này)
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
+            ['history',  '📜', 'Lịch sử',    'border-[#22d3ee]'],
             ['keo',      '🎯', 'Kèo',       'border-[#f59e0b]'],
             ...(live.period >= 4 ? [['frames', '📷', 'HT', 'border-[#a78bfa]']] as [string, string, string, string][] : []),
           ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
@@ -1980,9 +2019,102 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           {activeTab === 'keo' && (
             <KeoPanel loading={betsLoading} bets={bets} homeName={live.homeTeam} awayName={live.awayTeam} />
           )}
+
+          {activeTab === 'history' && (
+            <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-0">
+              <div className="border-b border-[#1a1a1a] md:border-b-0 md:border-r">
+                <TeamHistoryColumn
+                  teamOptions={histTeamOptions}
+                  value={histLeftTeam}
+                  onChange={setHistLeftTeam}
+                  loading={!!histLoading[histLeftTeam]}
+                  rows={histData[histLeftTeam] ?? null}
+                />
+              </div>
+              <div>
+                <TeamHistoryColumn
+                  teamOptions={histTeamOptions}
+                  value={histRightTeam}
+                  onChange={setHistRightTeam}
+                  loading={!!histLoading[histRightTeam]}
+                  rows={histData[histRightTeam] ?? null}
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>
+  );
+}
+
+// ── Lịch sử đội tab ─────────────────────────────────────────────────────────
+
+function TeamHistoryColumn({
+  teamOptions, value, onChange, loading, rows,
+}: {
+  teamOptions: { value: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+  loading: boolean;
+  rows: GsTeamHistoryRow[] | null;
+}) {
+  // Ensure the current value is always a selectable option (in case it isn't in the fetched set yet)
+  const options = teamOptions.some(o => o.value === value)
+    ? teamOptions
+    : [{ value, label: value }, ...teamOptions];
+
+  return (
+    <div className="px-3 py-3 md:px-4 md:py-4">
+      <div className="mb-2.5">
+        <SearchDropdown
+          options={options}
+          value={value}
+          onChange={onChange}
+          placeholder="-- Chọn đội --"
+        />
+      </div>
+
+      {loading ? (
+        <LoadingState label="Đang tải lịch sử…" />
+      ) : rows === null ? (
+        <LoadingState label="Đang tải lịch sử…" />
+      ) : rows.length === 0 ? (
+        <div className="py-10 text-center text-[12px] text-[#555]">Không có dữ liệu</div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          {rows.map((r, i) => {
+            const [my, op] = r.ft;
+            const result = my > op ? 'W' : my === op ? 'D' : 'L';
+            const badge =
+              result === 'W' ? { cls: 'bg-[#14532d] text-[#4ade80]', txt: 'Thắng' }
+              : result === 'L' ? { cls: 'bg-[#450a0a] text-[#f87171]', txt: 'Thua' }
+              : { cls: 'bg-[#333] text-[#aaa]', txt: 'Hòa' };
+            const h2: [number, number] = [r.ft[0] - r.h1[0], r.ft[1] - r.h1[1]];
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2 rounded-md border border-[#1c1c1c] bg-[#141414] px-2 py-1.5"
+              >
+                <span
+                  className={`flex-shrink-0 rounded px-[6px] py-0.5 text-[10px] font-bold ${badge.cls}`}
+                >
+                  {badge.txt}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[12px] text-[#ddd]">
+                  {r.isHome ? '' : '@ '}{r.opponent}
+                </span>
+                <span className="flex flex-shrink-0 items-center gap-1.5 tabular-nums text-[11px]">
+                  <span className="text-[#777]">H1 <span className="font-semibold text-[#bbb]">{r.h1[0]}-{r.h1[1]}</span></span>
+                  <span className="text-[#777]">H2 <span className="font-semibold text-[#bbb]">{h2[0]}-{h2[1]}</span></span>
+                  <span className="text-[#666]">FT <span className="font-bold text-white">{r.ft[0]}-{r.ft[1]}</span></span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
