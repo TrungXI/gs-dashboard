@@ -6,6 +6,7 @@ import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
 import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats, type DayOfWeek } from '../lib/dayStats';
 import { TypeBadge, ResultTag } from './badges';
+import { LoadingState } from './Spinner';
 import MatchAnalysis from './MatchAnalysis';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
 
@@ -1730,9 +1731,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải dữ liệu…</div>
-          )}
+          {loading && <LoadingState label="Đang tải dữ liệu…" />}
 
           {!loading && matches !== null && activeTab === 'stats' && (
             <div className="flex flex-col gap-0">
@@ -2017,7 +2016,7 @@ function parseVerdictReasons(verdict: string | null): { hc: string | null; ou: s
 
 function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bets: GsBetsResponse | null; homeName: string; awayName: string }) {
   if (loading || bets === null) {
-    return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải kèo…</div>;
+    return <LoadingState label="Đang tải kèo…" />;
   }
   if (bets.ok === false) {
     return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Không tải được kèo</div>;
@@ -2131,6 +2130,13 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
                 </div>
               );
             })()}
+
+            {pick.review_note && (
+              <div className="mt-2 rounded-md border-l-2 border-[#a78bfa]/50 bg-[#a78bfa]/[.06] px-2.5 py-1.5 text-[12px] leading-snug">
+                <span className="font-bold text-[#a78bfa]">📝 Đúc kết: </span>
+                <span className="text-[#ddd]">{pick.review_note}</span>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -2139,7 +2145,9 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
       <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
         <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
         {!stats ? (
-          <div className="text-[12px] text-[#555] py-1">Chưa có chỉ số (chưa OCR)</div>
+          <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/[.06] px-3 py-2 text-[12px] text-[#fbbf24]">
+            ⚠️ Chưa đọc được chỉ số từ ảnh H1
+          </div>
         ) : (
           <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
             <div className="flex items-center px-3 py-1.5 text-[10px] font-bold text-[#888] border-b border-[#222]">
@@ -2147,6 +2155,12 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
               <span className="w-[30%] text-center text-[#555]">Chỉ số</span>
               <span className="flex-1 text-right truncate text-[#f87171]">{stats.away_team ?? awayName}</span>
             </div>
+            {stats.stats_partial && (
+              <div className="px-3 py-1.5 text-[11px] leading-snug text-[#fbbf24] border-b border-[#222] bg-[#f59e0b]/[.06]">
+                ⚠️ Ảnh đọc thiếu vài chỉ số
+                {stats.notes && <span className="text-[#b58a3a]"> · {stats.notes}</span>}
+              </div>
+            )}
             {statRows.map(([label, h, a], i) => {
               const hn = numeric(h);
               const an = numeric(a);

@@ -30,6 +30,7 @@ export interface GsBetPick {
   ou_hit: boolean | null;
   confidence: string | null;
   verdict: string | null;
+  review_note: string | null;
   settled_at: string | null;
   hc_line: string | null;
   hc_home_gives: boolean | null;
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest) {
       pool.query<GsBetPick>(
         `SELECT event_id, home_team, away_team, home_team_id, away_team_id,
                 ht_score, ft_score, side_pick, ou_pick, side_hit, ou_hit,
-                confidence, verdict, settled_at, hc_line, hc_home_gives,
+                confidence, verdict, review_note, settled_at, hc_line, hc_home_gives,
                 hc_home_odds, hc_away_odds, ou_line, ou_over_odds, ou_under_odds
          FROM gs_ht_analysis WHERE event_id = $1 LIMIT 1`,
         [eventId],
