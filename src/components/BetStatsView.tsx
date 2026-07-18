@@ -237,8 +237,8 @@ export default function BetStatsView() {
         <span className="ml-auto self-center text-[11px] text-[#666]">{filtered.length} trận</span>
       </div>
 
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-[#2a2a2a]">
+      {/* Table (desktop only) */}
+      <div className="hidden md:block overflow-x-auto rounded-lg border border-[#2a2a2a]">
         <div className="min-w-[900px]">
           {/* Header */}
           <div className="grid grid-cols-[92px_minmax(180px,1.4fr)_88px_88px_minmax(150px,1fr)_150px_minmax(240px,1.6fr)] items-center gap-2 border-b border-[#222] bg-[#111] px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-[#666]">
@@ -341,6 +341,93 @@ export default function BetStatsView() {
             );
           })}
         </div>
+      </div>
+
+      {/* Cards (mobile only) */}
+      <div className="md:hidden flex flex-col gap-2.5">
+        {filtered.map((row) => {
+          const winner = ftWinner(row.ft_score);
+          const { hc, ou } = parseVerdictReasons(row.verdict);
+          const hasParsed = hc || ou;
+          const noPick = !row.side_pick && !row.ou_pick;
+          return (
+            <div
+              key={row.event_id}
+              className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3"
+            >
+              {/* Top row: teams + time */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 text-[13px] leading-snug">
+                  <span className={winner === 'home' ? 'font-bold text-[#4ade80]' : 'text-[#ddd]'}>
+                    {row.home_team ?? '?'}
+                  </span>
+                  <span className="text-[#555]"> vs </span>
+                  <span className={winner === 'away' ? 'font-bold text-[#4ade80]' : 'text-[#ddd]'}>
+                    {row.away_team ?? '?'}
+                  </span>
+                </div>
+                <span className="shrink-0 tabular-nums text-[11px] text-[#999]">{fmtTime(row.created_at)}</span>
+              </div>
+
+              {/* Score line */}
+              <div className="mt-1.5 flex items-center gap-1.5 text-[12px] tabular-nums text-[#bbb]">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#666]">HT</span>
+                <span>{row.ht_score ?? '—'}</span>
+                <span className="text-[#555]">→</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#666]">FT</span>
+                <span className="font-semibold text-[#ddd]">{row.ft_score ?? '—'}</span>
+              </div>
+
+              {/* Picks + results */}
+              <div className="mt-2.5 flex flex-col gap-1.5">
+                {row.side_pick && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold uppercase text-[#555]">Chấp</span>
+                    <span className="rounded bg-[#f59e0b]/15 border border-[#f59e0b]/40 px-1.5 py-0.5 text-[11px] font-bold text-[#fbbf24]">
+                      {row.side_pick}
+                    </span>
+                    <ResultBadge result={row.side_result} />
+                  </div>
+                )}
+                {row.ou_pick && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold uppercase text-[#555]">T/X</span>
+                    <span className="rounded bg-[#17a2b8]/15 border border-[#17a2b8]/40 px-1.5 py-0.5 text-[11px] font-bold text-[#5fd0e0]">
+                      {row.ou_pick}
+                    </span>
+                    <ResultBadge result={row.ou_result} />
+                  </div>
+                )}
+                {noPick && <ResultBadge result="skip" />}
+              </div>
+
+              {/* Reasons + review note */}
+              {(row.side_pick || hc || row.ou_pick || ou || (!hasParsed && row.verdict) || row.review_note) && (
+                <div className="mt-2.5 flex flex-col gap-1 border-t border-[#222] pt-2.5 text-[11px] leading-snug">
+                  {(row.side_pick || hc) && (
+                    <div>
+                      <span className="font-semibold text-[#666]">Chấp: </span>
+                      {hc ? <span className="text-[#ccc]">{hc}</span> : <span className="text-[#555]">—</span>}
+                    </div>
+                  )}
+                  {(row.ou_pick || ou) && (
+                    <div>
+                      <span className="font-semibold text-[#666]">Tài/Xỉu: </span>
+                      {ou ? <span className="text-[#ccc]">{ou}</span> : <span className="text-[#555]">—</span>}
+                    </div>
+                  )}
+                  {!hasParsed && row.verdict && <div className="text-[#bbb]">{row.verdict}</div>}
+                  {row.review_note && (
+                    <div className="mt-0.5 border-l-2 border-[#a78bfa]/40 pl-1.5 text-[#a78bfa]">
+                      <span className="font-semibold text-[#8b6fd4]">📝 Đúc kết: </span>
+                      {row.review_note}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </>
   );
