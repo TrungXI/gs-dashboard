@@ -416,6 +416,7 @@ export default function MatchAnalysis({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recentMatches, setRecentMatches] = useState<MatchGroup[]>([]);
+  const [recentLoading, setRecentLoading] = useState(!embedded);
   const [aMatches, setAMatches] = useState<MatchGroup[]>([]);
   const [bMatches, setBMatches] = useState<MatchGroup[]>([]);
   const [tab, setTab] = useState<'all' | 'a' | 'b'>('all');
@@ -456,6 +457,8 @@ export default function MatchAnalysis({
         if (alive && recentJson.ok && recentJson.matches) setRecentMatches(recentJson.matches);
       } catch {
         /* ignore */
+      } finally {
+        if (alive) setRecentLoading(false);
       }
     })();
     return () => { alive = false; };
@@ -629,7 +632,11 @@ export default function MatchAnalysis({
             <span className="text-[11px] font-semibold text-white/50 uppercase tracking-wide">Tất cả trận gần đây</span>
             <span className="text-[10px] text-white/30">{recentMatches.length} trận</span>
           </div>
-          {recentMatches.length === 0 ? (
+          {recentLoading ? (
+            <div className="flex h-[160px] items-center justify-center rounded-lg border border-[#2a2a2a] bg-[#141414] text-[13px] text-white/40">
+              Đang tải…
+            </div>
+          ) : recentMatches.length === 0 ? (
             <div className="flex h-[160px] items-center justify-center rounded-lg border border-[#2a2a2a] bg-[#141414] text-[13px] text-white/40">
               Chưa có dữ liệu — đang thu thập…
             </div>
