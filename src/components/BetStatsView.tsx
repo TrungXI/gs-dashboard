@@ -179,19 +179,31 @@ export default function BetStatsView() {
     );
   }
 
-  // ── Error / empty ──
-  if (error !== null || rows.length === 0) {
+  // ── Error ──
+  if (error !== null) {
     return (
       <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
         <div className="flex items-center justify-center py-24 text-[13px] text-[#666]">
-          {error !== null ? `Lỗi tải dữ liệu: ${error}` : 'Chưa có kèo nào được ghi nhận'}
+          Lỗi tải dữ liệu: {error}
         </div>
       </>
     );
   }
 
   if (summary === null || trend === null) return null;
+
+  // ── Truly-empty dataset (no bets at all) — vs. "filter ra 0 rows" handled inline below ──
+  if (summary.total === 0) {
+    return (
+      <>
+        <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
+        <div className="flex items-center justify-center py-24 text-[13px] text-[#666]">
+          Chưa có kèo nào được ghi nhận
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -251,6 +263,12 @@ export default function BetStatsView() {
         <span className="ml-auto self-center text-[11px] text-[#666]">{rowsTotal} trận</span>
       </div>
 
+      {rows.length === 0 ? (
+        <div className="flex items-center justify-center rounded-lg border border-[#2a2a2a] bg-[#141414] py-16 text-[13px] text-[#666]">
+          Không có kèo nào cho bộ lọc &quot;{FILTERS.find((f) => f.key === filter)?.label ?? filter}&quot;
+        </div>
+      ) : (
+      <>
       {/* Table (desktop only) */}
       <div className="hidden md:block overflow-x-auto rounded-lg border border-[#2a2a2a]">
         <div className="min-w-[900px]">
@@ -456,6 +474,8 @@ export default function BetStatsView() {
             {loadingMore ? 'Đang tải…' : `Xem thêm (${rows.length}/${rowsTotal})`}
           </button>
         </div>
+      )}
+      </>
       )}
     </>
   );
