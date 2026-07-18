@@ -1709,7 +1709,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         <div className="flex gap-0.5 overflow-x-auto scrollbar-none px-2 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
           {([
             ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
-            ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
+            // ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],   // tạm ẩn tab Gợi ý (bật lại: bỏ comment dòng này)
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
             ['keo',      '🎯', 'Kèo',       'border-[#f59e0b]'],
             ...(live.period >= 4 ? [['frames', '📷', 'HT', 'border-[#a78bfa]']] as [string, string, string, string][] : []),
