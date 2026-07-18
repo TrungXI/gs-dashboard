@@ -2003,21 +2003,6 @@ function HitBadge({ hit, label }: { hit: boolean | null; label: string }) {
   );
 }
 
-// Plain result badge (no "HC"/"OU" prefix); optional short label for combined rows
-function ResultBadge({ hit, label }: { hit: boolean | null; label?: string }) {
-  const cls = hit === true
-    ? 'bg-[#16a34a]/15 border-[#16a34a]/40 text-[#4ade80]'
-    : hit === false
-      ? 'bg-[#dc2626]/15 border-[#dc2626]/40 text-[#f87171]'
-      : 'bg-[#555]/15 border-[#555]/40 text-[#aaa]';
-  const text = hit === true ? 'ĂN' : hit === false ? 'THUA' : 'HÒA';
-  return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${cls}`}>
-      {label && <span className="text-[#666] font-semibold">{label}</span>}{text}
-    </span>
-  );
-}
-
 // Parse predict.js verdict: pull the reason text after "[HC] ... ::" and "[OU] ... ::"
 function parseVerdictReasons(verdict: string | null): { hc: string | null; ou: string | null } {
   if (!verdict) return { hc: null, ou: null };
@@ -2030,17 +2015,6 @@ function parseVerdictReasons(verdict: string | null): { hc: string | null; ou: s
   return { hc: grab('HC'), ou: grab('OU') };
 }
 
-// Parse "3-1" → winner side. Returns 'home' | 'away' | 'draw' | null.
-function ftWinner(ft: string | null): 'home' | 'away' | 'draw' | null {
-  if (!ft) return null;
-  const m = ft.match(/(\d+)\s*-\s*(\d+)/);
-  if (!m) return null;
-  const h = Number(m[1]);
-  const a = Number(m[2]);
-  if (h === a) return 'draw';
-  return h > a ? 'home' : 'away';
-}
-
 function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bets: GsBetsResponse | null; homeName: string; awayName: string }) {
   if (loading || bets === null) {
     return <div className="flex items-center justify-center py-16 text-[#666] text-[13px]">Đang tải kèo…</div>;
@@ -2051,8 +2025,6 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
 
   const pick = bets.pick ?? null;
   const stats = bets.stats ?? null;
-  const calibration = bets.calibration ?? [];
-  const recent = bets.recent ?? [];
 
   // Chỉ số H1 rows: [label, home, away]
   type StatRow = [string, string | number | null, string | number | null];
@@ -2185,90 +2157,6 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
                   <span className={`flex-1 text-left tabular-nums font-semibold ${hHi ? 'text-[#4ade80]' : 'text-[#bbb]'}`}>{h ?? '—'}</span>
                   <span className="w-[30%] text-center text-[10px] text-[#666]">{label}</span>
                   <span className={`flex-1 text-right tabular-nums font-semibold ${aHi ? 'text-[#f87171]' : 'text-[#bbb]'}`}>{a ?? '—'}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 3. Track record */}
-      <div className="px-3 py-3 md:px-4 md:py-4">
-        <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📈 Track record</div>
-
-        {calibration.length === 0 ? (
-          <div className="text-[12px] text-[#555] py-1">Chưa có dữ liệu thống kê</div>
-        ) : (
-          <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden mb-3">
-            <div className="flex items-center px-3 py-1.5 text-[10px] font-bold text-[#888] border-b border-[#222]">
-              <span className="w-[22%] text-left">Line</span>
-              <span className="w-[14%] text-center">n</span>
-              <span className="flex-1 text-center">W/L/P</span>
-              <span className="w-[20%] text-right">Win%</span>
-            </div>
-            {calibration.map((c, i) => {
-              const decided = c.win + c.loss;
-              const winPct = decided > 0 ? Math.round((c.win / decided) * 100) : 0;
-              return (
-                <div key={i} className="flex items-center px-3 py-1 text-[12px] border-b border-[#1a1a1a]/60 last:border-0">
-                  <span className="w-[22%] text-left tabular-nums text-[#ccc]">{c.hc_line ?? '—'}</span>
-                  <span className="w-[14%] text-center tabular-nums text-[#888]">{c.n}</span>
-                  <span className="flex-1 text-center tabular-nums">
-                    <span className="text-[#4ade80]">{c.win}</span>
-                    <span className="text-[#555]">/</span>
-                    <span className="text-[#f87171]">{c.loss}</span>
-                    <span className="text-[#555]">/</span>
-                    <span className="text-[#aaa]">{c.push}</span>
-                  </span>
-                  <span className={`w-[20%] text-right tabular-nums font-bold ${winPct >= 50 ? 'text-[#4ade80]' : 'text-[#f87171]'}`}>
-                    {decided > 0 ? `${winPct}%` : '—'}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {recent.length > 0 && (
-          <div className="flex flex-col divide-y divide-[#1e1e1e]">
-            {/* header */}
-            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 py-1 text-[9px] font-bold uppercase tracking-wide text-[#555]">
-              <span className="text-left">Trận</span>
-              <span className="text-center">HT→FT</span>
-              <span className="text-left">Kèo</span>
-              <span className="text-right">KQ</span>
-            </div>
-            {recent.map((r, i) => {
-              const win = ftWinner(r.ft_score);
-              const homeCls = win === 'home' ? 'text-[#4ade80] font-bold' : 'text-[#bbb]';
-              const awayCls = win === 'away' ? 'text-[#4ade80] font-bold' : 'text-[#bbb]';
-              const keo = [r.side_pick, r.ou_pick].filter(Boolean).join(' · ') || '—';
-              const hasHc = !!r.side_pick;
-              const hasOu = !!r.ou_pick;
-              return (
-                <div key={i} className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-x-2 py-1 text-[11px]">
-                  <span className="min-w-0 truncate">
-                    <span className={homeCls}>{r.home_team ?? '?'}</span>
-                    <span className="text-[#444]"> vs </span>
-                    <span className={awayCls}>{r.away_team ?? '?'}</span>
-                    <span className="ml-1 text-[10px]" title={r.has_stats ? 'Có chỉ số H1' : 'Chưa có chỉ số'}>{r.has_stats ? '📊' : '—'}</span>
-                  </span>
-                  <span className="tabular-nums text-[#888] text-center whitespace-nowrap">
-                    {r.ht_score ?? '?'}{r.ft_score ? `→${r.ft_score}` : ''}
-                  </span>
-                  <span className="text-[10px] text-[#fbbf24] font-semibold whitespace-nowrap">{keo}</span>
-                  <span className="flex items-center justify-end gap-1 flex-shrink-0">
-                    {hasHc && hasOu ? (
-                      <>
-                        <ResultBadge hit={r.side_hit} label="Chấp" />
-                        <ResultBadge hit={r.ou_hit} label="T/X" />
-                      </>
-                    ) : hasOu ? (
-                      <ResultBadge hit={r.ou_hit} />
-                    ) : (
-                      <ResultBadge hit={r.side_hit} />
-                    )}
-                  </span>
                 </div>
               );
             })}

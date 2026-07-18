@@ -68,35 +68,11 @@ export interface GsBetStats {
   captured_at: string | null;
 }
 
-export interface GsBetCalibrationRow {
-  hc_line: string | null;
-  n: number;
-  win: number;
-  loss: number;
-  push: number;
-}
-
-export interface GsBetRecentRow {
-  event_id: number;
-  home_team: string | null;
-  away_team: string | null;
-  ht_score: string | null;
-  ft_score: string | null;
-  side_pick: string | null;
-  ou_pick: string | null;
-  side_hit: boolean | null;
-  ou_hit: boolean | null;
-  confidence: string | null;
-  has_stats: boolean;
-}
-
 export interface GsBetsResponse {
   ok: boolean;
   error?: string;
   pick?: GsBetPick | null;
   stats?: GsBetStats | null;
-  calibration?: GsBetCalibrationRow[];
-  recent?: GsBetRecentRow[];
 }
 
 export async function GET(req: NextRequest) {
@@ -107,7 +83,7 @@ export async function GET(req: NextRequest) {
   if (!eventId) return Response.json({ ok: false, error: 'missing eventId' } satisfies GsBetsResponse);
 
   try {
-    const [pickRes, statsRes, calibRes, recentRes] = await Promise.all([
+    const [pickRes, statsRes] = await Promise.all([
       pool.query<GsBetPick>(
         `SELECT event_id, home_team, away_team, home_team_id, away_team_id,
                 ht_score, ft_score, side_pick, ou_pick, side_hit, ou_hit,
@@ -120,38 +96,12 @@ export async function GET(req: NextRequest) {
         `SELECT * FROM gs_ht_stats WHERE event_id = $1 LIMIT 1`,
         [eventId],
       ),
-      pool.query<GsBetCalibrationRow>(
-        `SELECT hc_line,
-                count(*) n,
-                count(*) FILTER (WHERE side_hit) win,
-                count(*) FILTER (WHERE side_hit IS FALSE) loss,
-                count(*) FILTER (WHERE side_hit IS NULL) push
-         FROM gs_ht_analysis
-         WHERE settled_at IS NOT NULL AND side_pick IS NOT NULL AND side_pick NOT ILIKE '%BO%'
-         GROUP BY hc_line ORDER BY hc_line`,
-      ),
-      pool.query<GsBetRecentRow>(
-        `SELECT a.event_id, a.home_team, a.away_team, a.ht_score, a.ft_score,
-                a.side_pick, a.ou_pick, a.side_hit, a.ou_hit, a.confidence,
-                EXISTS (SELECT 1 FROM gs_ht_stats s WHERE s.event_id = a.event_id) AS has_stats
-         FROM gs_ht_analysis a
-         WHERE a.settled_at IS NOT NULL
-         ORDER BY a.settled_at DESC LIMIT 8`,
-      ),
     ]);
 
     return Response.json({
       ok: true,
       pick: pickRes.rows[0] ?? null,
       stats: statsRes.rows[0] ?? null,
-      calibration: calibRes.rows.map(r => ({
-        hc_line: r.hc_line,
-        n: Number(r.n),
-        win: Number(r.win),
-        loss: Number(r.loss),
-        push: Number(r.push),
-      })),
-      recent: recentRes.rows,
     } satisfies GsBetsResponse);
   } catch (e) {
     return Response.json({ ok: false, error: String(e) } satisfies GsBetsResponse);
