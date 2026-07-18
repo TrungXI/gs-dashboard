@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { AsianResult, GsReportResponse, GsReportRow } from '../api/gs-report/route';
-import { LoadingState } from '../../components/Spinner';
+import type { AsianResult, GsReportResponse, GsReportRow } from '../app/api/gs-report/route';
+import { LoadingState } from './Spinner';
 
 // ── Result badge config ───────────────────────────────────────────────────────
 
@@ -123,9 +123,9 @@ function Card({ label, value, sub }: { label: string; value: React.ReactNode; su
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+// ── View ──────────────────────────────────────────────────────────────────────
 
-export default function ReportPage() {
+export default function BetStatsView() {
   const [data, setData] = useState<GsReportResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterKey>('all');
@@ -157,22 +157,22 @@ export default function ReportPage() {
   // ── Loading ──
   if (data === null && error === null) {
     return (
-      <main className="min-h-screen bg-[#0d0d0d] p-3 md:p-6 text-[#e8e8e8]">
+      <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
         <LoadingState label="Đang tải…" className="py-24" />
-      </main>
+      </>
     );
   }
 
   // ── Error / empty ──
   if (error !== null || rows.length === 0) {
     return (
-      <main className="min-h-screen bg-[#0d0d0d] p-3 md:p-6 text-[#e8e8e8]">
+      <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
         <div className="flex items-center justify-center py-24 text-[13px] text-[#666]">
           {error !== null ? `Lỗi tải dữ liệu: ${error}` : 'Chưa có kèo nào được ghi nhận'}
         </div>
-      </main>
+      </>
     );
   }
 
@@ -180,7 +180,7 @@ export default function ReportPage() {
   const trend = data!.trend!;
 
   return (
-    <main className="min-h-screen bg-[#0d0d0d] p-3 md:p-6 text-[#e8e8e8]">
+    <>
       <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
 
       {/* Summary cards */}
@@ -342,6 +342,6 @@ export default function ReportPage() {
           })}
         </div>
       </div>
-    </main>
+    </>
   );
 }

@@ -7,8 +7,9 @@ import DataTable from './DataTable';
 import GSLive from './GSLive';
 import Analysis from './Analysis';
 import MatchAnalysis from './MatchAnalysis';
+import BetStatsView from './BetStatsView';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -154,6 +155,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
     ['gs-live', '🔴', 'GS Live'],
     ['report', '📊', 'Đối Đầu'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
+    ['bet-stats', '📊', 'Thống kê kèo'],
   ];
 
   return (
@@ -330,6 +332,8 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
           </>
         ) : view === 'match-analysis' ? (
           <MatchAnalysis />
+        ) : view === 'bet-stats' ? (
+          <BetStatsView />
         ) : (
           <GSLive />
         )}
