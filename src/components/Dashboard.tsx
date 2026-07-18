@@ -279,7 +279,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
               </span>
             </div>
 
-            <div className="mb-5 flex flex-wrap items-end gap-4 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3.5">
+            <div className="mb-5 flex flex-wrap items-end gap-4 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3.5 max-md:sticky max-md:top-0 max-md:z-30">
               <div className="min-w-[180px] flex-1">
                 <div className="mb-1 text-[11px] text-white/45">Đội 1</div>
                 <SearchDropdown

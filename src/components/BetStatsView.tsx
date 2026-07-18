@@ -220,7 +220,7 @@ export default function BetStatsView() {
       </div>
 
       {/* Filter chips */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
+      <div className="mb-3 flex flex-wrap gap-1.5 max-md:sticky max-md:top-0 max-md:z-30 max-md:-mx-3 max-md:px-3 max-md:py-2 max-md:bg-[#0d0d0d]/95 max-md:backdrop-blur max-md:border-b max-md:border-[#2a2a2a]">
         {FILTERS.map(({ key, label }) => (
           <button
             key={key}
