@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 const NAV: { href: string; icon: string; label: string }[] = [
-  { href: '/', icon: '🔴', label: 'Live' },
+  { href: '/', icon: '📈', label: 'Phân tích kèo' },
   { href: '/report', icon: '📊', label: 'Thống kê kèo' },
 ];
 
