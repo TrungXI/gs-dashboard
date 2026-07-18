@@ -4,13 +4,14 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type React from 'react';
 import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
-import { teamDayStats, todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats, type DayOfWeek } from '../lib/dayStats';
+import { todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats } from '../lib/dayStats';
 import { TypeBadge, ResultTag } from './badges';
 import { LoadingState } from './Spinner';
 import MatchAnalysis from './MatchAnalysis';
 import SearchDropdown from './SearchDropdown';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
 import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
+import type { TeamAnalysisAgg } from '../app/api/gs-team-analysis/route';
 
 
 interface GsLiveMatch {
@@ -1098,6 +1099,7 @@ function LeagueSection({
 function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
+  const [agg, setAgg] = useState<TeamAnalysisAgg | null>(null);
   const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo' | 'history'>('confront');
   type HtFrame = { frame_index: number; frame_url: string; video_url: string };
   const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
@@ -1153,30 +1155,33 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     let alive = true;
     setLoading(true);
     setMatches(null);
+    setAgg(null);
     const url = `/api/gs-team-analysis?home=${encodeURIComponent(live.homeTeam)}&away=${encodeURIComponent(live.awayTeam)}`;
     fetch(url)
       .then(r => r.json())
-      .then((json: { ok: boolean; matches?: Match[] }) => {
+      .then((json: { ok: boolean; matches?: Match[]; aggregates?: TeamAnalysisAgg }) => {
         if (!alive) return;
         setMatches(json.matches ?? []);
+        setAgg(json.aggregates ?? null);
       })
-      .catch(() => { if (alive) setMatches([]); })
+      .catch(() => { if (alive) { setMatches([]); setAgg(null); } })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [live.homeTeam, live.awayTeam]);
 
   // live.homeTeam / live.awayTeam are already canonical English (from gs-live normalizeTeam)
-  // gs-team-analysis now returns names from gs_teams via JOIN — direct comparison works
+  // gs-team-analysis now returns names from gs_teams via JOIN — direct comparison works.
+  // Form / H2H / day / hold aggregates are computed SERVER-SIDE (over the full
+  // match set) and delivered in `agg`; the raw `matches` list below is only the
+  // bounded slice the UI renders in FormList / H2HList.
 
-  // Form: last 100 for each team
+  // Raw lists for rendering (bounded server-side; slice for display safety).
   const homeMatches = matches
     ? matches.filter(m => m.homeTeam === live.homeTeam || m.awayTeam === live.homeTeam).slice(0, 100)
     : [];
   const awayMatches = matches
     ? matches.filter(m => m.homeTeam === live.awayTeam || m.awayTeam === live.awayTeam).slice(0, 100)
     : [];
-
-  // H2H: matches between both teams, last 100
   const h2hMatches = matches
     ? matches.filter(m =>
         (m.homeTeam === live.homeTeam && m.awayTeam === live.awayTeam) ||
@@ -1191,49 +1196,30 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     return Array.from(set).sort((a, b) => a.localeCompare(b)).map(t => ({ value: t, label: t }));
   })();
 
-  // Day stats
+  // Day stats (server-computed over the full set)
   const today = todayDayOfWeek();
   const todayLabel = DAY_LABELS_FULL[today];
-  const homeDayStats = matches ? teamDayStats(matches, live.homeTeam) : [];
-  const awayDayStats = matches ? teamDayStats(matches, live.awayTeam) : [];
+  const homeDayStats = agg?.home.dayStats ?? [];
+  const awayDayStats = agg?.away.dayStats ?? [];
 
-  // Prediction stat bars — computed instantly from existing data
-  const homeW = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'W').length;
-  const homeD = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'D').length;
-  const homeL = homeMatches.filter(m => resultFor(m, live.homeTeam) === 'L').length;
-  const awayW = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'W').length;
-  const awayD = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'D').length;
-  const awayL = awayMatches.filter(m => resultFor(m, live.awayTeam) === 'L').length;
+  // Form / hold / H2H aggregates — server-computed
+  const homeW = agg?.home.W ?? 0;
+  const homeD = agg?.home.D ?? 0;
+  const homeL = agg?.home.L ?? 0;
+  const awayW = agg?.away.W ?? 0;
+  const awayD = agg?.away.D ?? 0;
+  const awayL = agg?.away.L ?? 0;
 
-  // Goals conceded avg & hold rate (when leading at H1, did they win full time?)
-  const homeAvgConceded = homeMatches.length
-    ? homeMatches.reduce((s, m) => s + (m.homeTeam === live.homeTeam ? +m.ttAway : +m.ttHome), 0) / homeMatches.length
-    : 0;
-  const awayAvgConceded = awayMatches.length
-    ? awayMatches.reduce((s, m) => s + (m.homeTeam === live.awayTeam ? +m.ttAway : +m.ttHome), 0) / awayMatches.length
-    : 0;
-  const homeHoldW = homeMatches.filter(m => {
-    const isHome = m.homeTeam === live.homeTeam;
-    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, live.homeTeam) === 'W';
-  }).length;
-  const homeHoldTotal = homeMatches.filter(m => {
-    const isHome = m.homeTeam === live.homeTeam;
-    return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
-  }).length;
-  const awayHoldW = awayMatches.filter(m => {
-    const isHome = m.homeTeam === live.awayTeam;
-    return (isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home) && resultFor(m, live.awayTeam) === 'W';
-  }).length;
-  const awayHoldTotal = awayMatches.filter(m => {
-    const isHome = m.homeTeam === live.awayTeam;
-    return isHome ? +m.h1Home > +m.h1Away : +m.h1Away > +m.h1Home;
-  }).length;
-  const h2hHomeW = h2hMatches.filter(m => {
-    const hs = +m.ttHome; const as = +m.ttAway;
-    return m.homeTeam === live.homeTeam ? hs > as : as > hs;
-  }).length;
-  const h2hDraws = h2hMatches.filter(m => +m.ttHome === +m.ttAway).length;
-  const h2hAwayW = h2hMatches.length - h2hHomeW - h2hDraws;
+  const homeAvgConceded = agg?.home.avgConceded ?? 0;
+  const awayAvgConceded = agg?.away.avgConceded ?? 0;
+  const homeHoldW = agg?.home.holdW ?? 0;
+  const homeHoldTotal = agg?.home.holdTotal ?? 0;
+  const awayHoldW = agg?.away.holdW ?? 0;
+  const awayHoldTotal = agg?.away.holdTotal ?? 0;
+  const h2hHomeW = agg?.h2h.homeW ?? 0;
+  const h2hDraws = agg?.h2h.draws ?? 0;
+  const h2hAwayW = agg?.h2h.awayW ?? 0;
+  const h2hTotal = agg?.h2h.n ?? 0;
 
   function renderClaudeLine(line: string, idx: number) {
     const trimmed = line.trim();
@@ -1349,12 +1335,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       }
     } catch { /* non-fatal */ }
 
-    const homeAvgGoals = homeMatches.length
-      ? homeMatches.reduce((s, m) => s + (m.homeTeam === live.homeTeam ? +m.ttHome : +m.ttAway), 0) / homeMatches.length
-      : 0;
-    const awayAvgGoals = awayMatches.length
-      ? awayMatches.reduce((s, m) => s + (m.homeTeam === live.awayTeam ? +m.ttHome : +m.ttAway), 0) / awayMatches.length
-      : 0;
+    const homeAvgGoals = agg?.home.avgGoals ?? 0;
+    const awayAvgGoals = agg?.away.avgGoals ?? 0;
 
     const body = JSON.stringify({
       homeTeam: live.homeTeam,
@@ -1389,7 +1371,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
       awayHoldW, awayHoldTotal,
       homeW, homeD, homeL, homeAvgGoals,
       awayW, awayD, awayL, awayAvgGoals,
-      h2hHomeW, h2hDraws, h2hAwayW, h2hTotal: h2hMatches.length,
+      h2hHomeW, h2hDraws, h2hAwayW, h2hTotal,
       previousPredictions: previousPredictions.length > 0 ? previousPredictions : undefined,
     });
     const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: ctrl.signal };
@@ -1642,8 +1624,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     const totalFormPts = homeFormPts + awayFormPts;
 
     let homeP = totalFormPts > 0 ? homeFormPts / totalFormPts : 0.5;
-    if (h2hMatches.length > 0) {
-      const h2hRatio = (h2hHomeW + h2hDraws * 0.5) / h2hMatches.length;
+    if (h2hTotal > 0) {
+      const h2hRatio = (h2hHomeW + h2hDraws * 0.5) / h2hTotal;
       homeP = homeP * 0.7 + h2hRatio * 0.3;
     }
     const scoreDiff = live.h1Home - live.h1Away;
@@ -1710,7 +1692,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           <div className="flex items-center gap-1">
             <Dots w={awayW} d={awayD} l={awayL} />
           </div>
-          {h2hMatches.length > 0 && (
+          {h2hTotal > 0 && (
             <span className="text-[10px] text-[#555] flex-shrink-0">H2H {h2hHomeW}-{h2hDraws}-{h2hAwayW}</span>
           )}
         </div>

@@ -92,9 +92,13 @@ export interface GsReportResponse {
   ok: boolean;
   error?: string;
   rows?: GsReportRow[];
+  rowsTotal?: number; // true count of rows matching the active filter (independent of limit/offset)
   summary?: GsReportSummary;
   trend?: GsReportTrend;
 }
+
+/** Row-list filter — mirrors the client filter chips, applied server-side. */
+export type ReportFilter = 'all' | 'settled' | 'win' | 'loss' | 'skip';
 
 // ── Derivation helpers ────────────────────────────────────────────────────────
 
@@ -330,13 +334,64 @@ function buildTrend(orderedGradedLegs: AsianResult[]): GsReportTrend {
   return { last, prev, direction };
 }
 
+// ── Row-list filter (server-side) ─────────────────────────────────────────────
+
+const WIN_SET: AsianResult[] = ['win', 'half-win'];
+const LOSS_SET: AsianResult[] = ['loss', 'half-loss'];
+
+/** Match a derived row against the active filter — mirrors the client chips. */
+function rowMatchesFilter(row: GsReportRow, f: ReportFilter): boolean {
+  const results = [row.side_result, row.ou_result];
+  switch (f) {
+    case 'all':
+      return true;
+    case 'settled':
+      return results.some((r) => GRADED.includes(r));
+    case 'win':
+      return results.some((r) => WIN_SET.includes(r));
+    case 'loss':
+      return results.some((r) => LOSS_SET.includes(r));
+    case 'skip':
+      return results.some((r) => r === 'skip');
+    default:
+      return true;
+  }
+}
+
+function parseFilter(v: string | null): ReportFilter {
+  switch (v) {
+    case 'settled':
+    case 'win':
+    case 'loss':
+    case 'skip':
+      return v;
+    default:
+      return 'all';
+  }
+}
+
+function parseIntParam(v: string | null, fallback: number, min: number): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < min) return fallback;
+  return n;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-export async function GET() {
+export async function GET(req: Request) {
   const pool = getPool();
   if (!pool) return Response.json({ ok: false, error: 'no db' } satisfies GsReportResponse);
 
+  const url = new URL(req.url);
+  const filter = parseFilter(url.searchParams.get('filter'));
+  const limit = parseIntParam(url.searchParams.get('limit'), 50, 1);
+  const offset = parseIntParam(url.searchParams.get('offset'), 0, 0);
+
   try {
+    // Read every raw row once (newest-first). The derived Asian results that both
+    // the summary/trend and the row filter depend on are computed here in JS, so
+    // filtering/paginating happens against derived rows on the server — the client
+    // only ever receives a single page.
     const res = await pool.query<GsReportRowRaw>(
       `SELECT event_id, created_at, home_team, away_team, ht_score, ft_score,
               side_pick, side_hit, ou_pick, ou_hit, confidence, verdict, review_note,
@@ -346,22 +401,23 @@ export async function GET() {
        ORDER BY created_at DESC NULLS LAST`,
     );
 
-    const rows: GsReportRow[] = res.rows.map((r) => ({
+    const allRows: GsReportRow[] = res.rows.map((r) => ({
       ...r,
       side_result: deriveSideResult(r),
       ou_result: deriveOuResult(r),
     }));
 
-    const side = legSummary(rows.map((r) => r.side_result));
-    const ou = legSummary(rows.map((r) => r.ou_result));
+    // Summary / trend stay over ALL rows (unfiltered) — the full dataset.
+    const side = legSummary(allRows.map((r) => r.side_result));
+    const ou = legSummary(allRows.map((r) => r.ou_result));
 
-    const skipped = rows.filter((r) => r.side_result === 'skip' || r.ou_result === 'skip').length;
-    const pending = rows.filter((r) => !parseScore(r.ft_score)).length;
+    const skipped = allRows.filter((r) => r.side_result === 'skip' || r.ou_result === 'skip').length;
+    const pending = allRows.filter((r) => !parseScore(r.ft_score)).length;
     const halfWin = side.buckets['half-win'] + ou.buckets['half-win'];
     const halfLoss = side.buckets['half-loss'] + ou.buckets['half-loss'];
 
     const summary: GsReportSummary = {
-      total: rows.length,
+      total: allRows.length,
       skipped,
       pending,
       halfWin,
@@ -372,13 +428,18 @@ export async function GET() {
 
     // Trend: combined graded legs, newest-first (rows already sorted DESC).
     const gradedLegs: AsianResult[] = [];
-    for (const r of rows) {
+    for (const r of allRows) {
       if (GRADED.includes(r.side_result)) gradedLegs.push(r.side_result);
       if (GRADED.includes(r.ou_result)) gradedLegs.push(r.ou_result);
     }
     const trend = buildTrend(gradedLegs);
 
-    return Response.json({ ok: true, rows, summary, trend } satisfies GsReportResponse);
+    // Rows page: apply the active filter, count the full filtered set, then slice.
+    const filteredRows = filter === 'all' ? allRows : allRows.filter((r) => rowMatchesFilter(r, filter));
+    const rowsTotal = filteredRows.length;
+    const rows = filteredRows.slice(offset, offset + limit);
+
+    return Response.json({ ok: true, rows, rowsTotal, summary, trend } satisfies GsReportResponse);
   } catch (e) {
     return Response.json({ ok: false, error: String(e) } satisfies GsReportResponse);
   }

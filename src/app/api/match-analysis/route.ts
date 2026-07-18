@@ -3,6 +3,13 @@ import { Pool } from 'pg';
 
 export const dynamic = 'force-dynamic';
 
+// Cap unbounded reads. These endpoints previously SELECTed every snapshot row
+// across every event, then the client grouped + aggregated the whole set.
+// We now bound the number of DISTINCT events fetched (snapshots per event are
+// naturally small), so the payload stays flat regardless of history growth.
+const RECENT_EVENT_LIMIT = 60; // newest N events for the "recent" list
+const H2H_EVENT_LIMIT = 100;   // newest N head-to-head events for a team pair
+
 let pool: Pool | null = null;
 
 function getPool(): Pool {
@@ -236,10 +243,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, teams: rows.map(r => r.display) });
     }
 
-    // All matches, ordered newest-last
+    // Newest N events only — bounded so the client never groups an unbounded set.
     if (action === 'recent') {
       const { rows } = await db.query<Row>(
-        `${SELECT_WITH_NAMES} ORDER BY mol.event_id, mol.recorded_at`,
+        `${SELECT_WITH_NAMES}
+         WHERE mol.event_id IN (
+           SELECT event_id FROM match_odds_log
+           GROUP BY event_id
+           ORDER BY MAX(recorded_at) DESC
+           LIMIT $1
+         )
+         ORDER BY mol.event_id, mol.recorded_at`,
+        [RECENT_EVENT_LIMIT],
       );
       const matches = groupRows(rows).sort((a, b) => {
         const aT = a.snapshots.at(-1)?.recordedAt ?? '';
@@ -267,13 +282,20 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Team not found: ${missing}` }, { status: 404 });
     }
 
-    // Single query, both directions, filter by ID — no string comparison
+    // Single query, both directions, filter by ID — no string comparison.
+    // Bounded to the newest N matching events so the payload can't grow unbounded.
     const { rows } = await db.query<Row>(
       `${SELECT_WITH_NAMES}
-       WHERE (mol.home_team_id = $1 AND mol.away_team_id = $2)
-          OR (mol.home_team_id = $2 AND mol.away_team_id = $1)
+       WHERE mol.event_id IN (
+         SELECT event_id FROM match_odds_log
+         WHERE (home_team_id = $1 AND away_team_id = $2)
+            OR (home_team_id = $2 AND away_team_id = $1)
+         GROUP BY event_id
+         ORDER BY MAX(recorded_at) DESC
+         LIMIT $3
+       )
        ORDER BY mol.event_id, mol.recorded_at`,
-      [home.id, away.id],
+      [home.id, away.id, H2H_EVENT_LIMIT],
     );
 
     const allMatches = groupRows(rows);

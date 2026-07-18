@@ -1,8 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import type { AsianResult, GsReportResponse, GsReportRow } from '../app/api/gs-report/route';
-import { LoadingState } from './Spinner';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type {
+  AsianResult,
+  GsReportResponse,
+  GsReportRow,
+  GsReportSummary,
+  GsReportTrend,
+} from '../app/api/gs-report/route';
+import { LoadingState, Spinner } from './Spinner';
 
 // ── Result badge config ───────────────────────────────────────────────────────
 
@@ -80,27 +86,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'skip', label: 'BỎ' },
 ];
 
-const WIN_SET: AsianResult[] = ['win', 'half-win'];
-const LOSS_SET: AsianResult[] = ['loss', 'half-loss'];
-const GRADED_SET: AsianResult[] = ['win', 'half-win', 'push', 'half-loss', 'loss'];
-
-function rowMatchesFilter(row: GsReportRow, f: FilterKey): boolean {
-  const results = [row.side_result, row.ou_result];
-  switch (f) {
-    case 'all':
-      return true;
-    case 'settled':
-      return results.some((r) => GRADED_SET.includes(r));
-    case 'win':
-      return results.some((r) => WIN_SET.includes(r));
-    case 'loss':
-      return results.some((r) => LOSS_SET.includes(r));
-    case 'skip':
-      return results.some((r) => r === 'skip');
-    default:
-      return true;
-  }
-}
+const PAGE_SIZE = 50;
 
 // ── Trend arrow ───────────────────────────────────────────────────────────────
 
@@ -126,36 +112,65 @@ function Card({ label, value, sub }: { label: string; value: React.ReactNode; su
 // ── View ──────────────────────────────────────────────────────────────────────
 
 export default function BetStatsView() {
-  const [data, setData] = useState<GsReportResponse | null>(null);
+  const [rows, setRows] = useState<GsReportRow[]>([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [summary, setSummary] = useState<GsReportSummary | null>(null);
+  const [trend, setTrend] = useState<GsReportTrend | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true); // initial / filter-change load
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch('/api/gs-report', { cache: 'no-store' });
-        const json: GsReportResponse = await res.json();
-        if (cancelled) return;
-        if (!json.ok) {
-          setError(json.error || 'Không tải được dữ liệu');
-        } else {
-          setData(json);
-        }
-      } catch (e) {
-        if (!cancelled) setError(String(e));
+  // Guards against a stale response overwriting a newer filter selection.
+  const reqRef = useRef(0);
+
+  const load = useCallback(async (f: FilterKey, offset: number) => {
+    const reqId = ++reqRef.current;
+    const append = offset > 0;
+    if (append) setLoadingMore(true);
+    else {
+      setLoading(true);
+      setError(null);
+    }
+    try {
+      const res = await fetch(
+        `/api/gs-report?filter=${f}&limit=${PAGE_SIZE}&offset=${offset}`,
+        { cache: 'no-store' },
+      );
+      const json: GsReportResponse = await res.json();
+      if (reqId !== reqRef.current) return; // superseded by a newer request
+      if (!json.ok) {
+        setError(json.error || 'Không tải được dữ liệu');
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      setSummary(json.summary ?? null);
+      setTrend(json.trend ?? null);
+      setRowsTotal(json.rowsTotal ?? 0);
+      setRows((prev) => (append ? [...prev, ...(json.rows ?? [])] : json.rows ?? []));
+    } catch (e) {
+      if (reqId === reqRef.current) setError(String(e));
+    } finally {
+      if (reqId === reqRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    }
   }, []);
 
-  const rows = data?.rows ?? [];
-  const filtered = useMemo(() => rows.filter((r) => rowMatchesFilter(r, filter)), [rows, filter]);
+  // Fetch page 0 on mount + whenever the filter changes.
+  useEffect(() => {
+    load(filter, 0);
+  }, [filter, load]);
 
-  // ── Loading ──
-  if (data === null && error === null) {
+  const selectFilter = (key: FilterKey) => {
+    if (key === filter) return;
+    setFilter(key);
+  };
+
+  const loadMore = () => load(filter, rows.length);
+
+  // ── Loading (initial / filter change) ──
+  if (loading) {
     return (
       <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
@@ -176,8 +191,7 @@ export default function BetStatsView() {
     );
   }
 
-  const summary = data!.summary!;
-  const trend = data!.trend!;
+  if (summary === null || trend === null) return null;
 
   return (
     <>
@@ -224,7 +238,7 @@ export default function BetStatsView() {
         {FILTERS.map(({ key, label }) => (
           <button
             key={key}
-            onClick={() => setFilter(key)}
+            onClick={() => selectFilter(key)}
             className={`rounded-full px-3 py-1 text-[12px] font-semibold transition-colors ${
               filter === key
                 ? 'bg-[#17a2b8] text-white'
@@ -234,7 +248,7 @@ export default function BetStatsView() {
             {label}
           </button>
         ))}
-        <span className="ml-auto self-center text-[11px] text-[#666]">{filtered.length} trận</span>
+        <span className="ml-auto self-center text-[11px] text-[#666]">{rowsTotal} trận</span>
       </div>
 
       {/* Table (desktop only) */}
@@ -252,7 +266,7 @@ export default function BetStatsView() {
           </div>
 
           {/* Rows */}
-          {filtered.map((row) => {
+          {rows.map((row) => {
             const winner = ftWinner(row.ft_score);
             const { hc, ou } = parseVerdictReasons(row.verdict);
             const hasParsed = hc || ou;
@@ -345,7 +359,7 @@ export default function BetStatsView() {
 
       {/* Cards (mobile only) */}
       <div className="md:hidden flex flex-col gap-2.5">
-        {filtered.map((row) => {
+        {rows.map((row) => {
           const winner = ftWinner(row.ft_score);
           const { hc, ou } = parseVerdictReasons(row.verdict);
           const hasParsed = hc || ou;
@@ -429,6 +443,20 @@ export default function BetStatsView() {
           );
         })}
       </div>
+
+      {/* Load more */}
+      {rows.length < rowsTotal && (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="inline-flex items-center gap-2 rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-2 text-[12px] font-semibold text-white/80 transition-colors hover:bg-white/[.06] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loadingMore && <Spinner size={14} />}
+            {loadingMore ? 'Đang tải…' : `Xem thêm (${rows.length}/${rowsTotal})`}
+          </button>
+        </div>
+      )}
     </>
   );
 }

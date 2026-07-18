@@ -38,10 +38,17 @@ export async function GET(req: NextRequest) {
 
   try {
     await ensureTable(pool);
+    // Bound to the last 50 predictions (newest kept), returned in ascending
+    // order so the client renders oldest-first as before.
     const { rows } = await pool.query(
       `SELECT score_home, score_away, half, minute, prediction_text, updated_at
-       FROM gs_claude_predictions
-       WHERE event_id = $1
+       FROM (
+         SELECT score_home, score_away, half, minute, prediction_text, updated_at
+         FROM gs_claude_predictions
+         WHERE event_id = $1
+         ORDER BY updated_at DESC
+         LIMIT 50
+       ) recent
        ORDER BY updated_at ASC`,
       [Number(eventId)],
     );
