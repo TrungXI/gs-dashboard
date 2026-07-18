@@ -225,7 +225,7 @@ export default function Dashboard({ initialMatches }: { initialMatches: Match[] 
       <main className="gs-main flex-1 overflow-y-auto p-3 pb-[72px] md:p-6 md:pb-6 bg-[#0d0d0d]">
         {view === 'data' ? (
           <>
-            <div className="mb-4 flex flex-wrap items-center gap-2.5">
+            <div className="mb-4 flex flex-wrap items-center gap-2.5 max-md:sticky max-md:top-0 max-md:z-30 max-md:-mx-3 max-md:px-3 max-md:py-2 max-md:bg-[#0d0d0d]/95 max-md:backdrop-blur max-md:border-b max-md:border-[#2a2a2a]">
               <div className="flex gap-1.5">
                 {typeChips.map(([v, label]) => (
                   <button
