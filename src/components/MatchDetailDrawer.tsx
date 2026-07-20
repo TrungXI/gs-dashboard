@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { LoadingState } from './Spinner';
 import H1StatsPanel from './H1StatsPanel';
 import MatchAnalysis from './MatchAnalysis';
@@ -123,11 +123,12 @@ export default function MatchDetailDrawer({
   const [stats, setStats] = useState<GsBetStats | null>(null);
   const [tab, setTab] = useState<'h1' | 'h2h' | 'ai'>('h1');
 
-  // Tab AI Kèo — lazy: chỉ fetch khi mở tab (tiết kiệm chi phí API)
+  // Tab AI Kèo — prefetch ngầm khi mở drawer (nếu độ phủ ≥80%), lần sau click tab là tức thì.
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiPick, setAiPick] = useState<GsAiPickResponse | null>(null);
-  const [aiFetched, setAiFetched] = useState(false);
+  // Guard: fetch AI đúng 1 lần / event (dù prefetch hay click tab kích trước). Reset khi đổi event.
+  const aiFetchedRef = useRef(false);
 
   // ESC đóng drawer
   useEffect(() => {
@@ -147,7 +148,7 @@ export default function MatchDetailDrawer({
     // reset AI tab khi đổi trận
     setAiPick(null);
     setAiError(null);
-    setAiFetched(false);
+    aiFetchedRef.current = false;
     setAiLoading(false);
 
     fetch(`/api/gs-bets?eventId=${eventId}`)
@@ -175,18 +176,17 @@ export default function MatchDetailDrawer({
     };
   }, [eventId]);
 
-  // Lazy: chỉ gọi /api/gs-ai-pick lần đầu khi mở tab AI (tiết kiệm chi phí API)
-  useEffect(() => {
-    if (tab !== 'ai' || aiFetched) return;
-    let alive = true;
-    setAiFetched(true);
+  // Gọi /api/gs-ai-pick đúng 1 lần cho event hiện tại. Dùng cho cả prefetch (mở drawer)
+  // lẫn fallback khi user click tab AI. Guard bằng aiFetchedRef nên không double-fetch.
+  const fetchAiPick = useCallback(() => {
+    if (aiFetchedRef.current) return;
+    aiFetchedRef.current = true;
     setAiLoading(true);
     setAiError(null);
 
     fetch(`/api/gs-ai-pick?event=${eventId}`)
       .then(async (r) => {
         const json = (await r.json()) as GsAiPickResponse;
-        if (!alive) return;
         if (!json.ok) {
           setAiError(json.error || 'Không tạo được kèo AI.');
           return;
@@ -194,16 +194,12 @@ export default function MatchDetailDrawer({
         setAiPick(json);
       })
       .catch(() => {
-        if (alive) setAiError('Không tạo được kèo AI.');
+        setAiError('Không tạo được kèo AI.');
       })
       .finally(() => {
-        if (alive) setAiLoading(false);
+        setAiLoading(false);
       });
-
-    return () => {
-      alive = false;
-    };
-  }, [tab, aiFetched, eventId]);
+  }, [eventId]);
 
   // Tỉ số: HT lấy từ pick.ht_score (fallback stats.ht_score), FT từ pick.ft_score; H2 = FT − HT.
   const htStr = pick?.ht_score ?? stats?.ht_score ?? null;
@@ -214,6 +210,17 @@ export default function MatchDetailDrawer({
   // Tab AI Kèo chỉ hiện khi chỉ số H1 đủ độ phủ ≥ 80% (giống MIN_STATS_COVERAGE của predict.js).
   const coverage = statsCoverage(stats);
   const showAiTab = !loading && !error && coverage >= MIN_STATS_COVERAGE;
+
+  // PREFETCH: ngay khi tab AI đủ điều kiện hiện (độ phủ ≥80%), fetch ngầm trong lúc user
+  // còn ở tab "Chỉ Số H1" → tới khi click tab AI thì đã có sẵn (tức thì). Guard = fetch 1 lần.
+  useEffect(() => {
+    if (showAiTab) fetchAiPick();
+  }, [showAiTab, fetchAiPick]);
+
+  // Fallback: nếu user mở tab AI trước khi prefetch kịp chạy, vẫn kích fetch (guard chống trùng).
+  useEffect(() => {
+    if (tab === 'ai') fetchAiPick();
+  }, [tab, fetchAiPick]);
 
   // Nếu đang ở tab AI mà độ phủ tụt < 80% (đổi trận) → về tab H1.
   useEffect(() => {
@@ -314,7 +321,7 @@ export default function MatchDetailDrawer({
                 🧪 <span className="font-bold">AI THỬ NGHIỆM</span> — tham khảo, CHƯA chứng minh (bot AI đang thua ~2/10). KÈO CHÍNH xem Premium.
               </div>
 
-              {aiLoading && <LoadingState label="AI đang phân tích kèo…" />}
+              {aiLoading && <LoadingState label="🤖 AI đang phân tích… (~8 giây, lần sau tức thì)" />}
 
               {!aiLoading && aiError && (
                 <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">

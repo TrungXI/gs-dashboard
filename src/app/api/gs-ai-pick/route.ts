@@ -337,7 +337,7 @@ export async function GET(req: NextRequest) {
     const client = new AnthropicClient();
     const msg = await client.messages.create({
       model: AI_MODEL,
-      max_tokens: 700,
+      max_tokens: 400,
       system: SYSTEM,
       tools: [{
         name: 'emit_pick',
