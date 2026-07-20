@@ -319,6 +319,16 @@ function MatchRow({ match }: { match: MatchGroup }) {
   const homeNameCls = winner === 'home' ? 'text-[#fbbf24]' : 'text-white';
   const awayNameCls = winner === 'away' ? 'text-[#fbbf24]' : 'text-white';
 
+  // Đội thắng hiệp 1 (H1: a–b) → gạch chân đỏ; hoà H1 hoặc thiếu H1 → không gạch
+  const h1Winner: 'home' | 'away' | null =
+    h1 == null ? null
+    : h1.home > h1.away ? 'home'
+    : h1.away > h1.home ? 'away'
+    : null;
+  const h1Underline = 'border-b-2 border-red-500';
+  const homeH1Cls = h1Winner === 'home' ? h1Underline : '';
+  const awayH1Cls = h1Winner === 'away' ? h1Underline : '';
+
   return (
     <div className="overflow-hidden rounded-lg border border-[#2a2a2a] bg-[#141414]">
       <button
@@ -330,11 +340,11 @@ function MatchRow({ match }: { match: MatchGroup }) {
         <div className="md:hidden">
           <div className="flex items-center gap-1.5">
             <span className="text-[10px] text-white/30 shrink-0">{fmtDate(match.matchDate)}</span>
-            <span className={`text-[13px] font-semibold ${homeNameCls} flex-1 truncate text-right`}>{match.homeTeam}</span>
+            <span className={`text-[13px] font-semibold ${homeNameCls} ${homeH1Cls} flex-1 truncate text-right`}>{match.homeTeam}</span>
             <span className="text-[13px] font-bold text-[#fbbf24] tabular-nums shrink-0 px-1">
               {match.finalScore.home}–{match.finalScore.away}
             </span>
-            <span className={`text-[13px] font-semibold ${awayNameCls} flex-1 truncate`}>{match.awayTeam}</span>
+            <span className={`text-[13px] font-semibold ${awayNameCls} ${awayH1Cls} flex-1 truncate`}>{match.awayTeam}</span>
             <span className="text-[11px] text-white/30 shrink-0 ml-1">{open ? '▲' : '▼'}</span>
           </div>
           <div className="mt-1 flex gap-3 text-[11px] text-white/40 tabular-nums">
@@ -350,11 +360,11 @@ function MatchRow({ match }: { match: MatchGroup }) {
           style={{ gridTemplateColumns: '52px 1fr 56px 1fr 64px 100px 100px 18px' }}
         >
           <span className="text-[11px] text-white/35 truncate">{fmtDate(match.matchDate)}</span>
-          <span className={`text-[13px] font-semibold ${homeNameCls} truncate text-right`}>{match.homeTeam}</span>
+          <span className={`text-[13px] font-semibold ${homeNameCls} ${homeH1Cls} truncate text-right`}>{match.homeTeam}</span>
           <span className="text-[13px] font-bold text-[#fbbf24] text-center tabular-nums">
             {match.finalScore.home}–{match.finalScore.away}
           </span>
-          <span className={`text-[13px] font-semibold ${awayNameCls} truncate`}>{match.awayTeam}</span>
+          <span className={`text-[13px] font-semibold ${awayNameCls} ${awayH1Cls} truncate`}>{match.awayTeam}</span>
           <span className="text-[11px] text-white/40 tabular-nums">
             H1: <span className="text-[#93c5fd]">{h1 ? `${h1.home}–${h1.away}` : '-'}</span>
           </span>
