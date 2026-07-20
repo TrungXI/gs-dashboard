@@ -16,6 +16,7 @@ import type { GsBetsResponse } from '../app/api/gs-bets/route';
 import type { GsPickLite } from '../app/api/gs-picks/route';
 import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
 import type { TeamAnalysisAgg } from '../app/api/gs-team-analysis/route';
+import type { PairResult } from '../app/api/gs-h2h-splits/route';
 
 
 interface GsLiveMatch {
@@ -225,6 +226,8 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
   const [osNotiHT, setOsNotiHT] = useState(false);
   // Trận đã có chỉ số H1 (ảnh HT chụp + OCR ra số → row trong gs_ht_stats). Dùng cho accent VÀNG.
   const [hasStatsSet, setHasStatsSet] = useState<Set<number>>(new Set());
+  // Đối đầu H1/H2 (gs_matches_history) — batch theo cặp đội, refresh chậm (5 phút).
+  const [h2hMap, setH2hMap] = useState<Map<string, PairResult>>(new Map());
 
 
   useEffect(() => {
@@ -372,6 +375,32 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     return () => { alive = false; clearInterval(id); };
   }, [eventIdsKey]);
 
+  // Đối đầu H1/H2 — key ổn định theo TẬP cặp đội đang hiển thị (KHÔNG phụ thuộc odds tick).
+  // Chỉ đổi khi danh sách cặp đội đổi → effect không re-fire theo poll 2s.
+  const pairsKey = Array.from(new Set(matches.map((m) => `${m.homeTeam}|${m.awayTeam}`))).sort().join(',');
+  useEffect(() => {
+    if (!pairsKey) { setH2hMap(new Map()); return; }
+    let alive = true;
+    async function loadH2H() {
+      try {
+        // Encode team names but keep the , (pair sep) and | (A|B sep) literal so the server splits correctly.
+        const pairsParam = pairsKey
+          .split(',')
+          .map((pair) => pair.split('|').map(encodeURIComponent).join('|'))
+          .join(',');
+        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}`, { cache: 'no-store' });
+        const json = (await res.json()) as { ok: boolean; pairs?: PairResult[] };
+        if (!alive || !json.ok || !json.pairs) return;
+        setH2hMap(new Map(json.pairs.map((p) => [`${p.teamA}|${p.teamB}`, p])));
+      } catch {
+        /* giữ map cũ khi lỗi mạng tạm thời */
+      }
+    }
+    loadH2H();
+    const id = setInterval(loadH2H, 300_000); // 5 phút — lịch sử đổi chậm
+    return () => { alive = false; clearInterval(id); };
+  }, [pairsKey]);
+
   // Deep-link: when the requested match appears in the live list, open its
   // analysis drawer once. If the event never goes live it simply won't open
   // (LiveAnalysisDrawer needs the full live odds/phase object) — no crash.
@@ -458,6 +487,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
             title="Giao Hữu Châu Á GS (Ảo) 16 Phút"
             matches={matches.filter((m) => m.leagueId === 2140)}
             hasStatsSet={hasStatsSet}
+            h2hMap={h2hMap}
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
@@ -474,6 +504,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
             matches={matches.filter((m) => m.leagueId === 2125)}
             hasStatsSet={hasStatsSet}
+            h2hMap={h2hMap}
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
@@ -557,6 +588,41 @@ function AwayBox({ children }: { children: React.ReactNode }) {
 }
 
 const SUSPENDED_CELL = <span className="font-semibold text-[10px] text-[#555]">— — —</span>;
+
+// Đối đầu (lịch sử H2H): 1 DÒNG TEXT gọn / hiệp. `ĐĐ H1: A 45% · Hoà 25% · B 30% (n35)`
+// A xanh / hòa xám / B hồng, n mẫu mỏng (<8) → vàng cảnh báo. Dùng cả desktop lẫn mobile.
+function H2HLine({
+  label, s, meetings,
+}: {
+  label: string;
+  s: { aWinPct: number; drawPct: number; bWinPct: number };
+  meetings: number;
+}) {
+  const thin = meetings < 8;
+  return (
+    <div className="text-[10px] leading-tight whitespace-nowrap">
+      <span className="text-[#777]">ĐĐ {label}: </span>
+      <span className="text-[#4ade80]">A {s.aWinPct}%</span>
+      <span className="text-[#555]"> · </span>
+      <span className="text-[#888]">Hoà {s.drawPct}%</span>
+      <span className="text-[#555]"> · </span>
+      <span className="text-[#fb7185]">B {s.bWinPct}%</span>
+      <span className={`ml-1 font-bold ${thin ? 'text-[#fbbf24]' : 'text-[#666]'}`}>(n{meetings})</span>
+    </div>
+  );
+}
+
+// Hai dòng: H1 split ở trên, H2 split ở dưới. Không loaded → `…`; n=0 → ẩn (muted "—").
+function H2HLines({ splits, className }: { splits?: PairResult; className?: string }) {
+  if (!splits) return <div className={`text-[10px] text-[#555] ${className ?? ''}`}>ĐĐ …</div>;
+  if (splits.meetings === 0) return <div className={`text-[10px] text-[#555] ${className ?? ''}`}>ĐĐ —</div>;
+  return (
+    <div className={className}>
+      <H2HLine label="H1" s={splits.h1} meetings={splits.meetings} />
+      <H2HLine label="H2" s={splits.h2} meetings={splits.meetings} />
+    </div>
+  );
+}
 
 function HcCell({
   lines, prevLines, suspended,
@@ -773,6 +839,7 @@ function LeagueSection({
   title,
   matches,
   hasStatsSet,
+  h2hMap,
   prevMap,
   scoredIds,
   nowMs,
@@ -788,6 +855,7 @@ function LeagueSection({
   title: string;
   matches: GsLiveMatch[];
   hasStatsSet: Set<number>;
+  h2hMap: Map<string, PairResult>;
   prevMap: Map<number, GsLiveMatch>;
   scoredIds: Set<number>;
   nowMs: number;
@@ -935,6 +1003,11 @@ function LeagueSection({
                   )}
                 </div>
 
+                {/* Đối Đầu — 2 dòng (H1 split trên, H2 split dưới) ngay dưới nút Kèo trận, luôn hiện trên mobile */}
+                <div className="px-3 py-2 border-b border-[#222]">
+                  <H2HLines splits={h2hMap.get(`${m.homeTeam}|${m.awayTeam}`)} />
+                </div>
+
                 {/* Odds: 2 segments (TT / H1), mỗi segment 2 kèo */}
                 <div className="flex flex-col px-3 py-2 border-b border-[#222] gap-2">
                   {/* TT segment */}
@@ -1050,6 +1123,8 @@ function LeagueSection({
                       >
                         📊 Kèo trận
                       </button>
+                      {/* Đối Đầu — 2 dòng (H1 split trên, H2 split dưới) ngay dưới nút Kèo trận */}
+                      <H2HLines splits={h2hMap.get(`${m.homeTeam}|${m.awayTeam}`)} className="mt-1.5" />
                       {/* tạm ẩn "Kèo giá" — bật lại: đổi false → true */}
                       {false && (
                       <button
