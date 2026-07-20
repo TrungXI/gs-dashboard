@@ -58,12 +58,16 @@ export interface GsBetStats {
   home_pass_acc: string | null; away_pass_acc: string | null;
   home_corners: number | null; away_corners: number | null;
   home_tackles: number | null; away_tackles: number | null;
+  home_tackles_won: number | null; away_tackles_won: number | null;
   home_interceptions: number | null; away_interceptions: number | null;
   home_fouls: number | null; away_fouls: number | null;
   home_offsides: number | null; away_offsides: number | null;
+  home_free_kicks: number | null; away_free_kicks: number | null;
+  home_penalties: number | null; away_penalties: number | null;
   home_yellow: number | null; away_yellow: number | null;
   home_red: number | null; away_red: number | null;
   home_saves: number | null; away_saves: number | null;
+  home_dribble_acc: number | null; away_dribble_acc: number | null;
   stats_partial: boolean | null;
   notes: string | null;
   captured_at: string | null;

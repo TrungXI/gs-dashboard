@@ -8,8 +8,11 @@ import { todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayS
 import { TypeBadge, ResultTag } from './badges';
 import { LoadingState } from './Spinner';
 import MatchAnalysis from './MatchAnalysis';
+import HcWatchDrawer from './HcWatchDrawer';
+import H1StatsPanel from './H1StatsPanel';
 import SearchDropdown from './SearchDropdown';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
+import type { GsPickLite } from '../app/api/gs-picks/route';
 import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
 import type { TeamAnalysisAgg } from '../app/api/gs-team-analysis/route';
 
@@ -64,6 +67,11 @@ interface Toast {
 const GREEN = '#4ade80';
 const BLUE = '#60a5fa';
 const ORANGE = '#fb923c';
+
+// Row accent line (GS Live match rows) — MỘT line duy nhất, đổi màu theo trạng thái.
+// Ưu tiên: đã có chỉ số H1 (gs_ht_stats) → VÀNG; nếu chưa mà đang Hiệp 2 → XANH; else không có.
+const ACCENT_GREEN = '#4ade80';  // Hiệp 2 (isH2) nhưng CHƯA có chỉ số H1
+const ACCENT_YELLOW = '#fbbf24'; // đã có chỉ số H1 (hasStats) — thay thế xanh
 
 // Decimal-odds thresholds mirrored from the Malay thresholds in the spec.
 const FOLLOW_DEC_MAX = 1.67;    // < -1.50 Malay  → decimal < 1.67
@@ -192,11 +200,9 @@ function phaseLabel(m: GsLiveMatch, nowMs: number): string {
   return `1H ${min}'`;
 }
 
-export default function GSLive() {
+export default function GSLive({ initialMatch }: { initialMatch?: number | null } = {}) {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
-  const [updatedAt, setUpdatedAt] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
   const [prevMap, setPrevMap] = useState<Map<number, GsLiveMatch>>(new Map());
   // H1 final scores remembered at the H1→H2 transition (API has no dedicated H1-final field)
@@ -209,20 +215,16 @@ export default function GSLive() {
   const osNotiGoalRef = useRef(false);
   const osNotiHTRef = useRef(false);
   const [loadTs] = useState(() => Date.now());
-  // '' = use default; any other string = custom token saved in localStorage
-  const [tokenVal, setTokenVal] = useState('');
   const [globalReloadKey, setGlobalReloadKey] = useState(0);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [autoStream, setAutoStream] = useState(false);
   const [analysisMatchId, setAnalysisMatchId] = useState<number | null>(null);
+  const [hcWatchMatchId, setHcWatchMatchId] = useState<number | null>(null);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
+  // Trận đã có chỉ số H1 (ảnh HT chụp + OCR ra số → row trong gs_ht_stats). Dùng cho accent VÀNG.
+  const [hasStatsSet, setHasStatsSet] = useState<Set<number>>(new Set());
 
-
-  useEffect(() => {
-    const saved = localStorage.getItem('gs_token');
-    if (saved) setTokenVal(saved);
-  }, []);
 
   useEffect(() => {
     setAutoStream(localStorage.getItem('gs_auto_stream') === '1');
@@ -265,17 +267,6 @@ export default function GSLive() {
     }
   }
 
-  function applyToken(raw: string) {
-    if (!raw.trim()) {
-      localStorage.removeItem('gs_token');
-      setTokenVal('');
-    } else {
-      const tok = extractToken(raw);
-      localStorage.setItem('gs_token', tok);
-      setTokenVal(tok);
-    }
-  }
-
   function pushToast(kind: Toast['kind'], message: string) {
     const id = ++toastIdRef.current;
     setToasts(prev => [...prev, { id, kind, message }]);
@@ -294,10 +285,8 @@ export default function GSLive() {
     let alive = true;
 
     async function poll() {
-      setLoading(true);
       try {
-        const t = localStorage.getItem('gs_token') ?? GS_STREAM_TOKEN;
-        const res = await fetch(`/api/gs-live?token=${encodeURIComponent(t)}`, {
+        const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',
         });
         const json = (await res.json()) as { ok: boolean; matches?: GsLiveMatch[]; error?: string };
@@ -344,12 +333,9 @@ export default function GSLive() {
           if (h1Changed) setH1Finals(new Map(h1FinalRef.current));
           prevRef.current = new Map(next.map((m) => [m.eventId, m]));
           setMatches(next);
-          setUpdatedAt(new Date().toLocaleTimeString('vi-VN'));
         }
       } catch (e) {
         if (alive) setError(String(e));
-      } finally {
-        if (alive) setLoading(false);
       }
     }
 
@@ -362,7 +348,41 @@ export default function GSLive() {
     };
   }, [autoRefresh]);
 
-  const activeToken = tokenVal || GS_STREAM_TOKEN;
+  const activeToken = GS_STREAM_TOKEN;
+
+  const eventIdsKey = matches.map((m) => m.eventId).sort((a, b) => a - b).join(',');
+
+  // Chỉ số H1 (gs_ht_stats) — poll 15s (chậm hơn odds vì chỉ số không đổi nhanh). Chỉ cần biết eventId nào đã có row.
+  useEffect(() => {
+    if (!eventIdsKey) { setHasStatsSet(new Set()); return; }
+    let alive = true;
+    async function loadHasStats() {
+      try {
+        const res = await fetch(`/api/gs-has-stats?eventIds=${eventIdsKey}`, { cache: 'no-store' });
+        const json = (await res.json()) as { ok: boolean; eventIds?: number[] };
+        if (!alive || !json.ok) return;
+        setHasStatsSet(new Set(json.eventIds || []));
+      } catch {
+        /* giữ set cũ khi lỗi mạng tạm thời */
+      }
+    }
+    loadHasStats();
+    const id = setInterval(loadHasStats, 15_000);
+    return () => { alive = false; clearInterval(id); };
+  }, [eventIdsKey]);
+
+  // Deep-link: when the requested match appears in the live list, open its
+  // analysis drawer once. If the event never goes live it simply won't open
+  // (LiveAnalysisDrawer needs the full live odds/phase object) — no crash.
+  const deepLinkOpenedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (initialMatch == null || !Number.isFinite(initialMatch)) return;
+    if (deepLinkOpenedFor.current === initialMatch) return;
+    if (matches.some((m) => m.eventId === initialMatch)) {
+      deepLinkOpenedFor.current = initialMatch;
+      setAnalysisMatchId(initialMatch);
+    }
+  }, [initialMatch, matches]);
 
   function dismissToast(id: number) {
     setToasts(prev => prev.filter(t => t.id !== id));
@@ -382,56 +402,14 @@ export default function GSLive() {
         >
           {autoRefresh ? '⏸ Auto' : '▶ Auto'}
         </button>
-        <button
-          type="button"
-          onClick={() => setAutoStream(s => { const next = !s; localStorage.setItem('gs_auto_stream', next ? '1' : '0'); return next; })}
-          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${autoStream ? 'border-[#a78bfa]/40 text-[#a78bfa] bg-[#a78bfa]/10 hover:bg-[#a78bfa]/20' : 'border-[#555] text-[#777] bg-transparent hover:border-[#a78bfa]/40 hover:text-[#a78bfa]'}`}
-          title={autoStream ? 'Tắt stream tự động (cần click ▶ thủ công)' : 'Bật stream tự động (load video ngay khi có trận)'}
-        >
-          {autoStream ? '📺 Stream tự động' : '📺 Stream thủ công'}
-        </button>
-        <span className="ml-auto text-[12px]">
-          {autoRefresh && loading
-            ? <span className="text-[#fbbf24]">⟳ Đang cập nhật…</span>
-            : updatedAt
-              ? <span className="text-[#4ade80]/70">{autoRefresh ? `⟳ 2s · ${updatedAt}` : `⏸ dừng · ${updatedAt}`}</span>
-              : null}
-        </span>
-      </div>
-
-      {/* Token input — paste raw token or full link */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <input
-          type="text"
-          value={tokenVal}
-          onChange={(e) => applyToken(e.target.value)}
-          onPaste={(e) => {
-            e.preventDefault();
-            applyToken(e.clipboardData.getData('text'));
-          }}
-          placeholder="Dán token hoặc link (để xem video live)…"
-          className="w-full md:flex-1 md:max-w-[480px] rounded-lg bg-[#1a1a1a] border border-[#2a2a2a] px-3 py-1.5 text-[12px] text-white placeholder:text-[#444] outline-none focus:border-[#17a2b8] transition-colors"
-        />
-        {tokenVal && tokenVal !== GS_STREAM_TOKEN ? (
-          <span className="text-[11px] text-[#4ade80]">✓ Token tùy chỉnh</span>
-        ) : (
-          <span className="text-[11px] text-[#555]">Token mặc định</span>
-        )}
-        <button
-          type="button"
-          onClick={() => setGlobalReloadKey(k => k + 1)}
-          className="rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] px-3 py-1.5 text-[12px] text-[#aaa] hover:text-white hover:border-[#444] transition-colors"
-          title="Reload tất cả video"
-        >
-          ↺ Reload All
-        </button>
+        {/* ⚽ Ghi bàn + 🔔 Hết H1 noti — đưa lên cạnh Auto */}
         <button
           type="button"
           onClick={() => {
             if (osNotiGoal) { setOsNotiGoal(false); osNotiGoalRef.current = false; localStorage.setItem('gs_os_noti_goal', '0'); }
             else requestAndSet('gs_os_noti_goal', setOsNotiGoal, osNotiGoalRef);
           }}
-          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
           title={osNotiGoal ? 'Tắt noti ghi bàn' : 'Bật noti ghi bàn ra Macbook'}
         >
           {osNotiGoal ? '⚽ Ghi bàn ON' : '⚽ Ghi bàn OFF'}
@@ -442,18 +420,22 @@ export default function GSLive() {
             if (osNotiHT) { setOsNotiHT(false); osNotiHTRef.current = false; localStorage.setItem('gs_os_noti_ht', '0'); }
             else requestAndSet('gs_os_noti_ht', setOsNotiHT, osNotiHTRef);
           }}
-          className={`rounded-lg border px-3 py-1.5 text-[12px] transition-colors ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
           title={osNotiHT ? 'Tắt noti hết H1' : 'Bật noti hết H1 ra Macbook'}
         >
           {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
         </button>
+        {/* Nút Stream thủ công/tự động — tạm ẩn, bật lại khi cần dùng video */}
+        {/* Indicator "⟳ 2s · giờ" đã bỏ hiển thị theo yêu cầu — polling vẫn chạy ngầm bình thường */}
       </div>
 
       {(() => {
         const anaLive = analysisMatchId != null ? matches.find(m => m.eventId === analysisMatchId) ?? null : null;
+        const hcLive = hcWatchMatchId != null ? matches.find(m => m.eventId === hcWatchMatchId) ?? null : null;
         return (
           <>
             {anaLive && <LiveAnalysisDrawer live={anaLive} onClose={() => setAnalysisMatchId(null)} />}
+            {hcLive && <HcWatchDrawer home={hcLive.homeTeam} away={hcLive.awayTeam} onClose={() => setHcWatchMatchId(null)} />}
           </>
         );
       })()}
@@ -474,6 +456,7 @@ export default function GSLive() {
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 16 Phút"
             matches={matches.filter((m) => m.leagueId === 2140)}
+            hasStatsSet={hasStatsSet}
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
@@ -483,11 +466,13 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onHcWatch={(m) => setHcWatchMatchId(m.eventId)}
             activeMatchId={analysisMatchId}
           />
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
             matches={matches.filter((m) => m.leagueId === 2125)}
+            hasStatsSet={hasStatsSet}
             prevMap={prevMap}
             scoredIds={scoredIds}
             nowMs={nowMs}
@@ -497,6 +482,7 @@ export default function GSLive() {
             h1Finals={h1Finals}
             autoStream={autoStream}
             onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onHcWatch={(m) => setHcWatchMatchId(m.eventId)}
             activeMatchId={analysisMatchId}
           />
         </>
@@ -512,21 +498,28 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id
       {toasts.map(t => (
         <div
           key={t.id}
-          className={`toast-item pointer-events-auto flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold shadow-2xl cursor-pointer select-none whitespace-nowrap ${
+          className={`toast-item pointer-events-auto flex items-center gap-2 rounded-xl pl-4 pr-2 py-2.5 text-[13px] font-semibold shadow-2xl select-none whitespace-nowrap ${
             t.kind === 'goal'
               ? 'bg-[#14532d]/95 border border-[#22c55e]/50 text-[#bbf7d0]'
               : 'bg-[#78350f]/95 border border-[#fbbf24]/60 text-[#fef3c7]'
           }`}
-          onClick={() => onDismiss(t.id)}
         >
-          {t.message}
+          <span>{t.message}</span>
+          <button
+            type="button"
+            aria-label="Đóng"
+            onClick={() => onDismiss(t.id)}
+            className="ml-1 shrink-0 grid place-items-center h-5 w-5 rounded-full text-[13px] leading-none opacity-70 hover:opacity-100 hover:bg-white/15 transition"
+          >
+            ✕
+          </button>
         </div>
       ))}
     </div>
   );
 }
 
-const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1', 'Video'];
+const TABLE_HEADERS = ['#', 'Trận đấu', 'Tỉ số / Phase', 'Kèo Chấp TT', 'Tài Xỉu TT', 'Kèo Chấp H1', 'Tài Xỉu H1'];
 
 function parseMalay(s: string | null | undefined): number | null {
   if (!s) return null;
@@ -637,19 +630,8 @@ function OuCell({
   );
 }
 
-const GS_STREAM_TOKEN = '69-940214f0e803120fcfc9183ee4df89d5';
-
-/** Extract token from a raw token string or a full URL (reads ?token= param). */
-function extractToken(input: string): string {
-  const s = input.trim();
-  if (!s) return GS_STREAM_TOKEN;
-  try {
-    const url = new URL(s);
-    const t = url.searchParams.get('token');
-    if (t) return t;
-  } catch { /* not a URL */ }
-  return s;
-}
+// Token lấy từ env (NEXT_PUBLIC_GS_TOKEN) — không còn nhập tay trên UI.
+const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
 function CardBadges({ yellow, red }: { yellow: number; red: number }) {
   if (!yellow && !red) return null;
@@ -740,9 +722,56 @@ function VideoCell({
   );
 }
 
+// Ô Kèo — thay chỗ VideoCell trong list. Trận không có pick → không render gì.
+const CONF_ICON: Record<string, string> = { Cao: '🟥', TB: '🟨', Thấp: '🟦' };
+function PickCell({ pick }: { pick?: GsPickLite }) {
+  if (!pick) return null;
+  const hasSide = pick.side_pick && pick.side_pick !== 'BỎ';
+  const hasOu = pick.ou_pick && pick.ou_pick !== 'BỎ';
+  const confIcon = pick.confidence ? (CONF_ICON[pick.confidence] ?? '⬜') : null;
+  const { hc, ou } = parseVerdictReasons(pick.verdict ?? null);
+  const statParts: string[] = [];
+  if (pick.home_shots != null || pick.away_shots != null) statParts.push(`Sút ${pick.home_shots ?? '?'}/${pick.away_shots ?? '?'}`);
+  if (pick.home_poss != null || pick.away_poss != null) statParts.push(`KS ${pick.home_poss ?? '?'}/${pick.away_poss ?? '?'}`);
+  if (pick.home_xg != null || pick.away_xg != null) statParts.push(`Cơ hội ${pick.home_xg ?? '?'}/${pick.away_xg ?? '?'}`);
+  return (
+    <div className="flex flex-col gap-1 px-2 py-2 items-start max-w-[240px]">
+      {confIcon && (
+        <div className="flex items-center gap-1 text-[11px] text-[#aaa]">
+          <span>{confIcon}</span>
+          <span>{pick.confidence}</span>
+          {pick.ht_score && (
+            <span className="text-[10px] text-[#666]">· HT {pick.ht_score}{pick.ft_score ? `→${pick.ft_score}` : ''}</span>
+          )}
+        </div>
+      )}
+      {hasSide && (
+        <div className="flex flex-col gap-0.5 w-full">
+          <span className="w-fit rounded px-1.5 py-0.5 text-[11px] bg-[#f59e0b]/15 border border-[#f59e0b]/40 text-[#fbbf24] whitespace-nowrap">
+            {pick.side_pick}
+          </span>
+          {hc && <span className="text-[10px] text-[#888] leading-tight line-clamp-2">{hc}</span>}
+        </div>
+      )}
+      {hasOu && (
+        <div className="flex flex-col gap-0.5 w-full">
+          <span className="w-fit rounded px-1.5 py-0.5 text-[11px] bg-[#17a2b8]/15 border border-[#17a2b8]/40 text-[#5fd0e0] whitespace-nowrap">
+            {pick.ou_pick}
+          </span>
+          {ou && <span className="text-[10px] text-[#888] leading-tight line-clamp-2">{ou}</span>}
+        </div>
+      )}
+      {statParts.length > 0 && (
+        <span className="text-[10px] text-[#7a7a7a] leading-tight">📊 {statParts.join(' · ')}</span>
+      )}
+    </div>
+  );
+}
+
 function LeagueSection({
   title,
   matches,
+  hasStatsSet,
   prevMap,
   scoredIds,
   nowMs,
@@ -752,10 +781,12 @@ function LeagueSection({
   h1Finals,
   autoStream,
   onAnalysis,
+  onHcWatch,
   activeMatchId,
 }: {
   title: string;
   matches: GsLiveMatch[];
+  hasStatsSet: Set<number>;
   prevMap: Map<number, GsLiveMatch>;
   scoredIds: Set<number>;
   nowMs: number;
@@ -765,6 +796,7 @@ function LeagueSection({
   h1Finals: Map<number, { home: number; away: number }>;
   autoStream: boolean;
   onAnalysis: (m: GsLiveMatch) => void;
+  onHcWatch: (m: GsLiveMatch) => void;
   activeMatchId?: number | null;
 }) {
   const [refreshKeys, setRefreshKeys] = useState<Map<number, number>>(new Map());
@@ -844,15 +876,20 @@ function LeagueSection({
             const refreshKey = refreshKeys.get(m.eventId) ?? 0;
             const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
             const isHT = m.period === 4;
+            // Accent line (1 line duy nhất, ưu tiên VÀNG > XANH):
+            //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
+            const hasStats = hasStatsSet.has(m.eventId);
+            const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
             return (
               <div
                 key={m.eventId}
                 data-event-id={m.eventId}
-                className={`rounded-lg border overflow-hidden transition-all ${
+                className={`relative rounded-lg border overflow-hidden transition-all ${
                   activeMatchId === m.eventId
                     ? 'border-[#17a2b8] bg-[#17a2b8]/10 shadow-[0_0_0_1px_#17a2b8]'
                     : scored ? 'border-[#2a2a2a] !bg-[#16a34a]/10' : isHT ? 'border-amber-500/50 bg-amber-900/25' : 'border-[#2a2a2a] bg-[#141414]'
                 }`}
+                style={accentColor ? { borderLeftWidth: 4, borderLeftColor: accentColor } : undefined}
               >
                 {/* Header: teams + score + phase */}
                 <div className="flex items-start gap-2 px-3 py-2 border-b border-[#222]">
@@ -884,6 +921,17 @@ function LeagueSection({
                   >
                     📊
                   </button>
+                  {/* tạm ẩn "Kèo giá" — bật lại: đổi false → true */}
+                  {false && (
+                  <button
+                    type="button"
+                    onClick={() => onHcWatch(m)}
+                    className="flex-shrink-0 rounded px-1.5 py-1 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#fbbf24] hover:border-[#444] transition-colors"
+                    title="Kèo giá −0.3/−0.5"
+                  >
+                    📊 Kèo giá
+                  </button>
+                  )}
                 </div>
 
                 {/* Odds: 2 segments (TT / H1), mỗi segment 2 kèo */}
@@ -919,21 +967,6 @@ function LeagueSection({
                     </div>
                   )}
                 </div>
-
-                <VideoCell
-                  iframeKey={`m-${m.eventId}-${refreshKey}-${globalReloadKey}`}
-                  src={videoUrl}
-                  title={`${m.homeTeam} vs ${m.awayTeam}`}
-                  displayW={MOBILE_DISPLAY_W}
-                  displayH={MOBILE_DISPLAY_H}
-                  contentW={MOBILE_CONTENT_W}
-                  iframeH={mobileIframeH}
-                  scale={mobileScale}
-                  onExpand={() => setExpandedId(m.eventId)}
-                  onReload={() => bump(m.eventId)}
-                  externalUrl={videoUrl}
-                  autoStream={autoStream}
-                />
               </div>
             );
           })}
@@ -975,6 +1008,10 @@ function LeagueSection({
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
                 const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
                 const isHT = m.period === 4;
+                // Accent line (1 line duy nhất, ưu tiên VÀNG > XANH):
+                //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
+                const hasStats = hasStatsSet.has(m.eventId);
+                const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
                 return (
                   <tr
                     key={m.eventId}
@@ -984,7 +1021,10 @@ function LeagueSection({
                         ? '!bg-[#17a2b8]/10 outline outline-1 outline-[#17a2b8]/40'
                         : scored ? '!bg-[#16a34a]/10' : isHT ? '!bg-amber-900/25' : ''
                     }`}
-                    style={{ height: DESKTOP_DISPLAY_H }}
+                    style={{
+                      height: DESKTOP_DISPLAY_H,
+                      ...(accentColor ? { boxShadow: `inset 4px 0 0 0 ${accentColor}` } : {}),
+                    }}
                   >
                     {/* # */}
                     <td className="border-b border-[#222] px-2 py-2 text-center text-[11px] text-[#555] align-top w-8">
@@ -1009,6 +1049,17 @@ function LeagueSection({
                       >
                         📊 Kèo trận
                       </button>
+                      {/* tạm ẩn "Kèo giá" — bật lại: đổi false → true */}
+                      {false && (
+                      <button
+                        type="button"
+                        onClick={() => onHcWatch(m)}
+                        className="mt-1 ml-1 rounded px-2 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#888] hover:text-[#fbbf24] hover:border-[#444] transition-colors"
+                        title="Kèo giá −0.3/−0.5"
+                      >
+                        📊 Kèo giá
+                      </button>
+                      )}
                     </td>
                     {/* Tỉ số / Phase */}
                     <td className="border-b border-[#222] px-2 py-2 text-center align-top w-16 whitespace-nowrap">
@@ -1036,23 +1087,6 @@ function LeagueSection({
                     {/* Tài Xỉu H1 */}
                     <td className="border-b border-[#222] px-2 py-2 text-xs align-top">
                       <OuCell lines={m.ouH1Lines} prevLines={prev?.ouH1Lines} suspended={m.suspended} />
-                    </td>
-                    {/* Video — det.zenandfe.com route=3 */}
-                    <td className="border-b border-[#222] p-0 align-middle" style={{ minWidth: DESKTOP_DISPLAY_W, width: DESKTOP_DISPLAY_W }}>
-                      <VideoCell
-                        iframeKey={`${m.eventId}-${refreshKey}-${globalReloadKey}`}
-                        src={videoUrl}
-                        title={`${m.homeTeam} vs ${m.awayTeam}`}
-                        displayW={DESKTOP_DISPLAY_W}
-                        displayH={DESKTOP_DISPLAY_H}
-                        contentW={DESKTOP_CONTENT_W}
-                        iframeH={desktopIframeH}
-                        scale={desktopScale}
-                        onExpand={() => setExpandedId(m.eventId)}
-                        onReload={() => bump(m.eventId)}
-                        externalUrl={videoUrl}
-                        autoStream={autoStream}
-                      />
                     </td>
                   </tr>
                 );
@@ -1100,7 +1134,9 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [agg, setAgg] = useState<TeamAnalysisAgg | null>(null);
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo' | 'history'>('confront');
+  // Mở drawer: đã sang H2 (qua HT → thường có thông số H1) → vào tab Kèo; chưa thì Đối Kháng.
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo' | 'history'>(live.isH2 ? 'keo' : 'confront');
+  const userPickedTabRef = useRef(false);
   type HtFrame = { frame_index: number; frame_url: string; video_url: string };
   const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
   const [htFramesLoading, setHtFramesLoading] = useState(false);
@@ -1483,7 +1519,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
     setBetsLoading(true);
     fetch(`/api/gs-bets?eventId=${live.eventId}`)
       .then(r => r.json())
-      .then((json: GsBetsResponse) => { if (alive) setBets(json); })
+      .then((json: GsBetsResponse) => {
+        if (!alive) return;
+        setBets(json);
+        // Nếu mở drawer auto vào tab Kèo nhưng thực tế CHƯA có thông số H1 → lùi về Đối Kháng.
+        if (!userPickedTabRef.current && (json.ok === false || !json.stats)) setActiveTab('confront');
+      })
       .catch(() => { if (alive) setBets({ ok: false, error: 'fetch failed' }); })
       .finally(() => { if (alive) setBetsLoading(false); });
     return () => { alive = false; };
@@ -1703,7 +1744,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   return (
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
-      <div className="fixed right-0 top-0 bottom-0 z-[201] w-full md:w-[680px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
+      <div className="fixed right-0 top-0 bottom-0 z-[201] w-[calc(100%-44px)] md:w-[680px] bg-[#111] border-l border-[#2a2a2a] flex flex-col overflow-hidden">
         {/* Header + Teams */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-[#222] flex-shrink-0 bg-[#0d0d0d]">
           <span className="text-[13px] font-bold text-[#fbbf24]">📊</span>
@@ -1730,7 +1771,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         <div className="flex gap-0.5 overflow-x-auto scrollbar-none px-2 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
           {([
             ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
-            // ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],   // tạm ẩn tab Gợi ý (bật lại: bỏ comment dòng này)
+            ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
             ['history',  '📜', 'Lịch sử',    'border-[#22d3ee]'],
             ['keo',      '🎯', 'Kèo',       'border-[#f59e0b]'],
@@ -1738,7 +1779,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
           ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
             <button
               key={key}
-              onClick={() => setActiveTab(key as typeof activeTab)}
+              onClick={() => { userPickedTabRef.current = true; setActiveTab(key as typeof activeTab); }}
               className={`flex-shrink-0 whitespace-nowrap px-2.5 py-1.5 text-[12px] font-semibold rounded-t border-b-2 transition-colors ${
                 activeTab === key
                   ? `text-white ${activeBorder}`
@@ -2139,32 +2180,6 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
   const pick = bets.pick ?? null;
   const stats = bets.stats ?? null;
 
-  // Chỉ số H1 rows: [label, home, away]
-  type StatRow = [string, string | number | null, string | number | null];
-  const statRows: StatRow[] = (stats ? ([
-    ['xG', stats.home_xg, stats.away_xg],
-    ['Shots', stats.home_shots, stats.away_shots],
-    ['SOT', stats.home_sot, stats.away_sot],
-    ['Shot Acc', stats.home_shot_acc, stats.away_shot_acc],
-    ['Poss', stats.home_poss, stats.away_poss],
-    ['Passes', stats.home_passes, stats.away_passes],
-    ['Pass Acc', stats.home_pass_acc, stats.away_pass_acc],
-    ['Corners', stats.home_corners, stats.away_corners],
-    ['Tackles', stats.home_tackles, stats.away_tackles],
-    ['Interceptions', stats.home_interceptions, stats.away_interceptions],
-    ['Saves', stats.home_saves, stats.away_saves],
-    ['Fouls', stats.home_fouls, stats.away_fouls],
-    ['Offsides', stats.home_offsides, stats.away_offsides],
-    ['Yellow', stats.home_yellow, stats.away_yellow],
-    ['Red', stats.home_red, stats.away_red],
-  ] as StatRow[]) : []).filter(([, h, a]) => h != null || a != null);
-
-  const numeric = (v: string | number | null): number | null => {
-    if (v == null) return null;
-    const n = typeof v === 'number' ? v : parseFloat(v);
-    return Number.isFinite(n) ? n : null;
-  };
-
   return (
     <div className="flex flex-col gap-0">
       {/* 1. Kèo card */}
@@ -2258,38 +2273,7 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
       {/* 2. Chỉ số H1 */}
       <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
         <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
-        {!stats ? (
-          <div className="rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/[.06] px-3 py-2 text-[12px] text-[#fbbf24]">
-            ⚠️ Chưa đọc được chỉ số từ ảnh H1
-          </div>
-        ) : (
-          <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
-            <div className="flex items-center px-3 py-1.5 text-[10px] font-bold text-[#888] border-b border-[#222]">
-              <span className="flex-1 text-left truncate text-[#4ade80]">{stats.home_team ?? homeName}</span>
-              <span className="w-[30%] text-center text-[#555]">Chỉ số</span>
-              <span className="flex-1 text-right truncate text-[#f87171]">{stats.away_team ?? awayName}</span>
-            </div>
-            {stats.stats_partial && (
-              <div className="px-3 py-1.5 text-[11px] leading-snug text-[#fbbf24] border-b border-[#222] bg-[#f59e0b]/[.06]">
-                ⚠️ Ảnh đọc thiếu vài chỉ số
-                {stats.notes && <span className="text-[#b58a3a]"> · {stats.notes}</span>}
-              </div>
-            )}
-            {statRows.map(([label, h, a], i) => {
-              const hn = numeric(h);
-              const an = numeric(a);
-              const hHi = hn != null && an != null && hn > an;
-              const aHi = hn != null && an != null && an > hn;
-              return (
-                <div key={i} className="flex items-center px-3 py-1 text-[12px] border-b border-[#1a1a1a]/60 last:border-0">
-                  <span className={`flex-1 text-left tabular-nums font-semibold ${hHi ? 'text-[#4ade80]' : 'text-[#bbb]'}`}>{h ?? '—'}</span>
-                  <span className="w-[30%] text-center text-[10px] text-[#666]">{label}</span>
-                  <span className={`flex-1 text-right tabular-nums font-semibold ${aHi ? 'text-[#f87171]' : 'text-[#bbb]'}`}>{a ?? '—'}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <H1StatsPanel stats={stats} homeName={homeName} awayName={awayName} />
       </div>
     </div>
   );

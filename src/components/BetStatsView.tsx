@@ -8,7 +8,9 @@ import type {
   GsReportSummary,
   GsReportTrend,
 } from '../app/api/gs-report/route';
+import type { GsPaperResponse, GsPaperRow, GsPaperSummary } from '../app/api/gs-paper/route';
 import { LoadingState, Spinner } from './Spinner';
+import MatchDetailDrawer from './MatchDetailDrawer';
 
 // ── Result badge config ───────────────────────────────────────────────────────
 
@@ -26,6 +28,24 @@ function ResultBadge({ result }: { result: AsianResult }) {
   const m = RESULT_META[result];
   return (
     <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold border ${m.cls}`}>
+      {m.label}
+    </span>
+  );
+}
+
+// ── Confidence badge (độ tin kèo: Cao/TB/Thấp) ────────────────────────────────
+const CONF_META: Record<string, { label: string; cls: string }> = {
+  Cao: { label: 'CAO', cls: 'bg-[#ef4444]/15 border-[#ef4444]/40 text-[#f87171]' },
+  TB: { label: 'TB', cls: 'bg-[#f59e0b]/15 border-[#f59e0b]/40 text-[#fbbf24]' },
+  'Thấp': { label: 'THẤP', cls: 'bg-white/[.06] border-white/15 text-[#9aa]' },
+};
+function ConfBadge({ conf }: { conf: string }) {
+  const m = CONF_META[conf] ?? { label: conf, cls: 'bg-white/[.06] border-white/15 text-[#888]' };
+  return (
+    <span
+      className={`ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold border align-middle ${m.cls}`}
+      title={`Độ tin: ${conf}`}
+    >
       {m.label}
     </span>
   );
@@ -76,7 +96,7 @@ function pct(v: number | null): string {
 
 // ── Filters ───────────────────────────────────────────────────────────────────
 
-type FilterKey = 'all' | 'settled' | 'win' | 'loss' | 'skip';
+type FilterKey = 'all' | 'settled' | 'win' | 'loss' | 'skip' | 'paper';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'Tất cả' },
@@ -84,9 +104,41 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'win', label: 'Ăn' },
   { key: 'loss', label: 'Thua' },
   { key: 'skip', label: 'BỎ' },
+  { key: 'paper', label: '🧪 Kèo bóng' },
 ];
 
 const PAGE_SIZE = 50;
+
+// ── Paper (shadow) result badge — hit: true=Ăn, false=Thua, null=Hòa/⏳ ────────
+function PaperResultBadge({ hit, hasFt }: { hit: boolean | null; hasFt: boolean }) {
+  let label: string;
+  let cls: string;
+  if (hit === true) {
+    label = 'ĂN';
+    cls = 'bg-[#22c55e]/15 border-[#22c55e]/40 text-[#4ade80]';
+  } else if (hit === false) {
+    label = 'THUA';
+    cls = 'bg-[#ef4444]/15 border-[#ef4444]/40 text-[#f87171]';
+  } else if (hasFt) {
+    label = 'HÒA';
+    cls = 'bg-white/[.06] border-white/15 text-[#aaa]';
+  } else {
+    label = '⏳ chờ';
+    cls = 'bg-[#a78bfa]/10 border-[#a78bfa]/30 text-[#a78bfa]';
+  }
+  return (
+    <span className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold border ${cls}`}>
+      {label}
+    </span>
+  );
+}
+
+/** Paper leg label: HC → Chấp, OU → Tài/Xỉu. */
+function paperLegLabel(leg: string): string {
+  if (leg === 'HC') return 'Chấp';
+  if (leg === 'OU') return 'Tài/Xỉu';
+  return leg;
+}
 
 // ── Trend arrow ───────────────────────────────────────────────────────────────
 
@@ -109,9 +161,146 @@ function Card({ label, value, sub }: { label: string; value: React.ReactNode; su
   );
 }
 
+// ── Paper (shadow) section ─────────────────────────────────────────────────────
+// Visually distinct "PAPER, not real money" block — its OWN compact summary +
+// list, completely separate from the real header cards above.
+
+function PaperSection({
+  loading,
+  error,
+  rows,
+  summary,
+  onOpenDetail,
+}: {
+  loading: boolean;
+  error: string | null;
+  rows: GsPaperRow[];
+  summary: GsPaperSummary | null;
+  onOpenDetail: (d: { eventId: number; home: string; away: string }) => void;
+}) {
+  if (loading && summary === null) {
+    return <LoadingState label="Đang tải kèo bóng…" className="py-16" />;
+  }
+  if (error !== null) {
+    return (
+      <div className="flex items-center justify-center rounded-lg border border-dashed border-[#3a3a3a] bg-[#141414] py-16 text-[13px] text-[#666]">
+        Lỗi tải kèo bóng: {error}
+      </div>
+    );
+  }
+  if (summary === null || rows.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[#3a3a3a] bg-[#141414] py-16 text-center">
+        <div className="text-[13px] text-[#888]">Chưa có kèo bóng nào</div>
+        <div className="text-[11px] text-[#555]">
+          Kèo bóng là kèo engine WOULD-have ra ở gate suýt-đạt — theo dõi để học, không cược.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* Compact paper-only summary — dashed amber accent, clearly not the real header */}
+      <div className="rounded-lg border border-dashed border-[#f59e0b]/40 bg-[#f59e0b]/[.05] px-3 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-snug">
+          <span className="rounded bg-[#f59e0b]/15 border border-[#f59e0b]/40 px-1.5 py-0.5 text-[10px] font-bold text-[#fbbf24]">
+            🧪 CHƯA CƯỢC
+          </span>
+          <span className="font-bold text-[#fbbf24]">Kèo bóng:</span>
+          <span className="tabular-nums text-[#ddd]">{summary.total} tổng</span>
+          <span className="text-[#555]">·</span>
+          <span className="tabular-nums text-[#4ade80]">{summary.win} ăn</span>
+          <span className="text-[#555]">/</span>
+          <span className="tabular-nums text-[#f87171]">{summary.loss} thua</span>
+          <span className="text-[#555]">·</span>
+          <span className="tabular-nums text-[#ddd]">hit {pct(summary.winRate)}</span>
+          <span className="text-[#555]">·</span>
+          <span className="tabular-nums text-[#999]">
+            (chấp {summary.hcWin}/{summary.hcSettled} · T/X {summary.ouWin}/{summary.ouSettled})
+          </span>
+          {(summary.push > 0 || summary.pending > 0) && (
+            <>
+              <span className="text-[#555]">·</span>
+              <span className="tabular-nums text-[#888]">
+                {summary.push} hòa · {summary.pending} chờ
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Paper list — dashed muted rows so it reads as "paper, not real money" */}
+      <div className="flex flex-col gap-2">
+        {rows.map((row, i) => {
+          const winner = ftWinner(row.ft_score);
+          const hasFt = parseScore(row.ft_score) !== null;
+          return (
+            <div
+              key={`${row.event_id}-${row.leg}-${i}`}
+              className="rounded-lg border border-dashed border-[#3a3a3a] bg-[#121212] p-3 opacity-90"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0 flex-1 text-[13px] leading-snug">
+                  <span className="mr-1.5 rounded bg-[#f59e0b]/15 border border-[#f59e0b]/40 px-1 py-0.5 text-[9px] font-bold text-[#fbbf24] align-middle">
+                    🧪
+                  </span>
+                  <span className={winner === 'home' ? 'font-bold text-[#4ade80]' : 'text-[#ccc]'}>
+                    {row.home_team ?? '?'}
+                  </span>
+                  <span className="text-[#555]"> vs </span>
+                  <span className={winner === 'away' ? 'font-bold text-[#4ade80]' : 'text-[#ccc]'}>
+                    {row.away_team ?? '?'}
+                  </span>
+                </div>
+                <PaperResultBadge hit={row.hit} hasFt={hasFt} />
+              </div>
+
+              {/* Score line */}
+              <div className="mt-1.5 flex items-center gap-1.5 text-[12px] tabular-nums text-[#999]">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#555]">HT</span>
+                <span>{row.ht_score ?? '—'}</span>
+                <span className="text-[#444]">→</span>
+                <span className="text-[10px] font-bold uppercase tracking-wide text-[#555]">FT</span>
+                <span className="font-semibold text-[#ccc]">{row.ft_score ?? '—'}</span>
+              </div>
+
+              {/* Leg + pick + rule */}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[9px] font-bold uppercase text-[#555]">{paperLegLabel(row.leg)}</span>
+                <span className="rounded bg-white/[.04] border border-dashed border-[#4a4a4a] px-1.5 py-0.5 text-[11px] font-semibold text-[#bbb]">
+                  {row.pick ?? '—'}
+                </span>
+                {row.rule && (
+                  <span className="rounded bg-[#a78bfa]/10 border border-[#a78bfa]/30 px-1.5 py-0.5 text-[10px] font-medium text-[#a78bfa]">
+                    {row.rule}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() =>
+                    onOpenDetail({
+                      eventId: row.event_id,
+                      home: row.home_team ?? '?',
+                      away: row.away_team ?? '?',
+                    })
+                  }
+                  className="ml-auto text-[11px] font-semibold text-[#5fd0e0] hover:text-[#8ee3f0] transition-colors"
+                >
+                  📋 Chi tiết trận
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
-export default function BetStatsView() {
+export default function BetStatsView({ initialMatch }: { initialMatch?: number | null } = {}) {
   const [rows, setRows] = useState<GsReportRow[]>([]);
   const [rowsTotal, setRowsTotal] = useState(0);
   const [summary, setSummary] = useState<GsReportSummary | null>(null);
@@ -120,6 +309,14 @@ export default function BetStatsView() {
   const [loading, setLoading] = useState(true); // initial / filter-change load
   const [loadingMore, setLoadingMore] = useState(false);
   const [filter, setFilter] = useState<FilterKey>('all');
+  // Paper (shadow) picks — SEPARATE dataset, only fetched on the 🧪 chip. Never
+  // mixed into the real header summary/trend above.
+  const [paperRows, setPaperRows] = useState<GsPaperRow[]>([]);
+  const [paperSummary, setPaperSummary] = useState<GsPaperSummary | null>(null);
+  const [paperLoading, setPaperLoading] = useState(false);
+  const [paperError, setPaperError] = useState<string | null>(null);
+  // Drawer "chi tiết trận" — trận đang mở (null = đóng).
+  const [detail, setDetail] = useState<{ eventId: number; home: string; away: string } | null>(null);
 
   // Guards against a stale response overwriting a newer filter selection.
   const reqRef = useRef(0);
@@ -157,10 +354,77 @@ export default function BetStatsView() {
     }
   }, []);
 
-  // Fetch page 0 on mount + whenever the filter changes.
+  // Paper picks live in a separate route with their own summary. Fetched once
+  // per activation of the 🧪 chip (kept out of the real header entirely).
+  const paperReqRef = useRef(0);
+  const loadPaper = useCallback(async () => {
+    const reqId = ++paperReqRef.current;
+    setPaperLoading(true);
+    setPaperError(null);
+    try {
+      const res = await fetch('/api/gs-paper', { cache: 'no-store' });
+      const json: GsPaperResponse = await res.json();
+      if (reqId !== paperReqRef.current) return;
+      if (!json.ok) {
+        setPaperError(json.error || 'Không tải được kèo bóng');
+        return;
+      }
+      setPaperRows(json.rows ?? []);
+      setPaperSummary(json.summary ?? null);
+    } catch (e) {
+      if (reqId === paperReqRef.current) setPaperError(String(e));
+    } finally {
+      if (reqId === paperReqRef.current) setPaperLoading(false);
+    }
+  }, []);
+
+  // Fetch page 0 on mount + whenever the filter changes. On the paper chip we
+  // fetch the paper route instead — the real report list is not refetched, and
+  // the already-loaded real summary/trend stays untouched.
   useEffect(() => {
-    load(filter, 0);
-  }, [filter, load]);
+    if (filter === 'paper') {
+      loadPaper();
+    } else {
+      load(filter, 0);
+    }
+  }, [filter, load, loadPaper]);
+
+  // Deep-link: auto-open the detail drawer for `initialMatch` once on mount.
+  // home/away come from the current rows if present, else from a minimal
+  // gs-bets fetch (the row may not be on the loaded page). The drawer itself
+  // fetches full stats by eventId, so a fallback header is enough.
+  // Guard by eventId (survives StrictMode double-invoke in dev) so we open
+  // exactly once and never fight a manual close.
+  const deepLinkOpenedFor = useRef<number | null>(null);
+  useEffect(() => {
+    if (initialMatch == null || !Number.isFinite(initialMatch)) return;
+    if (deepLinkOpenedFor.current === initialMatch) return;
+    deepLinkOpenedFor.current = initialMatch;
+
+    const fromRow = rows.find((r) => r.event_id === initialMatch);
+    if (fromRow) {
+      setDetail({
+        eventId: initialMatch,
+        home: fromRow.home_team ?? '?',
+        away: fromRow.away_team ?? '?',
+      });
+      return;
+    }
+    // Row not on this page — fetch minimal home/away. Let it complete even if
+    // the effect is torn down/re-run (StrictMode); the guard prevents dupes.
+    fetch(`/api/gs-bets?eventId=${initialMatch}`)
+      .then((r) => r.json())
+      .then((json: { ok: boolean; pick?: { home_team?: string | null; away_team?: string | null } | null }) => {
+        setDetail({
+          eventId: initialMatch,
+          home: json.ok ? json.pick?.home_team ?? '?' : '?',
+          away: json.ok ? json.pick?.away_team ?? '?' : '?',
+        });
+      })
+      .catch(() => {
+        setDetail({ eventId: initialMatch, home: '?', away: '?' });
+      });
+  }, [initialMatch, rows]);
 
   const selectFilter = (key: FilterKey) => {
     if (key === filter) return;
@@ -169,8 +433,8 @@ export default function BetStatsView() {
 
   const loadMore = () => load(filter, rows.length);
 
-  // ── Loading (initial / filter change) ──
-  if (loading) {
+  // ── Full-page loading CHỈ khi tải LẦN ĐẦU (chưa có summary). Đổi filter → chỉ loading phần list ──
+  if (loading && summary === null) {
     return (
       <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
@@ -193,13 +457,17 @@ export default function BetStatsView() {
 
   if (summary === null || trend === null) return null;
 
-  // ── Truly-empty dataset (no bets at all) — vs. "filter ra 0 rows" handled inline below ──
-  if (summary.total === 0) {
+  // ── Truly-empty dataset (no v2-era bets yet) — v2 vừa lên nên có thể ZERO kèo ──
+  // On the 🧪 paper chip we still render (paper picks are a separate dataset).
+  if (summary.total === 0 && filter !== 'paper') {
     return (
       <>
         <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
-        <div className="flex items-center justify-center py-24 text-[13px] text-[#666]">
-          Chưa có kèo nào được ghi nhận
+        <div className="flex flex-col items-center justify-center gap-1.5 py-24 text-center">
+          <div className="text-[13px] text-[#888]">Chưa có kèo nào từ khi cơ chế 2 lên</div>
+          <div className="text-[11px] text-[#555]">
+            Thống kê chỉ tính kèo ra từ mốc cơ chế v2 (19/07 12:27) trở đi.
+          </div>
         </div>
       </>
     );
@@ -209,9 +477,17 @@ export default function BetStatsView() {
     <>
       <h1 className="mb-4 text-[18px] font-extrabold">📊 Thống kê kèo</h1>
 
-      {/* Summary cards */}
-      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-        <Card label="Tổng kèo" value={summary.total} sub={`${summary.pending} chờ`} />
+      {/* Real header cards — REAL picks only (gs_ht_analysis, TB/Cao). Hidden on the
+          🧪 paper chip so paper numbers never appear alongside real ones. */}
+      {filter !== 'paper' && (
+      <>
+      {/* Summary cards — header aggregate over ALL v2-era kèo (kể cả BỎ) */}
+      <div className="mb-5 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        <Card
+          label="Tổng kèo v2"
+          value={summary.bets}
+          sub={`${summary.actionable} trận vào kèo · ${summary.pending} chờ`}
+        />
         <Card
           label="Ăn kèo chấp"
           value={pct(summary.side.winRate)}
@@ -223,6 +499,41 @@ export default function BetStatsView() {
           sub={`${summary.ou.settled} kèo đã chấm`}
         />
         <Card
+          label="ROI"
+          value={
+            summary.roi == null ? (
+              '—'
+            ) : (
+              <span className={summary.roi >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>
+                {summary.roi >= 0 ? '+' : ''}
+                {(summary.roi * 100).toFixed(1)}%
+              </span>
+            )
+          }
+          sub="lãi/lỗ mỗi kèo"
+        />
+        <Card
+          label="Trọng tài AI đúng"
+          value={
+            summary.referee.accuracy == null ? (
+              '—'
+            ) : (
+              <span
+                className={
+                  summary.referee.accuracy >= 0.5 ? 'text-[#4ade80]' : 'text-[#f87171]'
+                }
+              >
+                {pct(summary.referee.accuracy)}
+              </span>
+            )
+          }
+          sub={
+            summary.referee.audited === 0
+              ? 'chưa chấm (chỉ soi kèo TB/Cao)'
+              : `${summary.referee.correct} đúng / ${summary.referee.wrong} sai · ${summary.referee.audited} kèo TB/Cao`
+          }
+        />
+        <Card
           label="Ăn nửa / Thua nửa"
           value={
             <span>
@@ -232,7 +543,7 @@ export default function BetStatsView() {
             </span>
           }
         />
-        <Card label="Số BỎ" value={summary.skipped} />
+        <Card label="Trận bỏ (0 kèo)" value={summary.skipped} />
         <Card
           label="Xu hướng (20 gần)"
           value={
@@ -244,6 +555,8 @@ export default function BetStatsView() {
           sub={`trước: ${pct(trend.prev)}`}
         />
       </div>
+      </>
+      )}
 
       {/* Filter chips */}
       <div className="mb-3 flex flex-wrap gap-1.5 max-md:sticky max-md:top-0 max-md:z-30 max-md:-mx-3 max-md:px-3 max-md:py-2 max-md:bg-[#0d0d0d]/95 max-md:backdrop-blur max-md:border-b max-md:border-[#2a2a2a]">
@@ -260,10 +573,22 @@ export default function BetStatsView() {
             {label}
           </button>
         ))}
-        <span className="ml-auto self-center text-[11px] text-[#666]">{rowsTotal} trận</span>
+        <span className="ml-auto self-center text-[11px] text-[#666]">
+          {filter === 'paper' ? `${paperSummary?.total ?? 0} kèo bóng` : `${rowsTotal} trận`}
+        </span>
       </div>
 
-      {rows.length === 0 ? (
+      {filter === 'paper' ? (
+        <PaperSection
+          loading={paperLoading}
+          error={paperError}
+          rows={paperRows}
+          summary={paperSummary}
+          onOpenDetail={setDetail}
+        />
+      ) : loading ? (
+        <LoadingState label="Đang lọc…" className="py-16" />
+      ) : rows.length === 0 ? (
         <div className="flex items-center justify-center rounded-lg border border-[#2a2a2a] bg-[#141414] py-16 text-[13px] text-[#666]">
           Không có kèo nào cho bộ lọc &quot;{FILTERS.find((f) => f.key === filter)?.label ?? filter}&quot;
         </div>
@@ -305,6 +630,20 @@ export default function BetStatsView() {
                   <span className={winner === 'away' ? 'font-bold text-[#4ade80]' : 'text-[#ddd]'}>
                     {row.away_team ?? '?'}
                   </span>
+                  {row.confidence && <ConfBadge conf={row.confidence} />}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDetail({
+                        eventId: row.event_id,
+                        home: row.home_team ?? '?',
+                        away: row.away_team ?? '?',
+                      })
+                    }
+                    className="mt-1 block text-[10px] font-semibold text-[#5fd0e0] hover:text-[#8ee3f0] transition-colors"
+                  >
+                    📋 Chi tiết trận
+                  </button>
                 </div>
 
                 {/* Tỉ số ra kèo */}
@@ -397,6 +736,20 @@ export default function BetStatsView() {
                   <span className={winner === 'away' ? 'font-bold text-[#4ade80]' : 'text-[#ddd]'}>
                     {row.away_team ?? '?'}
                   </span>
+                  {row.confidence && <ConfBadge conf={row.confidence} />}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDetail({
+                        eventId: row.event_id,
+                        home: row.home_team ?? '?',
+                        away: row.away_team ?? '?',
+                      })
+                    }
+                    className="mt-1 block text-[11px] font-semibold text-[#5fd0e0] hover:text-[#8ee3f0] transition-colors"
+                  >
+                    📋 Chi tiết trận
+                  </button>
                 </div>
                 <span className="shrink-0 tabular-nums text-[11px] text-[#999]">{fmtTime(row.created_at)}</span>
               </div>
@@ -476,6 +829,15 @@ export default function BetStatsView() {
         </div>
       )}
       </>
+      )}
+
+      {detail && (
+        <MatchDetailDrawer
+          eventId={detail.eventId}
+          home={detail.home}
+          away={detail.away}
+          onClose={() => setDetail(null)}
+        />
       )}
     </>
   );

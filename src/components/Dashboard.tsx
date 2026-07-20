@@ -49,6 +49,9 @@ export default function Dashboard({
   const [dataError, setDataError] = useState<string | null>(null);
 
   const [view, setView] = useState<View>('data');
+  // Deep-link: eventId to auto-open in the routed view's drawer (consumed once).
+  const [deepLinkMatch, setDeepLinkMatch] = useState<number | null>(null);
+  const deepLinkConsumed = useRef(false);
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all'); // 'all' | YYYY-MM-DD
   const [fTeam, setFTeam] = useState('all');
@@ -66,6 +69,30 @@ export default function Dashboard({
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
+  }, []);
+
+  // ── Deep-link (?view=live|keo&match=<eventId>) ──────────────────────────
+  // Runs once on mount, BEFORE the localStorage UI-restore effect, so a shared
+  // link wins over the persisted view. After consuming, strip the query params
+  // so the URL is clean ("/") — F5 won't re-open the drawer.
+  useEffect(() => {
+    if (deepLinkConsumed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const vParam = params.get('view');
+    const mParam = params.get('match');
+    if (!vParam && !mParam) return;
+    deepLinkConsumed.current = true;
+
+    const targetView: View | null =
+      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : null;
+    if (targetView) setView(targetView);
+
+    const eventId = mParam ? Number(mParam) : NaN;
+    if (Number.isFinite(eventId)) setDeepLinkMatch(eventId);
+
+    // Clean the URL back to "/" — consume the deep-link exactly once.
+    window.history.replaceState(null, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Persist UI state
@@ -119,7 +146,8 @@ export default function Dashboard({
   useEffect(() => {
     const ui = loadUiState();
     if (ui) {
-      if (ui.view) setView(ui.view);
+      // A deep-link view (set above) takes precedence over the persisted view.
+      if (ui.view && !deepLinkConsumed.current) setView(ui.view);
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
@@ -485,9 +513,9 @@ export default function Dashboard({
         ) : view === 'match-analysis' ? (
           <MatchAnalysis />
         ) : view === 'bet-stats' ? (
-          <BetStatsView />
+          <BetStatsView initialMatch={deepLinkMatch} />
         ) : (
-          <GSLive />
+          <GSLive initialMatch={deepLinkMatch} />
         )}
       </main>
 

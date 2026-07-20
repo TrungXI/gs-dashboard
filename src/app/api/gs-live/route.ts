@@ -262,7 +262,8 @@ function buildMatch(
 }
 
 export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get('token') ?? '69-940214f0e803120fcfc9183ee4df89d5';
+  // Token lấy từ env (NEXT_PUBLIC_GS_TOKEN) — không nhập tay nữa; vẫn nhận ?token= để override khi cần.
+  const token = process.env.NEXT_PUBLIC_GS_TOKEN || req.nextUrl.searchParams.get('token') || '';
 
   try {
     const res = await fetch(

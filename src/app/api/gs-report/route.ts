@@ -5,6 +5,12 @@ export const dynamic = 'force-dynamic';
 
 const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
 
+/**
+ * Cơ chế v2 (engine v2 + trọng tài v2) lên live tại thời điểm này (giờ DB).
+ * Mọi thống kê "Thống kê Kèo" CHỈ đếm kèo ra từ mốc này trở đi — kèo cũ bị loại.
+ */
+const V2_CUTOFF = '2026-07-19 12:27:22.690527+07';
+
 // Lazy pool — only created when DB URL is set
 let _pool: Pool | null = null;
 function getPool(): Pool | null {
@@ -72,14 +78,26 @@ export interface LegSummary {
   winRate: number | null; // 0..1, half-win counts 0.5, push excluded from denominator
 }
 
+/** Trọng tài AI self-audit — % quyết định keep/veto đúng (gs_ai_verdicts.judge_correct). */
+export interface RefereeSummary {
+  audited: number; // số verdict đã chấm được (judge_correct != null), v2-era
+  correct: number; // trong đó đúng
+  wrong: number; // trong đó sai
+  accuracy: number | null; // 0..1, null nếu chưa chấm được verdict nào
+}
+
 export interface GsReportSummary {
-  total: number; // total rows
-  skipped: number; // số BỎ (either leg skip counts once at row level)
+  total: number; // total rows/trận (v2-era, kể cả BỎ cả 2 leg)
+  bets: number; // TỔNG KÈO tính theo LEG đã đặt: 1 trận vào cả chấp + tài/xỉu = 2 kèo (BỎ không tính)
+  actionable: number; // số TRẬN có ít nhất 1 leg ra kèo (hiển thị trong list)
+  skipped: number; // số TRẬN bỏ hẳn (CẢ 2 leg đều BỎ) — không vào kèo nào
   pending: number; // số chờ (rows with no ft_score)
   halfWin: number; // combined half-win legs
   halfLoss: number; // combined half-loss legs
   side: LegSummary; // chấp
   ou: LegSummary; // Tài/Xỉu
+  roi: number | null; // ROI trên tổng số leg đã đặt cược (win/half/loss), null nếu chưa có
+  referee: RefereeSummary; // trọng tài AI đúng/sai
 }
 
 export interface GsReportTrend {
@@ -316,6 +334,40 @@ function legSummary(results: AsianResult[]): LegSummary {
   return { buckets, settled, winRate: den > 0 ? num / den : null };
 }
 
+/**
+ * Odds actually taken for a leg, parsed from the pick text tail `@ X`
+ * (e.g. "China (S) -0.5 @ 0.91" → 0.91). Asian decimal profit fraction:
+ * a winning 1-unit stake returns +X profit. Falls back to null if absent.
+ * Negative laid values (e.g. "@ -0.94", stake 0.94 to win 1) map to 1/|X|.
+ */
+function pickOdds(pick: string | null): number | null {
+  if (!pick) return null;
+  const m = String(pick).match(/@\s*(-?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const v = parseFloat(m[1]);
+  if (!Number.isFinite(v) || v === 0) return null;
+  return v > 0 ? v : 1 / Math.abs(v);
+}
+
+/** Net profit (units) for one 1-unit leg given its result and taken odds. */
+function legProfit(r: AsianResult, odds: number | null): number | null {
+  const o = odds ?? 1; // default even-money if odds unknown but leg is graded
+  switch (r) {
+    case 'win':
+      return o;
+    case 'half-win':
+      return o / 2;
+    case 'push':
+      return 0;
+    case 'half-loss':
+      return -0.5;
+    case 'loss':
+      return -1;
+    default:
+      return null; // skip / pending — no stake
+  }
+}
+
 function buildTrend(orderedGradedLegs: AsianResult[]): GsReportTrend {
   // orderedGradedLegs is newest-first, already filtered to graded legs.
   const rate = (arr: AsianResult[]): number | null => {
@@ -395,17 +447,21 @@ export async function GET(req: Request) {
   const offset = parseIntParam(url.searchParams.get('offset'), 0, 0);
 
   try {
-    // Read every raw row once (newest-first). The derived Asian results that both
-    // the summary/trend and the row filter depend on are computed here in JS, so
-    // filtering/paginating happens against derived rows on the server — the client
-    // only ever receives a single page.
+    // Read every raw row once (newest-first), SCOPED TO THE V2 CUTOFF — kèo cũ
+    // (trước mốc cơ chế 2) bị loại hoàn toàn khỏi mọi thống kê. The derived Asian
+    // results that both the summary/trend and the row filter depend on are computed
+    // here in JS, so filtering/paginating happens against derived rows on the server
+    // — the client only ever receives a single page.
     const res = await pool.query<GsReportRowRaw>(
       `SELECT event_id, created_at, home_team, away_team, ht_score, ft_score,
               side_pick, side_hit, ou_pick, ou_hit, confidence, verdict, review_note,
               hc_line, hc_home_gives, hc_home_odds, hc_away_odds,
               ou_line, ou_over_odds, ou_under_odds, settled_at
        FROM gs_ht_analysis
+       WHERE created_at >= $1
+         AND confidence IN ('TB','Cao')   -- trang này CHỈ tính kèo TB/Cao (bỏ hẳn Thấp)
        ORDER BY created_at DESC NULLS LAST`,
+      [V2_CUTOFF],
     );
 
     const allRows: GsReportRow[] = res.rows.map((r) => ({
@@ -414,23 +470,79 @@ export async function GET(req: Request) {
       ou_result: deriveOuResult(r),
     }));
 
-    // Summary / trend stay over ALL rows (unfiltered) — the full dataset.
+    // Referee self-audit — % trọng tài AI đúng/sai over v2-era verdicts, from the
+    // judge_correct column populated by collector/audit-judge.js after settlement.
+    const refRes = await pool.query<{ judge_correct: boolean | null }>(
+      `SELECT v.judge_correct
+       FROM gs_ai_verdicts v
+       JOIN gs_ht_analysis a ON a.event_id = v.event_id
+       WHERE a.created_at >= $1
+         AND a.confidence IN ('TB','Cao')`,
+      [V2_CUTOFF],
+    );
+    let refCorrect = 0;
+    let refWrong = 0;
+    for (const r of refRes.rows) {
+      if (r.judge_correct === true) refCorrect += 1;
+      else if (r.judge_correct === false) refWrong += 1;
+    }
+    const refAudited = refCorrect + refWrong;
+    const referee: RefereeSummary = {
+      audited: refAudited,
+      correct: refCorrect,
+      wrong: refWrong,
+      accuracy: refAudited > 0 ? refCorrect / refAudited : null,
+    };
+
+    // ── HEADER AGGREGATES ── over ALL v2-era rows (kể cả BỎ cả 2 leg): the header
+    // box reflects the full v2 dataset. Only the paging list (below) hides BỎ-both.
     const side = legSummary(allRows.map((r) => r.side_result));
     const ou = legSummary(allRows.map((r) => r.ou_result));
 
-    const skipped = allRows.filter((r) => r.side_result === 'skip' || r.ou_result === 'skip').length;
+    // Kèo (leg) đã ĐẶT = leg không phải 'skip'. 1 trận vào cả 2 cửa = 2 kèo.
+    const bets = allRows.reduce(
+      (n, r) => n + (r.side_result !== 'skip' ? 1 : 0) + (r.ou_result !== 'skip' ? 1 : 0),
+      0,
+    );
+    // Số BỎ = TRẬN bỏ hẳn (cả 2 leg đều BỎ) — không tính trận đã vào ít nhất 1 kèo.
+    const skipped = allRows.filter((r) => r.side_result === 'skip' && r.ou_result === 'skip').length;
     const pending = allRows.filter((r) => !parseScore(r.ft_score)).length;
     const halfWin = side.buckets['half-win'] + ou.buckets['half-win'];
     const halfLoss = side.buckets['half-loss'] + ou.buckets['half-loss'];
 
+    // Actionable = ít nhất 1 leg ra kèo (không phải BỎ cả 2). These are the rows
+    // the paging list shows.
+    const actionable = allRows.filter((r) => r.side_result !== 'skip' || r.ou_result !== 'skip').length;
+
+    // ROI over every staked leg (win/half/loss), profit weighted by taken odds.
+    let roiProfit = 0;
+    let roiStake = 0;
+    for (const r of allRows) {
+      const sp = legProfit(r.side_result, pickOdds(r.side_pick));
+      if (sp != null) {
+        roiProfit += sp;
+        roiStake += 1;
+      }
+      const op = legProfit(r.ou_result, pickOdds(r.ou_pick));
+      if (op != null) {
+        roiProfit += op;
+        roiStake += 1;
+      }
+    }
+    const roi = roiStake > 0 ? roiProfit / roiStake : null;
+
     const summary: GsReportSummary = {
       total: allRows.length,
+      bets,
+      actionable,
       skipped,
       pending,
       halfWin,
       halfLoss,
       side,
       ou,
+      roi,
+      referee,
     };
 
     // Trend: combined graded legs, newest-first (rows already sorted DESC).
@@ -441,8 +553,11 @@ export async function GET(req: Request) {
     }
     const trend = buildTrend(gradedLegs);
 
-    // Rows page: apply the active filter, count the full filtered set, then slice.
-    const filteredRows = filter === 'all' ? allRows : allRows.filter((r) => rowMatchesFilter(r, filter));
+    // Rows page: list shows ONLY actionable kèo — rows where BOTH legs are BỎ/skip
+    // are hidden here (but were already counted in the header total above). Then
+    // apply the active filter, count the full filtered set, and slice one page.
+    const actionableRows = allRows.filter((r) => r.side_result !== 'skip' || r.ou_result !== 'skip');
+    const filteredRows = filter === 'all' ? actionableRows : actionableRows.filter((r) => rowMatchesFilter(r, filter));
     const rowsTotal = filteredRows.length;
     const rows = filteredRows.slice(offset, offset + limit);
 
