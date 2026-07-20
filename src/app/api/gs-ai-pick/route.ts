@@ -18,6 +18,39 @@ function getPool(): Pool | null {
   return _pool;
 }
 
+// Bảng cache kèo AI: mỗi trận chỉ gọi Claude 1 lần, lần sau GET lại. Tạo idempotent, 1 lần / process.
+let _schemaReady: Promise<void> | null = null;
+function ensureSchema(pool: Pool): Promise<void> {
+  if (!_schemaReady) {
+    _schemaReady = pool.query(
+      `CREATE TABLE IF NOT EXISTS gs_ai_picks (
+         event_id    bigint PRIMARY KEY,
+         side        text,
+         pick        text,
+         confidence  text,
+         reasoning   text,
+         red_flags   jsonb,
+         model       text,
+         created_at  timestamptz DEFAULT now()
+       )`,
+    ).then(() => undefined).catch((e) => {
+      _schemaReady = null; // cho phép thử lại lần sau nếu tạo bảng lỗi tạm thời
+      throw e;
+    });
+  }
+  return _schemaReady;
+}
+
+interface CacheRow {
+  side: string | null; pick: string | null; confidence: string | null;
+  reasoning: string | null; red_flags: unknown; model: string | null;
+}
+
+function normFlags(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
+  return [];
+}
+
 // ── Row shapes ─────────────────────────────────────────────────────────────────
 
 interface OddsRow {
@@ -175,6 +208,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'ANALYSIS_DATABASE_URL chưa cấu hình' }, { status: 503 });
   }
 
+  // ── Cache-first: nếu trận này đã có kèo AI thì trả bản lưu, KHÔNG gọi Claude ──
+  try {
+    await ensureSchema(pool);
+    const { rows } = await pool.query<CacheRow>(
+      `SELECT side, pick, confidence, reasoning, red_flags, model
+       FROM gs_ai_picks WHERE event_id=$1 LIMIT 1`,
+      [eventId],
+    );
+    if (rows[0]) {
+      const c = rows[0];
+      return NextResponse.json({
+        ok: true,
+        event_id: eventId,
+        cached: true,
+        pick: c.pick,
+        side: c.side,
+        confidence: c.confidence,
+        reasoning: c.reasoning,
+        redFlags: normFlags(c.red_flags),
+        ai_model: c.model,
+      });
+    }
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: `DB lỗi (cache): ${(e as Error).message}` });
+  }
+
   let ev: OddsRow | null;
   let stats: StatsRow | null;
   let hp: ProfileRow | null;
@@ -278,9 +337,23 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: `AI lỗi: ${(e as Error).message}` });
   }
 
+  // Lưu cache (idempotent) — lần đầu ghi, các lần sau GET lại. Lỗi ghi không chặn trả kèo.
+  try {
+    await pool.query(
+      `INSERT INTO gs_ai_picks (event_id, side, pick, confidence, reasoning, red_flags, model, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7, now())
+       ON CONFLICT (event_id) DO NOTHING`,
+      [eventId, pick.side, pick.pick, pick.confidence, pick.reasoning,
+       JSON.stringify(pick.redFlags), AI_MODEL],
+    );
+  } catch {
+    // bỏ qua lỗi ghi cache — vẫn trả kèo cho lần này
+  }
+
   return NextResponse.json({
     ok: true,
     event_id: eventId,
+    cached: false,
     home_team: ev.home_team,
     away_team: ev.away_team,
     ht_score: htScore,

@@ -27,6 +27,39 @@ function parseScore(s: string | null): [number, number] | null {
   return [Number(m[1]), Number(m[2])];
 }
 
+// Các field chỉ số H1 kỳ vọng (19 cặp × home/away = 38 field) — khớp bộ 38 field của predict.js.
+const H1_STAT_KEYS: (keyof GsBetStats)[] = [
+  'home_xg', 'away_xg',
+  'home_shots', 'away_shots',
+  'home_sot', 'away_sot',
+  'home_shot_acc', 'away_shot_acc',
+  'home_poss', 'away_poss',
+  'home_passes', 'away_passes',
+  'home_pass_acc', 'away_pass_acc',
+  'home_dribble_acc', 'away_dribble_acc',
+  'home_tackles', 'away_tackles',
+  'home_tackles_won', 'away_tackles_won',
+  'home_interceptions', 'away_interceptions',
+  'home_saves', 'away_saves',
+  'home_fouls', 'away_fouls',
+  'home_offsides', 'away_offsides',
+  'home_free_kicks', 'away_free_kicks',
+  'home_corners', 'away_corners',
+  'home_penalties', 'away_penalties',
+  'home_yellow', 'away_yellow',
+  'home_red', 'away_red',
+];
+
+// Tỉ lệ field non-null / tổng field kỳ vọng (0..1). Khớp MIN_STATS_COVERAGE=0.80 của predict.js.
+function statsCoverage(stats: GsBetStats | null): number {
+  if (!stats) return 0;
+  let present = 0;
+  for (const k of H1_STAT_KEYS) if (stats[k] != null) present++;
+  return present / H1_STAT_KEYS.length;
+}
+
+const MIN_STATS_COVERAGE = 0.8;
+
 /** Ô tỉ số: nhãn nhỏ + tỉ số tabular. */
 function ScoreCell({ label, score, strong }: { label: string; score: string; strong?: boolean }) {
   return (
@@ -178,6 +211,21 @@ export default function MatchDetailDrawer({
   const ht = parseScore(htStr);
   const ft = parseScore(ftStr);
 
+  // Tab AI Kèo chỉ hiện khi chỉ số H1 đủ độ phủ ≥ 80% (giống MIN_STATS_COVERAGE của predict.js).
+  const coverage = statsCoverage(stats);
+  const showAiTab = !loading && !error && coverage >= MIN_STATS_COVERAGE;
+
+  // Nếu đang ở tab AI mà độ phủ tụt < 80% (đổi trận) → về tab H1.
+  useEffect(() => {
+    if (tab === 'ai' && !showAiTab) setTab('h1');
+  }, [tab, showAiTab]);
+
+  const tabDefs: [typeof tab, string][] = [
+    ['h1', '📊 Chỉ Số H1'],
+    ['h2h', '⚔️ Đối Kháng'],
+    ...(showAiTab ? [['ai', '🤖 AI Kèo'] as [typeof tab, string]] : []),
+  ];
+
   return (
     <>
       <div className="fixed inset-0 z-[200] bg-black/60" onClick={onClose} />
@@ -203,11 +251,7 @@ export default function MatchDetailDrawer({
 
         {/* Tab switcher — mirror tab styling từ MatchAnalysis */}
         <div className="flex gap-1.5 px-3 py-2 border-b border-[#222] bg-[#0d0d0d] flex-shrink-0">
-          {([
-            ['h1', '📊 Chỉ Số H1'],
-            ['h2h', '⚔️ Đối Kháng'],
-            ['ai', '🤖 AI Kèo'],
-          ] as [typeof tab, string][]).map(([key, label]) => (
+          {tabDefs.map(([key, label]) => (
             <button
               key={key}
               type="button"
