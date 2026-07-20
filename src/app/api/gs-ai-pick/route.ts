@@ -137,18 +137,30 @@ async function loadEvent(pool: Pool, eventId: number): Promise<OddsRow | null> {
 
 function statsBlock(s: StatsRow | null): string {
   if (!s) return '(không đọc được chỉ số Hiệp 1)';
-  const pair = (label: string, h: string, a: string) => `${label}: ${n(s[h])}/${n(s[a])}`;
+  const p = (label: string, h: string, a: string) => `  • ${label}: ${n(s[h])}/${n(s[a])} (nhà/khách)`;
   return [
-    pair('SOT (sút trúng đích) — NEO', 'home_sot', 'away_sot'),
-    pair('Shots (tổng sút)', 'home_shots', 'away_shots'),
-    pair('Shot accuracy %', 'home_shot_acc', 'away_shot_acc'),
-    pair('xG', 'home_xg', 'away_xg'),
-    pair('Corners (phạt góc)', 'home_corners', 'away_corners'),
-    pair('Penalties', 'home_penalties', 'away_penalties'),
-    pair('Tackles won', 'home_tackles_won', 'away_tackles_won'),
-    pair('Tackles (tổng)', 'home_tackles', 'away_tackles'),
-    pair('Saves (cản phá thủ môn)', 'home_saves', 'away_saves'),
-  ].map((l) => `  • ${l} (home/away)`).join('\n');
+    '  ⚔️ TẤN CÔNG:',
+    p('Sút trúng đích (SOT) — NEO', 'home_sot', 'away_sot'),
+    p('Tổng sút', 'home_shots', 'away_shots'),
+    p('Độ chính xác sút %', 'home_shot_acc', 'away_shot_acc'),
+    p('xG (kỳ vọng bàn)', 'home_xg', 'away_xg'),
+    p('Phạt góc', 'home_corners', 'away_corners'),
+    p('Đá phạt', 'home_free_kicks', 'away_free_kicks'),
+    p('Việt vị', 'home_offsides', 'away_offsides'),
+    p('Rê bóng chính xác %', 'home_dribble_acc', 'away_dribble_acc'),
+    p('Kiểm soát bóng %', 'home_poss', 'away_poss'),
+    p('Chuyền chính xác %', 'home_pass_acc', 'away_pass_acc'),
+    '  🛡️ PHÒNG THỦ:',
+    p('Tắc bóng THẮNG', 'home_tackles_won', 'away_tackles_won'),
+    p('Tổng tắc bóng', 'home_tackles', 'away_tackles'),
+    p('Cắt bóng (interceptions)', 'home_interceptions', 'away_interceptions'),
+    p('Thủ môn cứu (saves)', 'home_saves', 'away_saves'),
+    p('Phạm lỗi', 'home_fouls', 'away_fouls'),
+    '  🟨 KHÁC:',
+    p('Thẻ vàng', 'home_yellow', 'away_yellow'),
+    p('Thẻ đỏ', 'home_red', 'away_red'),
+    p('Penalty', 'home_penalties', 'away_penalties'),
+  ].join('\n');
 }
 
 function profileBlock(label: string, p: ProfileRow | null): string {
@@ -206,7 +218,7 @@ MASTER-PLAYBOOK (phương pháp bắt buộc):
    - Possession (kiểm soát bóng) BỎ QUA — không dự báo bàn thắng.
 2. SỨC MẠNH THẬT (không phải "áp đảo trên giấy"):
    - tier_z (mạnh ≥ +0.6, yếu ≤ −0.6) + tỉ lệ tackles_won/tackles (độ vững phòng ngự). Thấp = bị xuyên phá → H2 dễ có bàn.
-   - saves cao = thủ môn bận (đối phương tạo nhiều cơ hội thật) — là 1 dữ kiện đọc thế trận, cân nhắc 2 chiều, KHÔNG tự động fade Tài.
+   - saves cao = thủ môn bận (đối phương tạo nhiều cơ hội thật) — là 1 dữ kiện đọc thế trận, cân nhắc 2 chiều, KHÔNG tự động fade Tài.\n   - ĐỪNG mặc định đội tấn công nhiều sẽ THẮNG hay ghi nhiều. Đội PHÒNG THỦ TỐT (tắc bóng thắng cao, cắt bóng nhiều, thủ môn cứu tốt, ít bị xuyên phá) có thể GIỮ SẠCH LƯỚI hoặc THẮNG. Cân nhắc CẢ tấn công LẪN phòng thủ của 2 đội — đôi khi đội thủ chắc mới là đội ăn.
 3. TỔNG BÀN (Tài/Xỉu):
    - Dùng TB bàn 2 đội (avg_tt) + tổng bàn lịch sử cặp làm MỐC để DỰ ĐOÁN tổng bàn chung cuộc. So tổng DỰ ĐOÁN với vạch: dự đoán TRÊN vạch → TÀI; DƯỚI vạch → XỈU. Phải quyết định 2 CHIỀU, TUYỆT ĐỐI KHÔNG mặc định 1 cửa.
    - Cẩn thận "áp đảo ẢO" (sút nhiều mà ít trúng đích + ít góc) → đừng đánh Tài chỉ vì thế trận. NHƯNG nếu 2 đội GHI KHỎE thật (ghi bàn nhiều, đã có bàn ở H1, cặp lịch sử nhiều bàn) thì TÀI là hợp lý — đừng ngại chọn Tài khi số liệu ủng hộ.
