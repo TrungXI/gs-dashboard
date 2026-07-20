@@ -208,9 +208,9 @@ MASTER-PLAYBOOK (phương pháp bắt buộc):
    - tier_z (mạnh ≥ +0.6, yếu ≤ −0.6) + tỉ lệ tackles_won/tackles (độ vững phòng ngự). Thấp = bị xuyên phá → H2 dễ có bàn.
    - saves cao = thủ môn bận = cơ hội đang bị chặn → fade Tài.
 3. TỔNG BÀN (Tài/Xỉu):
-   - Dùng TB bàn 2 đội (avg_tt) làm TRẦN. 2 đội avg_tt thấp → tới ngưỡng sẽ ghi CHẬM lại → nghiêng XỈU.
-   - ĐỪNG để "đang tạo nhiều SOT" dụ đánh Tài — SOT ở esoccer thường KHÔNG chuyển hóa thành bàn ở H2.
-   - avg_total (gs_pair_scoring) là TRẦN tổng bàn của cặp: nếu < median giải → chặn Tài, mặc định Xỉu.
+   - Dùng TB bàn 2 đội (avg_tt) + tổng bàn lịch sử cặp làm MỐC để DỰ ĐOÁN tổng bàn chung cuộc. So tổng DỰ ĐOÁN với vạch: dự đoán TRÊN vạch → TÀI; DƯỚI vạch → XỈU. Phải quyết định 2 CHIỀU, TUYỆT ĐỐI KHÔNG mặc định 1 cửa.
+   - Cẩn thận "áp đảo ẢO" (sút nhiều mà ít trúng đích + ít góc) → đừng đánh Tài chỉ vì thế trận. NHƯNG nếu 2 đội GHI KHỎE thật (ghi bàn nhiều, đã có bàn ở H1, cặp lịch sử nhiều bàn) thì TÀI là hợp lý — đừng ngại chọn Tài khi số liệu ủng hộ.
+   - Tổng bàn lịch sử cặp: nếu vạch THẤP hơn nhiều so với mức 2 đội hay ghi + lịch sử 20 trận nhiều bàn → nghiêng TÀI; nếu vạch CAO hơn mức đó → nghiêng XỈU. Dựa 20 trận lịch sử mà phán, không áp cứng 1 chiều.
    - HT score đã có (bàn đã ghi) là prior mạnh cho FT.
 4. H2H: đội nào hay thắng HT/FT; đội dẫn HT có GIỮ tới FT hay bị gỡ hòa.
 5. GIẢI/BIẾN THỂ:
@@ -386,7 +386,7 @@ export async function GET(req: NextRequest) {
   const userContent = [
     `Bối cảnh trận (đầu hiệp 2, esoccer):`,
     `  • ${ev.home_team} vs ${ev.away_team}`,
-    `  • Biến thể giải: ${variant} (V=nhiều bàn/bẫy Tài, S=ít bàn/edge Xỉu)`,
+    `  • Biến thể giải: ${variant} (V thường NHIỀU bàn hơn → dễ có Tài, S ít bàn hơn → dễ Xỉu; chỉ là nền, không phải luật cứng)`,
     `  • Tỉ số hết hiệp 1 (HT): ${htScore}`,
     ``,
     `🔢 CHỈ SỐ HIỆP 1 (gs_ht_stats) — nhớ BÓC ẢO (SOT là neo, trừ pen, corner-consistency):`,
