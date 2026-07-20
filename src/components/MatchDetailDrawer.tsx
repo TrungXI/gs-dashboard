@@ -17,6 +17,13 @@ interface GsAiPickResponse {
   confidence?: string;
   reasoning?: string;
   redFlags?: string[];
+  hc_side?: string | null;
+  hc_pick?: string | null;
+  hc_confidence?: string | null;
+  hc_reasoning?: string | null;
+  predicted_ft?: string | null;
+  story?: string | null;
+  which_scores_more?: string | null;
   ai_model?: string;
 }
 
@@ -103,6 +110,99 @@ function ConfidenceBadge({ confidence }: { confidence?: string }) {
     <span className={`flex-shrink-0 rounded-md border px-2.5 py-1 text-[11px] font-bold ${cls}`}>
       Tin: {c}
     </span>
+  );
+}
+
+/**
+ * Kèo chấp (leg yếu). Nếu hc_side là "BỎ"/thiếu → hiển thị mờ "Bỏ chấp".
+ * Ngược lại hiện hc_pick + badge độ tin + lý do (nếu có).
+ */
+function HandicapSection({
+  hcSide,
+  hcPick,
+  hcConfidence,
+  hcReasoning,
+}: {
+  hcSide?: string | null;
+  hcPick?: string | null;
+  hcConfidence?: string | null;
+  hcReasoning?: string | null;
+}) {
+  const side = (hcSide ?? '').trim();
+  const skip = !side || side === 'BỎ';
+
+  if (skip) {
+    return (
+      <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-3 text-[12px] italic text-[#777]">
+        Bỏ chấp (leg yếu, không rõ cửa)
+      </div>
+    );
+  }
+
+  const pickLabel = (hcPick ?? '').trim() || side;
+  return (
+    <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[20px] font-extrabold leading-none text-[#c084fc]">{pickLabel}</div>
+          <div className="mt-1 text-[11px] font-semibold text-[#9a9a9a]">Cửa: {side}</div>
+        </div>
+        <ConfidenceBadge confidence={hcConfidence ?? undefined} />
+      </div>
+      {hcReasoning && hcReasoning.trim() && (
+        <div className="mt-3 border-t border-[#242424] pt-2.5 text-[12px] leading-relaxed text-[#ccc]">
+          {hcReasoning}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Dự đoán có câu chuyện: diễn biến H2 (story) + tỉ số dự đoán (predicted_ft)
+ * + đội ghi nhiều hơn (which_scores_more). Thiếu hết → không render.
+ */
+function PredictionSection({
+  story,
+  predictedFt,
+  whichScoresMore,
+  home,
+  away,
+}: {
+  story?: string | null;
+  predictedFt?: string | null;
+  whichScoresMore?: string | null;
+  home: string;
+  away: string;
+}) {
+  const st = (story ?? '').trim();
+  const ft = (predictedFt ?? '').trim();
+  const wsm = (whichScoresMore ?? '').trim();
+  if (!st && !ft && !wsm) return null;
+
+  const scorerLabel =
+    wsm === 'Nhà' ? home : wsm === 'Khách' ? away : wsm === 'Cân' ? 'Cân (hai đội ngang nhau)' : '';
+
+  return (
+    <div className="rounded-lg border border-[#38bdf8]/30 bg-[#38bdf8]/[0.06] px-4 py-4">
+      {st && <div className="text-[12px] leading-relaxed text-[#dbeafe]">{st}</div>}
+      {(ft || scorerLabel) && (
+        <div className={`flex flex-wrap gap-2 ${st ? 'mt-3 border-t border-[#38bdf8]/15 pt-3' : ''}`}>
+          {ft && (
+            <div className="rounded-md border border-[#38bdf8]/30 bg-[#141414] px-3 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[#7dd3fc]">Tỉ số dự đoán </span>
+              <span className="text-[13px] font-extrabold tabular-nums text-white">{ft}</span>
+            </div>
+          )}
+          {scorerLabel && (
+            <div className="rounded-md border border-[#38bdf8]/30 bg-[#141414] px-3 py-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-[#7dd3fc]">H2 ghi nhiều hơn </span>
+              <span className="text-[12px] font-bold text-[#e0f2fe]">{scorerLabel}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -338,6 +438,25 @@ export default function MatchDetailDrawer({
 
               {!aiLoading && !aiError && aiPick && (
                 <div className="px-3 pb-4 md:px-4">
+                  {/* ── Phần 0: Dự đoán có câu chuyện (đặt trên các pick) ── */}
+                  {(aiPick.story || aiPick.predicted_ft || aiPick.which_scores_more) && (
+                    <>
+                      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#666]">🔮 Dự đoán</div>
+                      <div className="mb-4">
+                        <PredictionSection
+                          story={aiPick.story}
+                          predictedFt={aiPick.predicted_ft}
+                          whichScoresMore={aiPick.which_scores_more}
+                          home={home}
+                          away={away}
+                        />
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── Phần 1: Tài/Xỉu ── */}
+                  <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#666]">🎯 Tài/Xỉu</div>
+
                   {/* Pick lớn + confidence */}
                   <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
@@ -375,6 +494,15 @@ export default function MatchDetailDrawer({
                       </ul>
                     </div>
                   )}
+
+                  {/* ── Phần 2: Kèo chấp (leg yếu, thường BỎ) ── */}
+                  <div className="mt-4 mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#666]">⚖️ Kèo chấp</div>
+                  <HandicapSection
+                    hcSide={aiPick.hc_side}
+                    hcPick={aiPick.hc_pick}
+                    hcConfidence={aiPick.hc_confidence}
+                    hcReasoning={aiPick.hc_reasoning}
+                  />
 
                   {aiPick.ai_model && (
                     <div className="mt-3 text-right text-[9px] text-[#444]">model: {aiPick.ai_model}</div>

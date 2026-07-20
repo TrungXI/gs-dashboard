@@ -39,13 +39,20 @@ async function migrateSchema(pool: Pool): Promise<void> {
   // event_id là PRIMARY KEY nên đã tồn tại từ CREATE TABLE — chỉ cần bù các cột dữ liệu.
   await pool.query(
     `ALTER TABLE gs_ai_picks
-       ADD COLUMN IF NOT EXISTS side        text,
-       ADD COLUMN IF NOT EXISTS pick        text,
-       ADD COLUMN IF NOT EXISTS confidence  text,
-       ADD COLUMN IF NOT EXISTS reasoning   text,
-       ADD COLUMN IF NOT EXISTS red_flags   jsonb,
-       ADD COLUMN IF NOT EXISTS model       text,
-       ADD COLUMN IF NOT EXISTS created_at  timestamptz DEFAULT now()`,
+       ADD COLUMN IF NOT EXISTS side          text,
+       ADD COLUMN IF NOT EXISTS pick          text,
+       ADD COLUMN IF NOT EXISTS confidence    text,
+       ADD COLUMN IF NOT EXISTS reasoning     text,
+       ADD COLUMN IF NOT EXISTS red_flags     jsonb,
+       ADD COLUMN IF NOT EXISTS model         text,
+       ADD COLUMN IF NOT EXISTS hc_side           text,
+       ADD COLUMN IF NOT EXISTS hc_pick           text,
+       ADD COLUMN IF NOT EXISTS hc_confidence     text,
+       ADD COLUMN IF NOT EXISTS hc_reasoning      text,
+       ADD COLUMN IF NOT EXISTS predicted_ft      text,
+       ADD COLUMN IF NOT EXISTS story             text,
+       ADD COLUMN IF NOT EXISTS which_scores_more text,
+       ADD COLUMN IF NOT EXISTS created_at        timestamptz DEFAULT now()`,
   );
 }
 function ensureSchema(pool: Pool): Promise<void> {
@@ -61,6 +68,10 @@ function ensureSchema(pool: Pool): Promise<void> {
 interface CacheRow {
   side: string | null; pick: string | null; confidence: string | null;
   reasoning: string | null; red_flags: unknown; model: string | null;
+  hc_side: string | null; hc_pick: string | null;
+  hc_confidence: string | null; hc_reasoning: string | null;
+  predicted_ft: string | null; story: string | null;
+  which_scores_more: string | null;
 }
 
 function normFlags(v: unknown): string[] {
@@ -94,6 +105,14 @@ interface HistRow {
   h1_home: number | null; h1_away: number | null;
   tt_home: number | null; tt_away: number | null;
   home_team_id: number | null; match_type: string | null;
+}
+
+// 20 trận đối đầu gần nhất — kèm ngày, để làm mẫu "cặp này đẻ ra tỉ số cỡ nào".
+interface Hist20Row {
+  match_time: string | null;
+  h1_home: number | null; h1_away: number | null;
+  tt_home: number | null; tt_away: number | null;
+  home_team_id: number | null;
 }
 
 function n(v: unknown): string {
@@ -160,7 +179,22 @@ function histBlock(rows: HistRow[], homeId: number | null, awayId: number | null
   }).join('\n');
 }
 
-const SYSTEM = `Bạn là chuyên gia phân tích kèo bóng đá ảo tốc độ (esoccer) tại thời điểm ĐẦU HIỆP 2 (half-time). Bạn ra 1 pick Tài/Xỉu (hoặc BỎ) theo MASTER-PLAYBOOK dưới đây. Trả lời NGẮN GỌN, tiếng Việt, và CHỈ trả về JSON đúng schema.
+// Bảng 20 trận gần nhất, orient theo đội nhà HIỆN TẠI: "ngày · HT x-y → FT a-b" (x/a = đội nhà hiện tại).
+function hist20Block(rows: Hist20Row[], homeId: number | null): string {
+  if (!rows.length) return '  • (chưa có lịch sử đối đầu)';
+  return rows.map((r) => {
+    const rowHomeIsCurrentHome = r.home_team_id != null && r.home_team_id === homeId;
+    // Nếu trận đó đội nhà hiện tại đá SÂN KHÁCH → đảo tỉ số cho khớp góc nhìn "nhà hiện tại".
+    const h1h = rowHomeIsCurrentHome ? (r.h1_home ?? 0) : (r.h1_away ?? 0);
+    const h1a = rowHomeIsCurrentHome ? (r.h1_away ?? 0) : (r.h1_home ?? 0);
+    const tth = rowHomeIsCurrentHome ? (r.tt_home ?? 0) : (r.tt_away ?? 0);
+    const tta = rowHomeIsCurrentHome ? (r.tt_away ?? 0) : (r.tt_home ?? 0);
+    const day = r.match_time ? String(r.match_time).slice(0, 10) : '?';
+    return `  • ${day} · HT ${h1h}-${h1a} → FT ${tth}-${tta}`;
+  }).join('\n');
+}
+
+const SYSTEM = `Bạn là chuyên gia phân tích kèo bóng đá ảo tốc độ (esoccer) tại thời điểm ĐẦU HIỆP 2 (half-time). Bạn KỂ CÂU CHUYỆN diễn biến hiệp 2 (đoán tỉ số chung cuộc + ai ghi nhiều hơn), RỒI mới ra 1 pick Tài/Xỉu (hoặc BỎ) VÀ 1 gợi ý kèo chấp (hoặc BỎ) theo MASTER-PLAYBOOK dưới đây. Trả lời NGẮN GỌN, tiếng Việt, và CHỈ trả về JSON đúng schema.
 
 ⚠️ Đây là bot THỬ NGHIỆM — chưa được chứng minh (đang thua ~2/10). Hãy thận trọng, thiên về BỎ khi tín hiệu mờ.
 
@@ -181,21 +215,38 @@ MASTER-PLAYBOOK (phương pháp bắt buộc):
 4. H2H: đội nào hay thắng HT/FT; đội dẫn HT có GIỮ tới FT hay bị gỡ hòa.
 5. GIẢI/BIẾN THỂ:
    - Giải (V) + Tài = BẪY THUA → NÉ. Xỉu ở giải (S) là edge tốt nhất (~60-66%).
-   - HC (kèo chấp) yếu, thường BỎ — không phải nhiệm vụ chính của tab này.
-6. LINE-RELATIVE:
+6. LINE-RELATIVE (Tài/Xỉu):
    - So tổng bàn DỰ KIẾN với vạch OU. SÁT vạch (chênh < 0.5) = rủi ro CAO → giảm confidence hoặc BỎ.
    - Chỉ đánh Xỉu khi vạch Under có đệm (≥ ~1.5 so với HT total).
+7. KÈO CHẤP (leg yếu — MẶC ĐỊNH BỎ):
+   - Kèo chấp gần như tung đồng xu (~51%), là chân YẾU. MẶC ĐỊNH "BỎ" trừ khi có lợi thế RÕ RÀNG.
+   - Chỉ nghiêng 1 cửa khi: (a) đội mạnh chấp nửa trái nhỏ VÀ đang dẫn HT, hoặc (b) tín hiệu bùng nổ rõ (1 đội áp đảo thật + đang dẫn + hay thắng đối đầu).
+   - Kết hợp: sức mạnh thật (đội mạnh/yếu) + ai dẫn hết H1 + đối đầu (đội nào hay thắng) so với vạch chấp hiện tại.
+   - Nếu mờ, cân bằng, hoặc đội mạnh phải chấp sâu → BỎ, đừng gượng chọn cửa.
 
-RA QUYẾT ĐỊNH: 1 pick duy nhất. side ∈ {"Tài","Xỉu","BỎ"}. confidence ∈ {"Cao","TB","Thấp"} (chỉ để tham khảo — KHÔNG dùng để tăng cược). reasoning + redFlags: viết TIẾNG VIỆT ĐỜI THƯỜNG, dễ hiểu như đang nói với người chơi kèo bình dân. TUYỆT ĐỐI KHÔNG dùng thuật ngữ/tên cột kỹ thuật (avg_total, avg_tt, tier_z, cv, SOT, xG, median, gs_pair_scoring) — thay bằng chữ Việt: SOT→"sút trúng đích", avg_tt/avg_total→"tổng bàn trung bình 2 đội", tier_z→"đội mạnh/đội yếu", cv→"thất thường", corner→"phạt góc". Không ký hiệu (1/2, ~2.1, <0.5), diễn giải bằng lời. reasoning 2-3 câu gọn; redFlags mỗi cái 1 cụm ngắn dễ hiểu.`;
+RA QUYẾT ĐỊNH:
+- DỰ ĐOÁN CÓ CÂU CHUYỆN (làm TRƯỚC): ước ngưỡng tổng bàn của cặp với thế trận H1 hiện tại → so 20 trận lịch sử (HT tương tự thường ra chung cuộc cỡ nào) → kể diễn biến H2. story (2-4 câu đời thường: ai ghi bàn H2, đội yếu có gỡ không, đội mạnh có ghi thêm không), predicted_ft (tỉ số/khoảng chung cuộc, vd "3-1 hoặc 2-1"), which_scores_more ∈ {"Nhà","Khách","Cân"} (đội ghi nhiều hơn ở H2). Pick bên dưới phải KHỚP câu chuyện này.
+- Tài/Xỉu: side ∈ {"Tài","Xỉu","BỎ"}, confidence ∈ {"Cao","TB","Thấp"} (chỉ tham khảo — KHÔNG dùng để tăng cược). reasoning + redFlags.
+- Kèo chấp: hc_side ∈ {"Nhà","Khách","BỎ"} (đội nhà/khách để bắt, hoặc BỎ), hc_pick (ví dụ "Vietnam (S) -0.25" hoặc "BỎ"), hc_confidence ∈ {"Cao","TB","Thấp"}, hc_reasoning. THẬT THÀ: nếu không rõ cửa thì hc_side="BỎ", hc_pick="BỎ".
+VIẾT: mọi phần chữ (story, reasoning, hc_reasoning, redFlags) dùng TIẾNG VIỆT ĐỜI THƯỜNG, dễ hiểu như đang nói với người chơi kèo bình dân. TUYỆT ĐỐI KHÔNG dùng thuật ngữ/tên cột kỹ thuật (avg_total, avg_tt, tier_z, cv, SOT, xG, median, gs_pair_scoring) — thay bằng chữ Việt: SOT→"sút trúng đích", avg_tt/avg_total→"tổng bàn trung bình 2 đội", tier_z→"đội mạnh/đội yếu", cv→"thất thường", corner→"phạt góc". Không ký hiệu (1/2, ~2.1, <0.5), diễn giải bằng lời. reasoning + hc_reasoning mỗi phần 2-3 câu gọn; redFlags mỗi cái 1 cụm ngắn dễ hiểu.`;
 
 const PICK_SCHEMA = {
   type: 'object',
   properties: {
-    pick: { type: 'string', description: 'Mô tả kèo ngắn gọn, ví dụ "Xỉu 4.5" hoặc "BỎ"' },
+    pick: { type: 'string', description: 'Mô tả kèo Tài/Xỉu ngắn gọn, ví dụ "Xỉu 4.5" hoặc "BỎ"' },
     side: { type: 'string', enum: ['Tài', 'Xỉu', 'BỎ'] },
     confidence: { type: 'string', enum: ['Cao', 'TB', 'Thấp'] },
-    reasoning: { type: 'string', description: 'Vài câu tiếng Việt' },
+    reasoning: { type: 'string', description: 'Vài câu tiếng Việt cho pick Tài/Xỉu' },
     redFlags: { type: 'array', items: { type: 'string' }, description: 'Danh sách cảnh báo ngắn tiếng Việt' },
+    // ── Dự đoán có câu chuyện — KHÔNG bắt buộc để row cache cũ / model bỏ sót không vỡ parse ──
+    predicted_ft: { type: 'string', description: 'Tỉ số hoặc khoảng tỉ số chung cuộc dự đoán, ví dụ "3-1 hoặc 2-1"' },
+    story: { type: 'string', description: 'Câu chuyện diễn biến hiệp 2, 2-4 câu tiếng Việt đời thường' },
+    which_scores_more: { type: 'string', enum: ['Nhà', 'Khách', 'Cân'], description: 'Đội ghi nhiều bàn hơn ở hiệp 2' },
+    // ── Kèo chấp (leg yếu, mặc định BỎ) — KHÔNG bắt buộc để row cache cũ / model bỏ sót không vỡ parse ──
+    hc_side: { type: 'string', enum: ['Nhà', 'Khách', 'BỎ'], description: 'Cửa nghiêng trên kèo chấp: đội nhà, đội khách, hoặc BỎ' },
+    hc_pick: { type: 'string', description: 'Mô tả kèo chấp ngắn gọn, ví dụ "Vietnam (S) -0.25" hoặc "BỎ"' },
+    hc_confidence: { type: 'string', enum: ['Cao', 'TB', 'Thấp'], description: 'Độ tin kèo chấp (chỉ tham khảo)' },
+    hc_reasoning: { type: 'string', description: 'Vài câu tiếng Việt đời thường cho kèo chấp' },
   },
   required: ['pick', 'side', 'confidence', 'reasoning', 'redFlags'],
   additionalProperties: false,
@@ -207,6 +258,13 @@ interface AiPick {
   confidence: 'Cao' | 'TB' | 'Thấp' | string;
   reasoning: string;
   redFlags: string[];
+  hc_side?: 'Nhà' | 'Khách' | 'BỎ' | string;
+  hc_pick?: string;
+  hc_confidence?: 'Cao' | 'TB' | 'Thấp' | string;
+  hc_reasoning?: string;
+  predicted_ft?: string;
+  story?: string;
+  which_scores_more?: 'Nhà' | 'Khách' | 'Cân' | string;
 }
 
 export async function GET(req: NextRequest) {
@@ -231,7 +289,9 @@ export async function GET(req: NextRequest) {
   try {
     await ensureSchema(pool);
     const { rows } = await pool.query<CacheRow>(
-      `SELECT side, pick, confidence, reasoning, red_flags, model
+      `SELECT side, pick, confidence, reasoning, red_flags, model,
+              hc_side, hc_pick, hc_confidence, hc_reasoning,
+              predicted_ft, story, which_scores_more
        FROM gs_ai_picks WHERE event_id=$1 LIMIT 1`,
       [eventId],
     );
@@ -246,6 +306,13 @@ export async function GET(req: NextRequest) {
         confidence: c.confidence,
         reasoning: c.reasoning,
         redFlags: normFlags(c.red_flags),
+        hc_side: c.hc_side,
+        hc_pick: c.hc_pick,
+        hc_confidence: c.hc_confidence,
+        hc_reasoning: c.hc_reasoning,
+        predicted_ft: c.predicted_ft,
+        story: c.story,
+        which_scores_more: c.which_scores_more,
         ai_model: c.model,
       });
     }
@@ -260,6 +327,7 @@ export async function GET(req: NextRequest) {
   let ap: ProfileRow | null;
   let pair: PairRow | null;
   let hist: HistRow[];
+  let hist20: Hist20Row[];
 
   try {
     ev = await loadEvent(pool, eventId);
@@ -267,7 +335,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: false, error: `Không có odds snapshot cho ${eventId}` });
     }
 
-    const [statsRes, hpRes, apRes, pairRes, histRes] = await Promise.all([
+    const [statsRes, hpRes, apRes, pairRes, histRes, hist20Res] = await Promise.all([
       pool.query<StatsRow>(`SELECT * FROM gs_ht_stats WHERE event_id=$1 LIMIT 1`, [eventId]),
       pool.query<ProfileRow>(`SELECT * FROM gs_team_profile WHERE team_id=$1 LIMIT 1`, [ev.home_team_id]),
       pool.query<ProfileRow>(`SELECT * FROM gs_team_profile WHERE team_id=$1 LIMIT 1`, [ev.away_team_id]),
@@ -283,12 +351,20 @@ export async function GET(req: NextRequest) {
          ORDER BY match_time DESC LIMIT 8`,
         [ev.home_team_id, ev.away_team_id],
       ),
+      pool.query<Hist20Row>(
+        `SELECT match_time, h1_home, h1_away, tt_home, tt_away, home_team_id
+         FROM gs_matches_history
+         WHERE (home_team_id=$1 AND away_team_id=$2) OR (home_team_id=$2 AND away_team_id=$1)
+         ORDER BY match_time DESC LIMIT 20`,
+        [ev.home_team_id, ev.away_team_id],
+      ),
     ]);
     stats = statsRes.rows[0] ?? null;
     hp = hpRes.rows[0] ?? null;
     ap = apRes.rows[0] ?? null;
     pair = pairRes.rows[0] ?? null;
     hist = histRes.rows;
+    hist20 = hist20Res.rows;
   } catch (e) {
     return NextResponse.json({ ok: false, error: `DB lỗi: ${(e as Error).message}` });
   }
@@ -326,9 +402,17 @@ export async function GET(req: NextRequest) {
     `📚 LỊCH SỬ ĐỐI ĐẦU gần nhất (gs_matches_history) — ai thắng HT/FT, HT-leader giữ hay bị gỡ:`,
     histBlock(hist, ev.home_team_id, ev.away_team_id),
     ``,
+    `📈 20 TRẬN ĐỐI ĐẦU GẦN NHẤT (mẫu để đoán "cặp này đẻ ra tỉ số cỡ nào") — góc nhìn ĐỘI NHÀ hiện tại (${ev.home_team}), đọc "HT x-y → FT a-b" với x/a là bàn của đội nhà:`,
+    hist20Block(hist20, ev.home_team_id),
+    ``,
     oddsNow.join('\n'),
     ``,
-    `Nhiệm vụ: theo MASTER-PLAYBOOK, ra 1 pick Tài/Xỉu/BỎ cho phần còn lại của trận. Trả JSON qua công cụ emit_pick.`,
+    `Nhiệm vụ (làm theo THỨ TỰ — kể câu chuyện TRƯỚC, ra pick SAU):`,
+    `  1) Ước NGƯỠNG tổng bàn của cặp này với thế trận H1 hiện tại (vd "2 đội này đá vầy thường ra tổng khoảng X-Y bàn").`,
+    `  2) So với 20 trận lịch sử ở trên: những lần HT tương tự thì chung cuộc thường ra cỡ nào.`,
+    `  3) Kể CÂU CHUYỆN diễn biến hiệp 2 (story, 2-4 câu): ai sẽ ghi bàn ở H2, đội yếu có gỡ được không, đội mạnh có ghi thêm không, tỉ số kết thúc (predicted_ft) cỡ nào; và đội nào ghi nhiều hơn ở H2 (which_scores_more: Nhà/Khách/Cân).`,
+    `  4) Từ câu chuyện đó → ra 1 pick Tài/Xỉu/BỎ VÀ 1 gợi ý kèo chấp (Nhà/Khách/BỎ — mặc định BỎ nếu không rõ cửa).`,
+    `Trả JSON qua công cụ emit_pick.`,
   ].join('\n');
 
   let pick: AiPick;
@@ -337,7 +421,7 @@ export async function GET(req: NextRequest) {
     const client = new AnthropicClient();
     const msg = await client.messages.create({
       model: AI_MODEL,
-      max_tokens: 400,
+      max_tokens: 650,
       system: SYSTEM,
       tools: [{
         name: 'emit_pick',
@@ -360,11 +444,17 @@ export async function GET(req: NextRequest) {
   // Lưu cache (idempotent) — lần đầu ghi, các lần sau GET lại. Lỗi ghi không chặn trả kèo.
   try {
     await pool.query(
-      `INSERT INTO gs_ai_picks (event_id, side, pick, confidence, reasoning, red_flags, model, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7, now())
+      `INSERT INTO gs_ai_picks
+         (event_id, side, pick, confidence, reasoning, red_flags, model,
+          hc_side, hc_pick, hc_confidence, hc_reasoning,
+          predicted_ft, story, which_scores_more, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14, now())
        ON CONFLICT (event_id) DO NOTHING`,
       [eventId, pick.side, pick.pick, pick.confidence, pick.reasoning,
-       JSON.stringify(pick.redFlags), AI_MODEL],
+       JSON.stringify(pick.redFlags), AI_MODEL,
+       pick.hc_side ?? null, pick.hc_pick ?? null,
+       pick.hc_confidence ?? null, pick.hc_reasoning ?? null,
+       pick.predicted_ft ?? null, pick.story ?? null, pick.which_scores_more ?? null],
     );
   } catch {
     // bỏ qua lỗi ghi cache — vẫn trả kèo cho lần này
@@ -384,6 +474,13 @@ export async function GET(req: NextRequest) {
     confidence: pick.confidence,
     reasoning: pick.reasoning,
     redFlags: pick.redFlags,
+    hc_side: pick.hc_side ?? null,
+    hc_pick: pick.hc_pick ?? null,
+    hc_confidence: pick.hc_confidence ?? null,
+    hc_reasoning: pick.hc_reasoning ?? null,
+    predicted_ft: pick.predicted_ft ?? null,
+    story: pick.story ?? null,
+    which_scores_more: pick.which_scores_more ?? null,
     ai_model: AI_MODEL,
   });
 }
