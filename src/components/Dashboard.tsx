@@ -7,10 +7,10 @@ import SearchDropdown from './SearchDropdown';
 import DataTable from './DataTable';
 import { LoadingState, Spinner } from './Spinner';
 import GSLive from './GSLive';
-import Analysis from './Analysis';
 import MatchAnalysis from './MatchAnalysis';
 import BetStatsView from './BetStatsView';
 import TeamFormReport from './TeamFormReport';
+import RankingLive from './RankingLive';
 
 type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'team-form';
 type FType = 'all' | '20p' | '16p';
@@ -23,7 +23,6 @@ function loadUiState() {
     if (!s) return null;
     return JSON.parse(s) as {
       view?: View; fType?: FType; fDate?: string; fTeam?: string;
-      r1?: string; r2?: string; h1Filter?: string;
     };
   } catch { return null; }
 }
@@ -56,17 +55,9 @@ export default function Dashboard({
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all'); // 'all' | YYYY-MM-DD
   const [fTeam, setFTeam] = useState('all');
-  const [r1, setR1] = useState('');
-  const [r2, setR2] = useState('');
-  const [h1Filter, setH1Filter] = useState('all');
   const uiRestored = useRef(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
-
-  // ── report/analysis view: needs the FULL history (its own data path) ────
-  const [fullMatches, setFullMatches] = useState<Match[]>([]);
-  const [fullLoaded, setFullLoaded] = useState(false);
-  const [fullLoading, setFullLoading] = useState(false);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', 'dark');
@@ -102,10 +93,10 @@ export default function Dashboard({
     if (!uiRestored.current) return;
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, r1, r2, h1Filter }));
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam }));
     }, 300);
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [view, fType, fDate, fTeam, r1, r2, h1Filter]);
+  }, [view, fType, fDate, fTeam]);
 
   // ── Fetch a server-filtered page. offset 0 replaces, >0 appends. ────────
   // `loadPageWith` takes explicit filters (used at mount before state settles);
@@ -152,9 +143,6 @@ export default function Dashboard({
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
-      if (ui.r1 != null) setR1(ui.r1);
-      if (ui.r2 != null) setR2(ui.r2);
-      if (ui.h1Filter) setH1Filter(ui.h1Filter);
     }
     uiRestored.current = true;
 
@@ -205,39 +193,6 @@ export default function Dashboard({
     loadPage(dataMatches.length, false);
   }, [loadingMore, dataMatches.length, dataTotal, loadPage]);
 
-  // ── Lazily load the full history the first time report view is opened. ──
-  const fullLoadStarted = useRef(false);
-  useEffect(() => {
-    if (view !== 'report' || fullLoadStarted.current) return;
-    fullLoadStarted.current = true;
-    let cancelled = false;
-    (async () => {
-      setFullLoading(true);
-      try {
-        // limit=0 -> server clamps to min 1; use a large limit to fetch all.
-        const res = await fetch('/api/gs-matches?type=all&date=all&team=all&limit=500&offset=0');
-        // The report view needs the entire history for H2H/form stats, so page
-        // through until we've collected `total` rows.
-        const first = (await res.json()) as { ok: boolean; matches?: Match[]; total?: number };
-        if (!first.ok) throw new Error('load failed');
-        let all = first.matches ?? [];
-        const total = first.total ?? all.length;
-        while (all.length < total) {
-          const r = await fetch(`/api/gs-matches?type=all&date=all&team=all&limit=500&offset=${all.length}`);
-          const j = (await r.json()) as { ok: boolean; matches?: Match[] };
-          if (!j.ok || !j.matches || j.matches.length === 0) break;
-          all = all.concat(j.matches);
-        }
-        if (!cancelled) { setFullMatches(all); setFullLoaded(true); }
-      } catch {
-        if (!cancelled) setFullLoaded(true); // avoid retry loop; Analysis shows empty state
-      } finally {
-        if (!cancelled) setFullLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [view]);
-
   // ── Filter option lists (from server-computed options) ──────────────────
   const dataTeamOptions = useMemo(
     () => [{ value: 'all', label: '-- Tất cả đội --' }, ...options.teams.map((t) => ({ value: t, label: t }))],
@@ -250,41 +205,12 @@ export default function Dashboard({
     ['16p', `16p (${options.count16})`],
   ];
 
-  // ── report view derived data (from the full history) ────────────────────
-  const reportTeamOptions = useMemo(() => {
-    const teams = [...new Set(fullMatches.flatMap((m) => [m.homeTeam, m.awayTeam]))].sort();
-    return [{ value: '', label: '-- Chọn đội --' }, ...teams.map((t) => ({ value: t, label: t }))];
-  }, [fullMatches]);
-
   const dates = options.dates; // for sidebar range label (DD/MM/YYYY labels)
-
-  const h1Options = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const m of fullMatches) {
-      const key = `${m.h1Home}–${m.h1Away}`;
-      counts[key] = (counts[key] || 0) + 1;
-    }
-    return Object.entries(counts)
-      .sort((a, b) => {
-        const [aH, aA] = a[0].split('–').map(Number);
-        const [bH, bA] = b[0].split('–').map(Number);
-        const aTot = aH + aA, bTot = bH + bA;
-        if (aTot !== bTot) return aTot - bTot;
-        return b[1] - a[1];
-      })
-      .map(([score, count]) => ({ value: score, label: `${score}  (${count} trận)` }));
-  }, [fullMatches]);
-
-  const analysisMatches = useMemo(() => {
-    if (h1Filter === 'all') return fullMatches;
-    const [h1H, h1A] = h1Filter.split('–');
-    return fullMatches.filter((m) => String(m.h1Home) === h1H && String(m.h1Away) === h1A);
-  }, [fullMatches, h1Filter]);
 
   const navItems: [View, string, string][] = [
     ['data', '📋', 'GS Dữ liệu'],
     ['gs-live', '🔴', 'GS Live'],
-    ['report', '📊', 'Đối Đầu'],
+    ['report', '🏆', 'Xếp hạng'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
     ['bet-stats', '📊', 'Thống kê kèo'],
     ['team-form', '🔄', 'Quy luật phong độ'],
@@ -447,71 +373,7 @@ export default function Dashboard({
             )}
           </>
         ) : view === 'report' ? (
-          <>
-            <div className="mb-5 flex items-baseline gap-3 flex-wrap">
-              <h1 className="text-xl font-bold text-white">📊 Đối Đầu &amp; Form</h1>
-              <span className="text-[13px] text-[#666]">
-                {dates.length > 0 ? `${dates[dates.length - 1].label}–${dates[0].label}` : 'Dữ liệu'}
-              </span>
-            </div>
-
-            {fullLoading && !fullLoaded ? (
-              <LoadingState label="Đang tải lịch sử trận đấu…" />
-            ) : (
-              <>
-                <div className="mb-5 flex flex-wrap items-end gap-4 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a] px-4 py-3.5 max-md:sticky max-md:top-0 max-md:z-30">
-                  <div className="min-w-[180px] flex-1">
-                    <div className="mb-1 text-[11px] text-white/45">Đội 1</div>
-                    <SearchDropdown
-                      options={reportTeamOptions}
-                      value={r1}
-                      onChange={setR1}
-                      placeholder="-- Chọn đội 1 --"
-                    />
-                  </div>
-                  <div className="min-w-[180px] flex-1">
-                    <div className="mb-1 text-[11px] text-white/45">Đội 2</div>
-                    <SearchDropdown
-                      options={reportTeamOptions}
-                      value={r2}
-                      onChange={setR2}
-                      placeholder="-- Chọn đội 2 --"
-                    />
-                  </div>
-                  <div className="min-w-[160px]">
-                    <div className="mb-1 text-[11px] text-white/45">Lọc tỉ số H1</div>
-                    <select
-                      value={h1Filter}
-                      onChange={(e) => setH1Filter(e.target.value)}
-                      className="w-full rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-                    >
-                      <option value="all" className="bg-[#111] text-white">Tất cả</option>
-                      {h1Options.map((o) => (
-                        <option key={o.value} value={o.value} className="bg-[#111] text-white">{o.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  {h1Filter !== 'all' && (
-                    <div className="flex items-center gap-2 self-end pb-0.5">
-                      <span className="rounded-md bg-[#fbbf24]/15 px-2 py-0.5 text-[12px] font-semibold text-[#fbbf24]">
-                        H1 = {h1Filter} · {analysisMatches.length} trận
-                      </span>
-                      <button onClick={() => setH1Filter('all')} className="text-[10px] text-[#17a2b8] hover:text-white">Xóa</button>
-                    </div>
-                  )}
-                </div>
-
-                {r1 && r2 && r1 !== r2 ? (
-                  <Analysis matches={analysisMatches} t1={r1} t2={r2} />
-                ) : (
-                  <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
-                    <div className="mb-3 text-4xl">📊</div>
-                    <div className="text-[14px] text-[#888]">Chọn 2 đội bên trên để xem thống kê</div>
-                  </div>
-                )}
-              </>
-            )}
-          </>
+          <RankingLive />
         ) : view === 'match-analysis' ? (
           <MatchAnalysis />
         ) : view === 'bet-stats' ? (

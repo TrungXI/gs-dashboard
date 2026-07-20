@@ -19,7 +19,7 @@ import type { TeamAnalysisAgg } from '../app/api/gs-team-analysis/route';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
 
 
-interface GsLiveMatch {
+export interface GsLiveMatch {
   leagueId: number;
   leagueName: string;
   matchType: '16p' | '20p' | '8p' | '12p';
@@ -60,7 +60,7 @@ type Signal =
   | { kind: 'TRAP'; label: '⚠ BẪY'; color: string }
   | { kind: 'DRAW_LOCK'; label: '✓ CHỐT HÒA'; color: string };
 
-interface Toast {
+export interface Toast {
   id: number;
   kind: 'goal' | 'halftime';
   message: string;
@@ -191,7 +191,7 @@ function RawVal({ val }: { val: string | null }) {
   );
 }
 
-function phaseLabel(m: GsLiveMatch, nowMs: number): string {
+export function phaseLabel(m: GsLiveMatch, nowMs: number): string {
   if (!m.isLive) {
     return nowMs < new Date(m.startTime).getTime() ? 'Chờ' : 'KT';
   }
@@ -523,7 +523,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
   );
 }
 
-function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
+export function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: number) => void }) {
   if (toasts.length === 0) return null;
   return (
     <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[10000] flex flex-col items-center gap-2 pointer-events-none">
@@ -591,7 +591,7 @@ const SUSPENDED_CELL = <span className="font-semibold text-[10px] text-[#555]">�
 
 // Đối đầu (lịch sử H2H): 1 DÒNG TEXT gọn / hiệp. `ĐĐ H1: A 45% · Hoà 25% · B 30% (n35)`
 // A xanh / hòa xám / B hồng, n mẫu mỏng (<8) → vàng cảnh báo. Dùng cả desktop lẫn mobile.
-function H2HLine({
+export function H2HLine({
   label, s, meetings,
 }: {
   label: string;
@@ -613,7 +613,7 @@ function H2HLine({
 }
 
 // Hai dòng: H1 split ở trên, H2 split ở dưới. Không loaded → `…`; n=0 → ẩn (muted "—").
-function H2HLines({ splits, className }: { splits?: PairResult; className?: string }) {
+export function H2HLines({ splits, className }: { splits?: PairResult; className?: string }) {
   if (!splits) return <div className={`text-[10px] text-[#555] ${className ?? ''}`}>ĐĐ …</div>;
   if (splits.meetings === 0) return <div className={`text-[10px] text-[#555] ${className ?? ''}`}>ĐĐ —</div>;
   return (
