@@ -6,6 +6,20 @@ import H1StatsPanel from './H1StatsPanel';
 import MatchAnalysis from './MatchAnalysis';
 import type { GsBetsResponse, GsBetPick, GsBetStats } from '../app/api/gs-bets/route';
 
+interface GsAiPickResponse {
+  ok: boolean;
+  error?: string;
+  ht_score?: string | null;
+  variant?: string;
+  ou_line?: string | null;
+  pick?: string;
+  side?: string;
+  confidence?: string;
+  reasoning?: string;
+  redFlags?: string[];
+  ai_model?: string;
+}
+
 function parseScore(s: string | null): [number, number] | null {
   if (!s) return null;
   const m = String(s).trim().match(/^(\d+)\s*[-:]\s*(\d+)$/);
@@ -25,6 +39,40 @@ function ScoreCell({ label, score, strong }: { label: string; score: string; str
   );
 }
 
+/** Pick lớn, in đậm, màu theo side: Tài xanh lá / Xỉu xanh dương / BỎ xám. */
+function AiSide({ side, pick }: { side?: string; pick?: string }) {
+  const s = (side ?? '').trim();
+  const color = s === 'Tài'
+    ? 'text-[#4ade80]'
+    : s === 'Xỉu'
+      ? 'text-[#60a5fa]'
+      : 'text-[#8a8a8a]';
+  return (
+    <div className="min-w-0">
+      <div className={`text-[26px] font-extrabold leading-none ${color}`}>{s || '—'}</div>
+      {pick && pick.trim() && pick.trim() !== s && (
+        <div className="mt-1 truncate text-[12px] font-semibold text-[#bbb]">{pick}</div>
+      )}
+    </div>
+  );
+}
+
+/** Badge độ tin: Cao / TB / Thấp (chỉ tham khảo). */
+function ConfidenceBadge({ confidence }: { confidence?: string }) {
+  const c = (confidence ?? '').trim();
+  if (!c) return null;
+  const cls = c === 'Cao'
+    ? 'border-[#4ade80]/40 bg-[#4ade80]/10 text-[#4ade80]'
+    : c === 'TB'
+      ? 'border-[#fbbf24]/40 bg-[#fbbf24]/10 text-[#fbbf24]'
+      : 'border-[#8a8a8a]/40 bg-[#8a8a8a]/10 text-[#9a9a9a]';
+  return (
+    <span className={`flex-shrink-0 rounded-md border px-2.5 py-1 text-[11px] font-bold ${cls}`}>
+      Tin: {c}
+    </span>
+  );
+}
+
 export default function MatchDetailDrawer({
   eventId,
   home,
@@ -40,7 +88,13 @@ export default function MatchDetailDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<GsBetPick | null>(null);
   const [stats, setStats] = useState<GsBetStats | null>(null);
-  const [tab, setTab] = useState<'h1' | 'h2h'>('h1');
+  const [tab, setTab] = useState<'h1' | 'h2h' | 'ai'>('h1');
+
+  // Tab AI Kèo — lazy: chỉ fetch khi mở tab (tiết kiệm chi phí API)
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPick, setAiPick] = useState<GsAiPickResponse | null>(null);
+  const [aiFetched, setAiFetched] = useState(false);
 
   // ESC đóng drawer
   useEffect(() => {
@@ -57,6 +111,11 @@ export default function MatchDetailDrawer({
     setError(null);
     setPick(null);
     setStats(null);
+    // reset AI tab khi đổi trận
+    setAiPick(null);
+    setAiError(null);
+    setAiFetched(false);
+    setAiLoading(false);
 
     fetch(`/api/gs-bets?eventId=${eventId}`)
       .then(async (r) => {
@@ -82,6 +141,36 @@ export default function MatchDetailDrawer({
       alive = false;
     };
   }, [eventId]);
+
+  // Lazy: chỉ gọi /api/gs-ai-pick lần đầu khi mở tab AI (tiết kiệm chi phí API)
+  useEffect(() => {
+    if (tab !== 'ai' || aiFetched) return;
+    let alive = true;
+    setAiFetched(true);
+    setAiLoading(true);
+    setAiError(null);
+
+    fetch(`/api/gs-ai-pick?event=${eventId}`)
+      .then(async (r) => {
+        const json = (await r.json()) as GsAiPickResponse;
+        if (!alive) return;
+        if (!json.ok) {
+          setAiError(json.error || 'Không tạo được kèo AI.');
+          return;
+        }
+        setAiPick(json);
+      })
+      .catch(() => {
+        if (alive) setAiError('Không tạo được kèo AI.');
+      })
+      .finally(() => {
+        if (alive) setAiLoading(false);
+      });
+
+    return () => {
+      alive = false;
+    };
+  }, [tab, aiFetched, eventId]);
 
   // Tỉ số: HT lấy từ pick.ht_score (fallback stats.ht_score), FT từ pick.ft_score; H2 = FT − HT.
   const htStr = pick?.ht_score ?? stats?.ht_score ?? null;
@@ -117,6 +206,7 @@ export default function MatchDetailDrawer({
           {([
             ['h1', '📊 Chỉ Số H1'],
             ['h2h', '⚔️ Đối Kháng'],
+            ['ai', '🤖 AI Kèo'],
           ] as [typeof tab, string][]).map(([key, label]) => (
             <button
               key={key}
@@ -170,6 +260,70 @@ export default function MatchDetailDrawer({
           {/* Tab 2 — Đối Kháng (lịch sử đối đầu, tái sử dụng MatchAnalysis embedded) */}
           {tab === 'h2h' && (
             <MatchAnalysis embedded initialTeamA={home} initialTeamB={away} />
+          )}
+
+          {/* Tab 3 — AI Kèo (thử nghiệm, lazy fetch) */}
+          {tab === 'ai' && (
+            <div className="flex flex-col gap-0">
+              {/* Nhãn thử nghiệm nổi bật */}
+              <div className="m-3 rounded-lg border border-[#a855f7]/40 bg-[#a855f7]/10 px-3 py-2.5 text-[11px] leading-relaxed text-[#d8b4fe]">
+                🧪 <span className="font-bold">AI THỬ NGHIỆM</span> — tham khảo, CHƯA chứng minh (bot AI đang thua ~2/10). KÈO CHÍNH xem Premium.
+              </div>
+
+              {aiLoading && <LoadingState label="AI đang phân tích kèo…" />}
+
+              {!aiLoading && aiError && (
+                <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
+                  {aiError}
+                </div>
+              )}
+
+              {!aiLoading && !aiError && aiPick && (
+                <div className="px-3 pb-4 md:px-4">
+                  {/* Pick lớn + confidence */}
+                  <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <AiSide side={aiPick.side} pick={aiPick.pick} />
+                      <ConfidenceBadge confidence={aiPick.confidence} />
+                    </div>
+                    {(aiPick.ht_score || aiPick.ou_line) && (
+                      <div className="mt-2 text-[10px] text-[#666]">
+                        {aiPick.ht_score ? `HT ${aiPick.ht_score}` : ''}
+                        {aiPick.ou_line ? `  ·  vạch OU ${aiPick.ou_line}` : ''}
+                        {aiPick.variant ? `  ·  giải ${aiPick.variant}` : ''}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Lý do */}
+                  {aiPick.reasoning && (
+                    <div className="mt-3 rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-3">
+                      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#555]">💭 Lý do</div>
+                      <div className="text-[12px] leading-relaxed text-[#ccc]">{aiPick.reasoning}</div>
+                    </div>
+                  )}
+
+                  {/* Red flags */}
+                  {aiPick.redFlags && aiPick.redFlags.length > 0 && (
+                    <div className="mt-3 rounded-lg border border-[#2a2a2a] bg-[#141414] px-4 py-3">
+                      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wide text-[#555]">🚩 Cảnh báo</div>
+                      <ul className="flex flex-col gap-1">
+                        {aiPick.redFlags.map((f, i) => (
+                          <li key={i} className="flex gap-1.5 text-[11px] leading-relaxed text-[#e8a33d]">
+                            <span className="flex-shrink-0">•</span>
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiPick.ai_model && (
+                    <div className="mt-3 text-right text-[9px] text-[#444]">model: {aiPick.ai_model}</div>
+                  )}
+                </div>
+              )}
+            </div>
           )}
         </div>
       </div>
