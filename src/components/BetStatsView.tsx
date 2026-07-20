@@ -513,27 +513,6 @@ export default function BetStatsView({ initialMatch }: { initialMatch?: number |
           sub="lãi/lỗ mỗi kèo"
         />
         <Card
-          label="Trọng tài AI đúng"
-          value={
-            summary.referee.accuracy == null ? (
-              '—'
-            ) : (
-              <span
-                className={
-                  summary.referee.accuracy >= 0.5 ? 'text-[#4ade80]' : 'text-[#f87171]'
-                }
-              >
-                {pct(summary.referee.accuracy)}
-              </span>
-            )
-          }
-          sub={
-            summary.referee.audited === 0
-              ? 'chưa chấm (chỉ soi kèo TB/Cao)'
-              : `${summary.referee.correct} đúng / ${summary.referee.wrong} sai · ${summary.referee.audited} kèo TB/Cao`
-          }
-        />
-        <Card
           label="Ăn nửa / Thua nửa"
           value={
             <span>

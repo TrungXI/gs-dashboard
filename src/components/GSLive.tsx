@@ -8,6 +8,7 @@ import { todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayS
 import { TypeBadge, ResultTag } from './badges';
 import { LoadingState } from './Spinner';
 import MatchAnalysis from './MatchAnalysis';
+import MatchupView from './MatchupView';
 import HcWatchDrawer from './HcWatchDrawer';
 import H1StatsPanel from './H1StatsPanel';
 import SearchDropdown from './SearchDropdown';
@@ -1135,7 +1136,7 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
   const [matches, setMatches] = useState<Match[] | null>(null);
   const [agg, setAgg] = useState<TeamAnalysisAgg | null>(null);
   // Mở drawer: đã sang H2 (qua HT → thường có thông số H1) → vào tab Kèo; chưa thì Đối Kháng.
-  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'frames' | 'keo' | 'history'>(live.isH2 ? 'keo' : 'confront');
+  const [activeTab, setActiveTab] = useState<'stats' | 'suggest' | 'confront' | 'matchup' | 'frames' | 'keo' | 'history'>(live.isH2 ? 'keo' : 'confront');
   const userPickedTabRef = useRef(false);
   type HtFrame = { frame_index: number; frame_url: string; video_url: string };
   const [htFrames, setHtFrames] = useState<HtFrame[] | null>(null);
@@ -1770,10 +1771,12 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         {/* Tabs */}
         <div className="flex gap-0.5 overflow-x-auto scrollbar-none px-2 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
           {([
-            ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
+            // Tạm ẩn 'Thống kê' + 'Lịch sử' (mai mốt thêm lại: bỏ comment 2 dòng dưới).
+            // ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
             ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
-            ['history',  '📜', 'Lịch sử',    'border-[#22d3ee]'],
+            ['matchup',  '🔥', 'Diễn biến', 'border-[#fb7185]'],
+            // ['history',  '📜', 'Lịch sử',    'border-[#22d3ee]'],
             ['keo',      '🎯', 'Kèo',       'border-[#f59e0b]'],
             ...(live.period >= 4 ? [['frames', '📷', 'HT', 'border-[#a78bfa]']] as [string, string, string, string][] : []),
           ] as [string, string, string, string][]).map(([key, icon, label, activeBorder]) => (
@@ -1944,6 +1947,10 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
               initialTeamA={live.homeTeam}
               initialTeamB={live.awayTeam}
             />
+          )}
+
+          {activeTab === 'matchup' && (
+            <MatchupView teamA={live.homeTeam} teamB={live.awayTeam} />
           )}
 
           {activeTab === 'frames' && (

@@ -78,14 +78,6 @@ export interface LegSummary {
   winRate: number | null; // 0..1, half-win counts 0.5, push excluded from denominator
 }
 
-/** Trọng tài AI self-audit — % quyết định keep/veto đúng (gs_ai_verdicts.judge_correct). */
-export interface RefereeSummary {
-  audited: number; // số verdict đã chấm được (judge_correct != null), v2-era
-  correct: number; // trong đó đúng
-  wrong: number; // trong đó sai
-  accuracy: number | null; // 0..1, null nếu chưa chấm được verdict nào
-}
-
 export interface GsReportSummary {
   total: number; // total rows/trận (v2-era, kể cả BỎ cả 2 leg)
   bets: number; // TỔNG KÈO tính theo LEG đã đặt: 1 trận vào cả chấp + tài/xỉu = 2 kèo (BỎ không tính)
@@ -97,7 +89,6 @@ export interface GsReportSummary {
   side: LegSummary; // chấp
   ou: LegSummary; // Tài/Xỉu
   roi: number | null; // ROI trên tổng số leg đã đặt cược (win/half/loss), null nếu chưa có
-  referee: RefereeSummary; // trọng tài AI đúng/sai
 }
 
 export interface GsReportTrend {
@@ -470,30 +461,6 @@ export async function GET(req: Request) {
       ou_result: deriveOuResult(r),
     }));
 
-    // Referee self-audit — % trọng tài AI đúng/sai over v2-era verdicts, from the
-    // judge_correct column populated by collector/audit-judge.js after settlement.
-    const refRes = await pool.query<{ judge_correct: boolean | null }>(
-      `SELECT v.judge_correct
-       FROM gs_ai_verdicts v
-       JOIN gs_ht_analysis a ON a.event_id = v.event_id
-       WHERE a.created_at >= $1
-         AND a.confidence IN ('TB','Cao')`,
-      [V2_CUTOFF],
-    );
-    let refCorrect = 0;
-    let refWrong = 0;
-    for (const r of refRes.rows) {
-      if (r.judge_correct === true) refCorrect += 1;
-      else if (r.judge_correct === false) refWrong += 1;
-    }
-    const refAudited = refCorrect + refWrong;
-    const referee: RefereeSummary = {
-      audited: refAudited,
-      correct: refCorrect,
-      wrong: refWrong,
-      accuracy: refAudited > 0 ? refCorrect / refAudited : null,
-    };
-
     // ── HEADER AGGREGATES ── over ALL v2-era rows (kể cả BỎ cả 2 leg): the header
     // box reflects the full v2 dataset. Only the paging list (below) hides BỎ-both.
     const side = legSummary(allRows.map((r) => r.side_result));
@@ -542,7 +509,6 @@ export async function GET(req: Request) {
       side,
       ou,
       roi,
-      referee,
     };
 
     // Trend: combined graded legs, newest-first (rows already sorted DESC).

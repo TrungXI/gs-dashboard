@@ -10,8 +10,9 @@ import GSLive from './GSLive';
 import Analysis from './Analysis';
 import MatchAnalysis from './MatchAnalysis';
 import BetStatsView from './BetStatsView';
+import TeamFormReport from './TeamFormReport';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'team-form';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -286,6 +287,7 @@ export default function Dashboard({
     ['report', '📊', 'Đối Đầu'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
     ['bet-stats', '📊', 'Thống kê kèo'],
+    ['team-form', '🔄', 'Quy luật phong độ'],
   ];
 
   const sidebarRange = dates.length > 0
@@ -514,6 +516,8 @@ export default function Dashboard({
           <MatchAnalysis />
         ) : view === 'bet-stats' ? (
           <BetStatsView initialMatch={deepLinkMatch} />
+        ) : view === 'team-form' ? (
+          <TeamFormReport />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
