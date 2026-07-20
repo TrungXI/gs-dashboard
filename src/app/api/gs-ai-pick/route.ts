@@ -186,7 +186,7 @@ MASTER-PLAYBOOK (phương pháp bắt buộc):
    - So tổng bàn DỰ KIẾN với vạch OU. SÁT vạch (chênh < 0.5) = rủi ro CAO → giảm confidence hoặc BỎ.
    - Chỉ đánh Xỉu khi vạch Under có đệm (≥ ~1.5 so với HT total).
 
-RA QUYẾT ĐỊNH: 1 pick duy nhất. side ∈ {"Tài","Xỉu","BỎ"}. confidence ∈ {"Cao","TB","Thấp"} (chỉ để tham khảo — KHÔNG dùng để tăng cược). reasoning: vài câu tiếng Việt giải thích ngắn. redFlags: mảng cảnh báo (ảo, sát vạch, mẫu ít, giải V...).`;
+RA QUYẾT ĐỊNH: 1 pick duy nhất. side ∈ {"Tài","Xỉu","BỎ"}. confidence ∈ {"Cao","TB","Thấp"} (chỉ để tham khảo — KHÔNG dùng để tăng cược). reasoning + redFlags: viết TIẾNG VIỆT ĐỜI THƯỜNG, dễ hiểu như đang nói với người chơi kèo bình dân. TUYỆT ĐỐI KHÔNG dùng thuật ngữ/tên cột kỹ thuật (avg_total, avg_tt, tier_z, cv, SOT, xG, median, gs_pair_scoring) — thay bằng chữ Việt: SOT→"sút trúng đích", avg_tt/avg_total→"tổng bàn trung bình 2 đội", tier_z→"đội mạnh/đội yếu", cv→"thất thường", corner→"phạt góc". Không ký hiệu (1/2, ~2.1, <0.5), diễn giải bằng lời. reasoning 2-3 câu gọn; redFlags mỗi cái 1 cụm ngắn dễ hiểu.`;
 
 const PICK_SCHEMA = {
   type: 'object',
