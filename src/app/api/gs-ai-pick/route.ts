@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
 
-// GS_AI_MODEL overrides; fallback to a strong Sonnet (user prefers Opus/Sonnet).
+// GS_AI_MODEL overrides; fallback to Haiku (cheap, fast — dùng cho tab thử nghiệm).
 const AI_MODEL = process.env.GS_AI_MODEL || 'claude-haiku-4-5';
 
 let _pool: Pool | null = null;
@@ -19,22 +19,39 @@ function getPool(): Pool | null {
 }
 
 // Bảng cache kèo AI: mỗi trận chỉ gọi Claude 1 lần, lần sau GET lại. Tạo idempotent, 1 lần / process.
+// Self-healing: CREATE TABLE IF NOT EXISTS là no-op nếu bảng đã tồn tại (bản deploy cũ có thể thiếu cột),
+// nên chạy thêm ALTER TABLE ... ADD COLUMN IF NOT EXISTS cho MỌI cột code SELECT/INSERT — kể cả khi bảng cũ.
 let _schemaReady: Promise<void> | null = null;
+async function migrateSchema(pool: Pool): Promise<void> {
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS gs_ai_picks (
+       event_id    bigint PRIMARY KEY,
+       side        text,
+       pick        text,
+       confidence  text,
+       reasoning   text,
+       red_flags   jsonb,
+       model       text,
+       created_at  timestamptz DEFAULT now()
+     )`,
+  );
+  // Idempotent: bù cột còn thiếu nếu bảng được tạo từ bản deploy cũ (schema drift).
+  // event_id là PRIMARY KEY nên đã tồn tại từ CREATE TABLE — chỉ cần bù các cột dữ liệu.
+  await pool.query(
+    `ALTER TABLE gs_ai_picks
+       ADD COLUMN IF NOT EXISTS side        text,
+       ADD COLUMN IF NOT EXISTS pick        text,
+       ADD COLUMN IF NOT EXISTS confidence  text,
+       ADD COLUMN IF NOT EXISTS reasoning   text,
+       ADD COLUMN IF NOT EXISTS red_flags   jsonb,
+       ADD COLUMN IF NOT EXISTS model       text,
+       ADD COLUMN IF NOT EXISTS created_at  timestamptz DEFAULT now()`,
+  );
+}
 function ensureSchema(pool: Pool): Promise<void> {
   if (!_schemaReady) {
-    _schemaReady = pool.query(
-      `CREATE TABLE IF NOT EXISTS gs_ai_picks (
-         event_id    bigint PRIMARY KEY,
-         side        text,
-         pick        text,
-         confidence  text,
-         reasoning   text,
-         red_flags   jsonb,
-         model       text,
-         created_at  timestamptz DEFAULT now()
-       )`,
-    ).then(() => undefined).catch((e) => {
-      _schemaReady = null; // cho phép thử lại lần sau nếu tạo bảng lỗi tạm thời
+    _schemaReady = migrateSchema(pool).catch((e) => {
+      _schemaReady = null; // cho phép thử lại lần sau nếu migrate lỗi tạm thời
       throw e;
     });
   }
@@ -209,6 +226,8 @@ export async function GET(req: NextRequest) {
   }
 
   // ── Cache-first: nếu trận này đã có kèo AI thì trả bản lưu, KHÔNG gọi Claude ──
+  // Lỗi đọc cache (vd schema drift: cột thiếu ở bảng cũ) KHÔNG hard-fail — bỏ qua cache,
+  // đi tính pick mới để vẫn trả kết quả dùng được, không trả ok:false cho lỗi có thể phục hồi.
   try {
     await ensureSchema(pool);
     const { rows } = await pool.query<CacheRow>(
@@ -231,7 +250,8 @@ export async function GET(req: NextRequest) {
       });
     }
   } catch (e) {
-    return NextResponse.json({ ok: false, error: `DB lỗi (cache): ${(e as Error).message}` });
+    // Cache read hỏng (schema drift / bảng cũ) → log & fall-through tính pick mới.
+    console.error(`[gs-ai-pick] cache read failed, computing fresh: ${(e as Error).message}`);
   }
 
   let ev: OddsRow | null;

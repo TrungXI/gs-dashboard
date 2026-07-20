@@ -322,6 +322,13 @@ export default function MatchDetailDrawer({
                 </div>
               )}
 
+              {/* Fallback: fetch xong nhưng không có pick lẫn lỗi → không để tab trống/quay vô hạn */}
+              {!aiLoading && !aiError && !aiPick && (
+                <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
+                  Không tạo được gợi ý, thử lại.
+                </div>
+              )}
+
               {!aiLoading && !aiError && aiPick && (
                 <div className="px-3 pb-4 md:px-4">
                   {/* Pick lớn + confidence */}
