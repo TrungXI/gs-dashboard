@@ -9,7 +9,7 @@ export const maxDuration = 60;
 const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
 
 // GS_AI_MODEL overrides; fallback to a strong Sonnet (user prefers Opus/Sonnet).
-const AI_MODEL = process.env.GS_AI_MODEL || 'claude-sonnet-4-6';
+const AI_MODEL = process.env.GS_AI_MODEL || 'claude-haiku-4-5';
 
 let _pool: Pool | null = null;
 function getPool(): Pool | null {
