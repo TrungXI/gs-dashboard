@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { LoadingState } from './Spinner';
 import H1StatsPanel from './H1StatsPanel';
+import MatchAnalysis from './MatchAnalysis';
 import type { GsBetsResponse, GsBetPick, GsBetStats } from '../app/api/gs-bets/route';
 
 function parseScore(s: string | null): [number, number] | null {
@@ -39,6 +40,7 @@ export default function MatchDetailDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<GsBetPick | null>(null);
   const [stats, setStats] = useState<GsBetStats | null>(null);
+  const [tab, setTab] = useState<'h1' | 'h2h'>('h1');
 
   // ESC đóng drawer
   useEffect(() => {
@@ -110,33 +112,64 @@ export default function MatchDetailDrawer({
           </button>
         </div>
 
+        {/* Tab switcher — mirror tab styling từ MatchAnalysis */}
+        <div className="flex gap-1.5 px-3 py-2 border-b border-[#222] bg-[#0d0d0d] flex-shrink-0">
+          {([
+            ['h1', '📊 Chỉ Số H1'],
+            ['h2h', '⚔️ Đối Kháng'],
+          ] as [typeof tab, string][]).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`flex-shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                tab === key
+                  ? 'bg-[#17a2b8] text-white'
+                  : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          {loading && <LoadingState label="Đang tải chi tiết trận…" />}
+          {/* Tab 1 — Chỉ Số H1 (nội dung cũ, không đổi) */}
+          {tab === 'h1' && (
+            <>
+              {loading && <LoadingState label="Đang tải chi tiết trận…" />}
 
-          {!loading && error && (
-            <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
-              {error}
-            </div>
+              {!loading && error && (
+                <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
+                  {error}
+                </div>
+              )}
+
+              {!loading && !error && (
+                <div className="flex flex-col gap-0">
+                  {/* Tỉ số: HT (hết H1) + FT (chung cuộc) */}
+                  <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                    <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚽ Tỉ số</div>
+                    <div className="flex gap-2">
+                      <ScoreCell label="Hết H1" score={ht ? `${ht[0]} - ${ht[1]}` : '—'} />
+                      <ScoreCell label="Chung cuộc" score={ft ? `${ft[0]} - ${ft[1]}` : '—'} strong />
+                    </div>
+                  </div>
+
+                  {/* Panel chỉ số Hiệp 1 — dùng chung với tab Kèo */}
+                  <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                    <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
+                    <H1StatsPanel stats={stats} homeName={home} awayName={away} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
-          {!loading && !error && (
-            <div className="flex flex-col gap-0">
-              {/* Tỉ số: HT (hết H1) + FT (chung cuộc) */}
-              <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
-                <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚽ Tỉ số</div>
-                <div className="flex gap-2">
-                  <ScoreCell label="Hết H1" score={ht ? `${ht[0]} - ${ht[1]}` : '—'} />
-                  <ScoreCell label="Chung cuộc" score={ft ? `${ft[0]} - ${ft[1]}` : '—'} strong />
-                </div>
-              </div>
-
-              {/* Panel chỉ số Hiệp 1 — dùng chung với tab Kèo */}
-              <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
-                <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
-                <H1StatsPanel stats={stats} homeName={home} awayName={away} />
-              </div>
-            </div>
+          {/* Tab 2 — Đối Kháng (lịch sử đối đầu, tái sử dụng MatchAnalysis embedded) */}
+          {tab === 'h2h' && (
+            <MatchAnalysis embedded initialTeamA={home} initialTeamB={away} />
           )}
         </div>
       </div>
