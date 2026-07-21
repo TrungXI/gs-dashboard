@@ -10,6 +10,10 @@ const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 const LEAGUE_16P = 2140;
 const LEAGUE_20P = 2125;
 
+// Prefetch cả 3 mức đối đầu để bấm filter đổi số tức thì (không chờ API).
+const H2H_LIMITS = [20, 50, 100] as const;
+const EMPTY_H2H = new Map<string, PairResult>();
+
 function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string | null; color: string } {
   if (!m.isLive) {
     const waiting = nowMs < new Date(m.startTime).getTime();
@@ -25,7 +29,8 @@ export default function RankingLive() {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
-  const [h2hMap, setH2hMap] = useState<Map<string, PairResult>>(new Map());
+  // Cache lồng: limit (20/50/100) → (cặp đấu → kết quả). Cả 3 mức prefetch sẵn.
+  const [h2hByLimit, setH2hByLimit] = useState<Map<number, Map<string, PairResult>>>(new Map());
   const [selected, setSelected] = useState<GsLiveMatch | null>(null);
   // Số trận đối đầu gần nhất để tính % (20/50/100). Mặc định 20, nhớ localStorage.
   const [h2hLimit, setH2hLimitState] = useState<number>(20);
@@ -173,29 +178,35 @@ export default function RankingLive() {
     };
   }, []);
 
-  // H2H splits — keyed by stable pair set, refresh every 5 min
+  // H2H splits — keyed by stable pair set, refresh every 5 min.
+  // Prefetch cả 20/50/100 song song → đổi filter là đọc cache, không call API lại.
   const pairsKey = Array.from(new Set(matches.map((m) => `${m.homeTeam}|${m.awayTeam}`))).sort().join(',');
   useEffect(() => {
-    if (!pairsKey) { setH2hMap(new Map()); return; }
+    if (!pairsKey) { setH2hByLimit(new Map()); return; }
     let alive = true;
-    async function loadH2H() {
+    const pairsParam = pairsKey
+      .split(',')
+      .map((pair) => pair.split('|').map(encodeURIComponent).join('|'))
+      .join(',');
+    async function loadOne(limit: number) {
       try {
-        const pairsParam = pairsKey
-          .split(',')
-          .map((pair) => pair.split('|').map(encodeURIComponent).join('|'))
-          .join(',');
-        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}&limit=${h2hLimit}`, { cache: 'no-store' });
+        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}&limit=${limit}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; pairs?: PairResult[] };
         if (!alive || !json.ok || !json.pairs) return;
-        setH2hMap(new Map(json.pairs.map((p) => [`${p.teamA}|${p.teamB}`, p])));
+        const m = new Map(json.pairs.map((p) => [`${p.teamA}|${p.teamB}`, p]));
+        setH2hByLimit((prev) => new Map(prev).set(limit, m));
       } catch {
-        /* giữ map cũ khi lỗi mạng tạm thời */
+        /* giữ cache cũ khi lỗi mạng tạm thời */
       }
     }
-    loadH2H();
-    const id = setInterval(loadH2H, 300_000);
+    function loadAll() { for (const l of H2H_LIMITS) loadOne(l); }
+    loadAll();
+    const id = setInterval(loadAll, 300_000);
     return () => { alive = false; clearInterval(id); };
-  }, [pairsKey, h2hLimit]);
+  }, [pairsKey]);
+
+  // Map hiển thị = mức đang chọn (đã prefetch). Đổi filter chỉ đổi con trỏ này.
+  const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
 
   const liveMatches = matches.filter(
     (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P,
@@ -214,12 +225,21 @@ export default function RankingLive() {
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
     const phase = phaseParts(m, nowMs);
+    // H2H theo hiệp: H1 (đang đá H1) hiện cả H1+H2; đã sang H2/nghỉ chỉ hiện H2.
+    const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
+    const meetings = sp?.meetings ?? 0;
+    const showBoth = !m.isH2 && m.period !== 4;
+    const halves = sp && meetings > 0
+      ? (showBoth
+          ? [{ key: 'h1', label: 'H1', s: sp.h1 }, { key: 'h2', label: 'H2', s: sp.h2 }]
+          : [{ key: 'h2', label: 'H2', s: sp.h2 }])
+      : [];
     return (
       <div
         data-event-id={m.eventId}
         role="button"
         onClick={() => setSelected(m)}
-        className={`rounded-lg border p-2.5 w-full md:w-[200px] flex-shrink-0 transition-all cursor-pointer hover:border-[#444] flex items-stretch ${
+        className={`rounded-lg border p-2.5 w-full md:w-[360px] flex-shrink-0 transition-all cursor-pointer hover:border-[#444] flex items-stretch ${
           scored
             ? 'border-[#22c55e]/60 !bg-[#16a34a]/15'
             : isHT
@@ -227,62 +247,34 @@ export default function RankingLive() {
             : 'border-[#2a2a2a] bg-[#141414]'
         }`}
       >
-        {/* Left: teams, score, H2H */}
-        <div className="flex-1 min-w-0">
-          {/* Teams + H2H %: H1 → hiện cả H1 & H2, H2/nghỉ → chỉ H2. Hoà canh giữa. */}
-          {(() => {
-            const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
-            const meetings = sp?.meetings ?? 0;
-            const showBoth = !m.isH2 && m.period !== 4;
-            const cols = sp && meetings > 0
-              ? (showBoth
-                  ? [{ key: 'h1', label: 'H1', s: sp.h1 }, { key: 'h2', label: 'H2', s: sp.h2 }]
-                  : [{ key: 'h2', label: 'H2', s: sp.h2 }])
-              : [];
-            if (cols.length === 0) {
-              return (
-                <div className="mb-1.5">
-                  <div className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</div>
-                  <div className="text-[12px] text-[#888] truncate">{m.awayTeam}</div>
-                  <div className="mt-0.5 text-[10px] text-[#555]">ĐĐ —</div>
-                </div>
-              );
-            }
-            return (
-              <div
-                className="mb-1.5 grid items-center gap-x-2.5 gap-y-0.5"
-                style={{ gridTemplateColumns: `minmax(0,1fr) repeat(${cols.length}, auto)` }}
-              >
-                {/* Header hiệp */}
-                <span />
-                {cols.map((c) => (
-                  <span key={c.key} className="text-center text-[9px] font-semibold text-[#777]">{c.label}</span>
-                ))}
-                {/* Đội nhà + win% */}
-                <span className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</span>
-                {cols.map((c) => (
-                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#4ade80]">{c.s.aWinPct}%</span>
-                ))}
-                {/* Hoà canh giữa */}
-                <span className="text-[10px] text-[#666]">Hoà</span>
-                {cols.map((c) => (
-                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#999]">{c.s.drawPct}%</span>
-                ))}
-                {/* Đội khách + win% */}
-                <span className="text-[12px] text-[#888] truncate">{m.awayTeam}</span>
-                {cols.map((c) => (
-                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#fb7185]">{c.s.bWinPct}%</span>
-                ))}
-              </div>
-            );
-          })()}
-          {/* Score */}
-          <div>
-            <div className={`text-[18px] font-bold leading-none ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
+        {/* Left: tên đội + tỉ số ở trái, khối H1/H2 tách riêng canh giữa (mobile & desktop giống nhau) */}
+        <div className="flex-1 min-w-0 flex items-center gap-3">
+          <div className="min-w-0 shrink-0 basis-[42%]">
+            <div className="text-[13px] font-semibold text-white truncate leading-tight">{m.homeTeam}</div>
+            <div className="text-[10px] text-[#666] my-0.5 leading-tight">Hoà</div>
+            <div className="text-[12px] text-[#888] truncate leading-tight">{m.awayTeam}</div>
+            <div className={`mt-1.5 text-[18px] font-bold leading-none ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
               {m.h1Home} - {m.h1Away}
             </div>
             {m.isH2 && h1Final && (
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
+            )}
+          </div>
+          <div className="flex-1 flex items-center justify-center gap-2.5">
+            {halves.length === 0 ? (
+              <span className="text-[11px] text-[#555]">ĐĐ —</span>
+            ) : (
+              halves.map((h) => (
+                <div
+                  key={h.key}
+                  className="flex flex-col items-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-3 py-1 min-w-[56px]"
+                >
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">{h.label}</span>
+                  <span className="text-[15px] font-bold tabular-nums text-[#4ade80] leading-tight">{h.s.aWinPct}%</span>
+                  <span className="text-[12px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{h.s.drawPct}%</span>
+                  <span className="text-[15px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
+                </div>
+              ))
             )}
           </div>
         </div>
