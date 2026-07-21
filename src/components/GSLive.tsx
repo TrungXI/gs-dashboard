@@ -1886,25 +1886,31 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
                 </div>
               </div>
 
-              {/* Section: 5 trận — 2 col side by side */}
+              {/* Section: 20 trận gần nhất — 2 col side by side, khung cao ~5 hàng rồi scroll trong list */}
               <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
-                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📋 5 trận gần nhất</div>
+                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📋 20 trận gần nhất</div>
                 <div className="grid grid-cols-2 gap-2 md:gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{live.homeTeam}</div>
-                    <FormList recentMatches={homeMatches.slice(0, 5)} team={live.homeTeam} />
+                    <div className="max-h-[124px] md:max-h-[152px] overflow-y-auto pr-1">
+                      <FormList recentMatches={homeMatches.slice(0, 20)} team={live.homeTeam} />
+                    </div>
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="mb-1 md:mb-1.5 text-[10px] font-semibold text-[#aaa] truncate">{live.awayTeam}</div>
-                    <FormList recentMatches={awayMatches.slice(0, 5)} team={live.awayTeam} />
+                    <div className="max-h-[124px] md:max-h-[152px] overflow-y-auto pr-1">
+                      <FormList recentMatches={awayMatches.slice(0, 20)} team={live.awayTeam} />
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Section: H2H full width */}
+              {/* Section: 20 trận đối đầu — khung cao ~5 hàng rồi scroll trong list */}
               <div className="px-3 py-3 md:px-4 md:py-4">
-                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 5 trận đối đầu</div>
-                <H2HList h2h={h2hMatches.slice(0, 5)} />
+                <div className="mb-2 md:mb-3 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚔️ 20 trận đối đầu</div>
+                <div className="max-h-[124px] md:max-h-[152px] overflow-y-auto pr-1">
+                  <H2HList h2h={h2hMatches.slice(0, 20)} />
+                </div>
               </div>
             </div>
           )}
