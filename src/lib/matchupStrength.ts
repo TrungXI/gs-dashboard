@@ -34,3 +34,26 @@ export function teamNameColors(s: HalfSplit | null | undefined): TeamNameColors 
     balanced: false,
   };
 }
+
+export interface StrengthPct {
+  homePct: number; // % ưu thế đội nhà (A% + Hoà%/2)
+  awayPct: number; // % ưu thế đội khách (B% + Hoà%/2), homePct + awayPct = 100
+  homeLeads: boolean;
+  isBalanced: boolean; // |homePct − awayPct| ≤ 8
+}
+
+/**
+ * Quy split H2H của 1 hiệp thành % ưu thế: hoà chia đôi cho 2 đội.
+ * Cùng ngưỡng ±8 với teamNameColors → nhãn/thanh & màu tên đội luôn đồng bộ.
+ */
+export function h2hStrength(s: HalfSplit | null | undefined): StrengthPct | null {
+  if (!s) return null;
+  const homePct = Math.round(s.aWinPct + s.drawPct / 2);
+  const awayPct = 100 - homePct;
+  return {
+    homePct,
+    awayPct,
+    homeLeads: homePct > awayPct,
+    isBalanced: Math.abs(homePct - awayPct) <= 8,
+  };
+}

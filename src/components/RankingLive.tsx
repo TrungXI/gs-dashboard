@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
 import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
 import MatchDetailDrawer from './MatchDetailDrawer';
-import { teamNameColors } from '../lib/matchupStrength';
+import { teamNameColors, h2hStrength } from '../lib/matchupStrength';
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
@@ -215,6 +215,10 @@ export default function RankingLive() {
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
     const phase = phaseParts(m, nowMs);
+    // Ưu thế H2H theo hiệp hiện tại (realtime — đổi khi trận chuyển H1→H2).
+    const spBar = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
+    const curSplit = spBar && spBar.meetings > 0 ? (m.isH2 || m.period === 4 ? spBar.h2 : spBar.h1) : null;
+    const strength = h2hStrength(curSplit);
     return (
       <div
         data-event-id={m.eventId}
@@ -288,6 +292,41 @@ export default function RankingLive() {
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
             )}
           </div>
+          {/* Thanh ưu thế H2H (realtime theo hiệp) — kiểu view "Ghi bàn tiếp" */}
+          {strength && (
+            <div className="mt-2 pt-2 border-t border-[#222]">
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0"
+                  style={{ color: !strength.isBalanced && strength.homeLeads ? '#4ade80' : '#666' }}
+                >
+                  {strength.homePct}%
+                </span>
+                <div className="flex-1 flex h-1.5 rounded-full overflow-hidden bg-[#222]">
+                  <div
+                    className="transition-all duration-500"
+                    style={{ width: `${strength.homePct}%`, background: strength.homeLeads ? '#4ade80' : '#333' }}
+                  />
+                  <div
+                    className="transition-all duration-500"
+                    style={{ width: `${strength.awayPct}%`, background: !strength.homeLeads ? '#f87171' : '#333' }}
+                  />
+                </div>
+                <span
+                  className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0"
+                  style={{ color: !strength.isBalanced && !strength.homeLeads ? '#f87171' : '#666' }}
+                >
+                  {strength.awayPct}%
+                </span>
+              </div>
+              <div
+                className="mt-1 text-[10px] font-bold leading-none truncate"
+                style={{ color: strength.isBalanced ? '#fbbf24' : strength.homeLeads ? '#4ade80' : '#f87171' }}
+              >
+                {strength.isBalanced ? 'Cân bằng' : `${strength.homeLeads ? m.homeTeam : m.awayTeam} ưu thế`}
+              </div>
+            </div>
+          )}
         </div>
         {/* Right: prominent phase panel */}
         <div className="w-[84px] md:w-[96px] flex flex-col items-center justify-center text-center flex-shrink-0 pl-3 border-l border-[#222]">
