@@ -1846,8 +1846,8 @@ function LiveAnalysisDrawer({ live, onClose }: { live: GsLiveMatch; onClose: () 
         {/* Tabs */}
         <div className="flex gap-0.5 overflow-x-auto scrollbar-none px-2 pt-2 border-b border-[#1a1a1a] flex-shrink-0 bg-[#0d0d0d]">
           {([
-            // Tạm ẩn 'Thống kê' + 'Lịch sử' (mai mốt thêm lại: bỏ comment 2 dòng dưới).
-            // ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
+            // Tạm ẩn 'Lịch sử' (mai mốt thêm lại: bỏ comment dòng history bên dưới).
+            ['stats',    '📊', 'Thống kê',  'border-[#fbbf24]'],
             ['suggest',  '💡', 'Gợi ý',     'border-[#4ade80]'],
             ['confront', '⚔️', 'Đối Kháng', 'border-[#17a2b8]'],
             ['matchup',  '🔥', 'Diễn biến', 'border-[#fb7185]'],
