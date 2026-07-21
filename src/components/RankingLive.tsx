@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
 import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
 import MatchDetailDrawer from './MatchDetailDrawer';
-import { teamNameColors, h2hStrength } from '../lib/matchupStrength';
+import { h2hStrength } from '../lib/matchupStrength';
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
@@ -215,10 +215,13 @@ export default function RankingLive() {
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
     const phase = phaseParts(m, nowMs);
-    // Ưu thế H2H theo hiệp hiện tại (realtime — đổi khi trận chuyển H1→H2).
+    // Ưu thế H2H hiệp hiện tại + điều chỉnh theo tỉ số LIVE (realtime, đổi theo API).
     const spBar = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
     const curSplit = spBar && spBar.meetings > 0 ? (m.isH2 || m.period === 4 ? spBar.h2 : spBar.h1) : null;
-    const strength = h2hStrength(curSplit);
+    const strength = h2hStrength(curSplit, m.h1Home - m.h1Away);
+    // Màu tên đội lấy từ cùng chỉ số ưu thế → luôn khớp thanh/nhãn. Cân bằng → mặc định.
+    const nameHome = strength && !strength.isBalanced ? (strength.homeLeads ? '#4ade80' : '#f87171') : null;
+    const nameAway = strength && !strength.isBalanced ? (strength.homeLeads ? '#f87171' : '#4ade80') : null;
     return (
       <div
         data-event-id={m.eventId}
@@ -238,8 +241,6 @@ export default function RankingLive() {
           {(() => {
             const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
             const meetings = sp?.meetings ?? 0;
-            const nameSplit = sp && meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
-            const nc = teamNameColors(nameSplit);
             const showBoth = !m.isH2 && m.period !== 4;
             const cols = sp && meetings > 0
               ? (showBoth
@@ -249,8 +250,8 @@ export default function RankingLive() {
             if (cols.length === 0) {
               return (
                 <div className="mb-1.5">
-                  <div className="text-[13px] font-semibold text-white truncate" style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</div>
-                  <div className="text-[12px] text-[#888] truncate" style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</div>
+                  <div className="text-[13px] font-semibold text-white truncate" style={nameHome ? { color: nameHome } : undefined}>{m.homeTeam}</div>
+                  <div className="text-[12px] text-[#888] truncate" style={nameAway ? { color: nameAway } : undefined}>{m.awayTeam}</div>
                   <div className="mt-0.5 text-[10px] text-[#555]">ĐĐ —</div>
                 </div>
               );
@@ -266,7 +267,7 @@ export default function RankingLive() {
                   <span key={c.key} className="text-center text-[9px] font-semibold text-[#777]">{c.label}</span>
                 ))}
                 {/* Đội nhà + win% */}
-                <span className="text-[13px] font-semibold text-white truncate" style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
+                <span className="text-[13px] font-semibold text-white truncate" style={nameHome ? { color: nameHome } : undefined}>{m.homeTeam}</span>
                 {cols.map((c) => (
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#4ade80]">{c.s.aWinPct}%</span>
                 ))}
@@ -276,7 +277,7 @@ export default function RankingLive() {
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#999]">{c.s.drawPct}%</span>
                 ))}
                 {/* Đội khách + win% */}
-                <span className="text-[12px] text-[#888] truncate" style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
+                <span className="text-[12px] text-[#888] truncate" style={nameAway ? { color: nameAway } : undefined}>{m.awayTeam}</span>
                 {cols.map((c) => (
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#fb7185]">{c.s.bWinPct}%</span>
                 ))}
@@ -292,41 +293,39 @@ export default function RankingLive() {
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
             )}
           </div>
-          {/* Thanh ưu thế H2H (realtime theo hiệp) — kiểu view "Ghi bàn tiếp" */}
-          {strength && (
-            <div className="mt-2 pt-2 border-t border-[#222]">
-              <div className="flex items-center gap-1.5">
-                <span
-                  className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0"
-                  style={{ color: !strength.isBalanced && strength.homeLeads ? '#4ade80' : '#666' }}
-                >
-                  {strength.homePct}%
-                </span>
-                <div className="flex-1 flex h-1.5 rounded-full overflow-hidden bg-[#222]">
-                  <div
-                    className="transition-all duration-500"
-                    style={{ width: `${strength.homePct}%`, background: strength.homeLeads ? '#4ade80' : '#333' }}
-                  />
-                  <div
-                    className="transition-all duration-500"
-                    style={{ width: `${strength.awayPct}%`, background: !strength.homeLeads ? '#f87171' : '#333' }}
-                  />
+          {/* Thanh ưu thế H2H (realtime theo hiệp). Màu theo MẠNH/YẾU: đội ưu thế
+              luôn xanh, đội kém luôn đỏ — khớp màu tên đội. Cân bằng → xám. */}
+          {strength && (() => {
+            // Màu cho từng bên: leader = xanh, trailer = đỏ, cân bằng = xám.
+            const homeNum = strength.isBalanced ? '#666' : strength.homeLeads ? '#4ade80' : '#f87171';
+            const awayNum = strength.isBalanced ? '#666' : strength.homeLeads ? '#f87171' : '#4ade80';
+            // Thanh dùng cyan (tách khỏi xanh/đỏ của chữ): chỉ bên ưu thế tô cyan, bên kia xám.
+            const ACCENT = '#22d3ee';
+            const homeBar = strength.isBalanced ? '#3a3a3a' : strength.homeLeads ? ACCENT : '#3a3a3a';
+            const awayBar = strength.isBalanced ? '#3a3a3a' : strength.homeLeads ? '#3a3a3a' : ACCENT;
+            return (
+              <div className="mt-2 pt-2 border-t border-[#222]">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0" style={{ color: homeNum }}>
+                    {strength.homePct}%
+                  </span>
+                  <div className="flex-1 flex h-1.5 rounded-full overflow-hidden bg-[#222]">
+                    <div className="transition-all duration-500" style={{ width: `${strength.homePct}%`, background: homeBar }} />
+                    <div className="transition-all duration-500" style={{ width: `${strength.awayPct}%`, background: awayBar }} />
+                  </div>
+                  <span className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0" style={{ color: awayNum }}>
+                    {strength.awayPct}%
+                  </span>
                 </div>
-                <span
-                  className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0"
-                  style={{ color: !strength.isBalanced && !strength.homeLeads ? '#f87171' : '#666' }}
+                <div
+                  className="mt-1 text-[10px] font-bold leading-none truncate"
+                  style={{ color: strength.isBalanced ? '#fbbf24' : '#4ade80' }}
                 >
-                  {strength.awayPct}%
-                </span>
+                  {strength.isBalanced ? 'Cân bằng' : `${strength.homeLeads ? m.homeTeam : m.awayTeam} ưu thế`}
+                </div>
               </div>
-              <div
-                className="mt-1 text-[10px] font-bold leading-none truncate"
-                style={{ color: strength.isBalanced ? '#fbbf24' : strength.homeLeads ? '#4ade80' : '#f87171' }}
-              >
-                {strength.isBalanced ? 'Cân bằng' : `${strength.homeLeads ? m.homeTeam : m.awayTeam} ưu thế`}
-              </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
         {/* Right: prominent phase panel */}
         <div className="w-[84px] md:w-[96px] flex flex-col items-center justify-center text-center flex-shrink-0 pl-3 border-l border-[#222]">

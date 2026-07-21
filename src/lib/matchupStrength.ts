@@ -42,13 +42,19 @@ export interface StrengthPct {
   isBalanced: boolean; // |homePct − awayPct| ≤ 8
 }
 
+/** Mỗi bàn dẫn dịch ưu thế thêm ~12 điểm % về phía đội đang dẫn. */
+const GOAL_WEIGHT = 12;
+
 /**
- * Quy split H2H của 1 hiệp thành % ưu thế: hoà chia đôi cho 2 đội.
- * Cùng ngưỡng ±8 với teamNameColors → nhãn/thanh & màu tên đội luôn đồng bộ.
+ * % ưu thế = nền H2H (hoà chia đôi) + điều chỉnh theo tỉ số LIVE.
+ * `scoreDiff = bàn thắng đội nhà − đội khách` → đội dẫn được cộng ưu thế,
+ * nên chỉ số cập nhật realtime theo API, "chuyển dần" khi có bàn.
+ * Cùng ngưỡng ±8 → nhãn/thanh & màu tên đội luôn đồng bộ.
  */
-export function h2hStrength(s: HalfSplit | null | undefined): StrengthPct | null {
+export function h2hStrength(s: HalfSplit | null | undefined, scoreDiff = 0): StrengthPct | null {
   if (!s) return null;
-  const homePct = Math.round(s.aWinPct + s.drawPct / 2);
+  const base = s.aWinPct + s.drawPct / 2;
+  const homePct = Math.round(Math.min(Math.max(base + scoreDiff * GOAL_WEIGHT, 2), 98));
   const awayPct = 100 - homePct;
   return {
     homePct,
