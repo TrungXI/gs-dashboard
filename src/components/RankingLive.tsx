@@ -2,18 +2,41 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
-import { type GsLiveMatch, type Toast, H2HLines, ToastContainer, phaseLabel } from './GSLive';
+import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
+import MatchDetailDrawer from './MatchDetailDrawer';
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
 const LEAGUE_16P = 2140;
 const LEAGUE_20P = 2125;
 
+function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string | null; color: string } {
+  if (!m.isLive) {
+    const waiting = nowMs < new Date(m.startTime).getTime();
+    return { big: waiting ? 'Chờ' : 'KT', small: null, color: '#888' };
+  }
+  if (m.period === 4) return { big: 'HT', small: 'Nghỉ', color: '#fbbf24' };
+  const min = m.minuteElapsed ?? 0;
+  if (m.isH2) return { big: 'H2', small: `${min}'`, color: '#4ade80' };
+  return { big: 'H1', small: `${min}'`, color: '#fbbf24' };
+}
+
 export default function RankingLive() {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [h2hMap, setH2hMap] = useState<Map<string, PairResult>>(new Map());
+  const [selected, setSelected] = useState<GsLiveMatch | null>(null);
+  // Số trận đối đầu gần nhất để tính % (20/50/100). Mặc định 20, nhớ localStorage.
+  const [h2hLimit, setH2hLimitState] = useState<number>(20);
+  useEffect(() => {
+    const v = Number(localStorage.getItem('gs_h2h_limit'));
+    if (v === 20 || v === 50 || v === 100) setH2hLimitState(v);
+  }, []);
+  function setH2hLimit(n: number) {
+    setH2hLimitState(n);
+    localStorage.setItem('gs_h2h_limit', String(n));
+  }
 
   // H1 final scores tracked across H1→H2 transition
   const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
@@ -161,7 +184,7 @@ export default function RankingLive() {
           .split(',')
           .map((pair) => pair.split('|').map(encodeURIComponent).join('|'))
           .join(',');
-        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}`, { cache: 'no-store' });
+        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}&limit=${h2hLimit}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; pairs?: PairResult[] };
         if (!alive || !json.ok || !json.pairs) return;
         setH2hMap(new Map(json.pairs.map((p) => [`${p.teamA}|${p.teamB}`, p])));
@@ -172,7 +195,7 @@ export default function RankingLive() {
     loadH2H();
     const id = setInterval(loadH2H, 300_000);
     return () => { alive = false; clearInterval(id); };
-  }, [pairsKey]);
+  }, [pairsKey, h2hLimit]);
 
   const liveMatches = matches.filter(
     (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P,
@@ -190,10 +213,13 @@ export default function RankingLive() {
     const isHT = m.period === 4;
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
+    const phase = phaseParts(m, nowMs);
     return (
       <div
         data-event-id={m.eventId}
-        className={`rounded-lg border p-2.5 w-full md:w-[200px] flex-shrink-0 transition-all ${
+        role="button"
+        onClick={() => setSelected(m)}
+        className={`rounded-lg border p-2.5 w-full md:w-[200px] flex-shrink-0 transition-all cursor-pointer hover:border-[#444] flex items-stretch ${
           scored
             ? 'border-[#22c55e]/60 !bg-[#16a34a]/15'
             : isHT
@@ -201,13 +227,56 @@ export default function RankingLive() {
             : 'border-[#2a2a2a] bg-[#141414]'
         }`}
       >
-        {/* Teams */}
-        <div className="mb-1.5">
-          <div className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</div>
-          <div className="text-[12px] text-[#888] truncate">{m.awayTeam}</div>
-        </div>
-        {/* Score + phase */}
-        <div className="flex items-end justify-between mb-1.5">
+        {/* Left: teams, score, H2H */}
+        <div className="flex-1 min-w-0">
+          {/* Teams + H2H %: H1 → hiện cả H1 & H2, H2/nghỉ → chỉ H2. Hoà canh giữa. */}
+          {(() => {
+            const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
+            const meetings = sp?.meetings ?? 0;
+            const showBoth = !m.isH2 && m.period !== 4;
+            const cols = sp && meetings > 0
+              ? (showBoth
+                  ? [{ key: 'h1', label: 'H1', s: sp.h1 }, { key: 'h2', label: 'H2', s: sp.h2 }]
+                  : [{ key: 'h2', label: 'H2', s: sp.h2 }])
+              : [];
+            if (cols.length === 0) {
+              return (
+                <div className="mb-1.5">
+                  <div className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</div>
+                  <div className="text-[12px] text-[#888] truncate">{m.awayTeam}</div>
+                  <div className="mt-0.5 text-[10px] text-[#555]">ĐĐ —</div>
+                </div>
+              );
+            }
+            return (
+              <div
+                className="mb-1.5 grid items-center gap-x-2.5 gap-y-0.5"
+                style={{ gridTemplateColumns: `minmax(0,1fr) repeat(${cols.length}, auto)` }}
+              >
+                {/* Header hiệp */}
+                <span />
+                {cols.map((c) => (
+                  <span key={c.key} className="text-center text-[9px] font-semibold text-[#777]">{c.label}</span>
+                ))}
+                {/* Đội nhà + win% */}
+                <span className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</span>
+                {cols.map((c) => (
+                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#4ade80]">{c.s.aWinPct}%</span>
+                ))}
+                {/* Hoà canh giữa */}
+                <span className="text-[10px] text-[#666]">Hoà</span>
+                {cols.map((c) => (
+                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#999]">{c.s.drawPct}%</span>
+                ))}
+                {/* Đội khách + win% */}
+                <span className="text-[12px] text-[#888] truncate">{m.awayTeam}</span>
+                {cols.map((c) => (
+                  <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#fb7185]">{c.s.bWinPct}%</span>
+                ))}
+              </div>
+            );
+          })()}
+          {/* Score */}
           <div>
             <div className={`text-[18px] font-bold leading-none ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
               {m.h1Home} - {m.h1Away}
@@ -216,10 +285,16 @@ export default function RankingLive() {
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
             )}
           </div>
-          <div className="text-[11px] text-[#888] text-right">{phaseLabel(m, nowMs)}</div>
         </div>
-        {/* H2H splits */}
-        <H2HLines splits={h2hMap.get(`${m.homeTeam}|${m.awayTeam}`)} />
+        {/* Right: prominent phase panel */}
+        <div className="w-[84px] md:w-[96px] flex flex-col items-center justify-center text-center flex-shrink-0 pl-3 border-l border-[#222]">
+          <div className="text-[30px] md:text-[34px] font-extrabold leading-none" style={{ color: phase.color }}>
+            {phase.big}
+          </div>
+          {phase.small && (
+            <div className="text-[13px] font-semibold text-[#aaa] mt-1">{phase.small}</div>
+          )}
+        </div>
       </div>
     );
   }
@@ -268,6 +343,21 @@ export default function RankingLive() {
         >
           {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
         </button>
+        {/* Filter số trận đối đầu để tính % */}
+        <div className="ml-auto flex items-center gap-1">
+          <span className="text-[11px] text-[#666]">ĐĐ:</span>
+          {[20, 50, 100].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setH2hLimit(n)}
+              className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${h2hLimit === n ? 'border-[#17a2b8]/50 text-[#22d3ee] bg-[#17a2b8]/15' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+              title={`Tính % trên ${n} trận đối đầu gần nhất`}
+            >
+              {n} trận
+            </button>
+          ))}
+        </div>
       </div>
 
       {error && (
@@ -286,6 +376,16 @@ export default function RankingLive() {
           <LeagueGroup title={leagueName20} items={group20} />
           <LeagueGroup title={leagueName16} items={group16} />
         </>
+      )}
+
+      {selected && (
+        <MatchDetailDrawer
+          eventId={selected.eventId}
+          home={selected.homeTeam}
+          away={selected.awayTeam}
+          initialTab="h2h"
+          onClose={() => setSelected(null)}
+        />
       )}
     </div>
   );

@@ -49,6 +49,15 @@ function cacheKey(teamA: string, teamB: string): string {
 
 const MAX_PAIRS = 100;
 
+const ALLOWED_LIMITS = new Set([20, 50, 100]);
+const DEFAULT_LIMIT = 100;
+
+/** ?limit=20|50|100 — số trận đối đầu gần nhất để tính %. Mặc định 100. */
+function parseLimit(params: URLSearchParams): number {
+  const raw = Number(params.get('limit'));
+  return ALLOWED_LIMITS.has(raw) ? raw : DEFAULT_LIMIT;
+}
+
 function pct(count: number, meetings: number): number {
   return meetings > 0 ? Math.round((count / meetings) * 100) : 0;
 }
@@ -133,7 +142,7 @@ oriented AS (
     OR (h.home_team = r.team_b AND h.away_team = r.team_a)
 ),
 capped AS (
-  SELECT * FROM oriented WHERE rn <= 100
+  SELECT * FROM oriented WHERE rn <= $3::int
 )
 SELECT
   r.team_a, r.team_b,
@@ -156,13 +165,15 @@ export async function GET(req: NextRequest) {
   const requested = parsePairs(req.nextUrl.searchParams);
   if (requested.length === 0) return Response.json({ ok: true, pairs: [] } satisfies GsH2HSplitsResponse);
 
+  const limit = parseLimit(req.nextUrl.searchParams);
   const now = Date.now();
 
-  // Split into fresh cache-hits vs misses; only query the misses.
+  // Split into fresh cache-hits vs misses; only query the misses. Cache is keyed
+  // per (limit, pair) so switching 20/50/100 doesn't collide.
   const hits: PairResult[] = [];
   const misses: [string, string][] = [];
   for (const [a, b] of requested) {
-    const entry = cache.get(cacheKey(a, b));
+    const entry = cache.get(`${limit}|${cacheKey(a, b)}`);
     if (entry && now - entry.ts < CACHE_TTL_MS) hits.push(entry.data);
     else misses.push([a, b]);
   }
@@ -174,7 +185,7 @@ export async function GET(req: NextRequest) {
   try {
     const teamAs = misses.map(([a]) => a);
     const teamBs = misses.map(([, b]) => b);
-    const res = await pool.query<RawRow>(SQL, [teamAs, teamBs]);
+    const res = await pool.query<RawRow>(SQL, [teamAs, teamBs, limit]);
 
     const fetched: PairResult[] = res.rows.map((r) => {
       const meetings = Number(r.meetings);
@@ -185,7 +196,7 @@ export async function GET(req: NextRequest) {
         h1: toSplits(Number(r.h1_awin), Number(r.h1_draw), Number(r.h1_bwin), meetings),
         h2: toSplits(Number(r.h2_awin), Number(r.h2_draw), Number(r.h2_bwin), meetings),
       };
-      cache.set(cacheKey(r.team_a, r.team_b), { data: result, ts: now });
+      cache.set(`${limit}|${cacheKey(r.team_a, r.team_b)}`, { data: result, ts: now });
       return result;
     });
 

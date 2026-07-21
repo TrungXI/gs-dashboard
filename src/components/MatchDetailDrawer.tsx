@@ -31,17 +31,19 @@ export default function MatchDetailDrawer({
   home,
   away,
   onClose,
+  initialTab,
 }: {
   eventId: number;
   home: string;
   away: string;
   onClose: () => void;
+  initialTab?: 'h1' | 'h2h' | 'matchup';
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<GsBetPick | null>(null);
   const [stats, setStats] = useState<GsBetStats | null>(null);
-  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup'>('h1');
+  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup'>(initialTab ?? 'h1');
 
   // ESC đóng drawer
   useEffect(() => {
