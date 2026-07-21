@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
 import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
 import MatchDetailDrawer from './MatchDetailDrawer';
+import { teamNameColors } from '../lib/matchupStrength';
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
@@ -233,6 +234,8 @@ export default function RankingLive() {
           {(() => {
             const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
             const meetings = sp?.meetings ?? 0;
+            const nameSplit = sp && meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
+            const nc = teamNameColors(nameSplit);
             const showBoth = !m.isH2 && m.period !== 4;
             const cols = sp && meetings > 0
               ? (showBoth
@@ -242,8 +245,8 @@ export default function RankingLive() {
             if (cols.length === 0) {
               return (
                 <div className="mb-1.5">
-                  <div className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</div>
-                  <div className="text-[12px] text-[#888] truncate">{m.awayTeam}</div>
+                  <div className="text-[13px] font-semibold text-white truncate" style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</div>
+                  <div className="text-[12px] text-[#888] truncate" style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</div>
                   <div className="mt-0.5 text-[10px] text-[#555]">ĐĐ —</div>
                 </div>
               );
@@ -259,7 +262,7 @@ export default function RankingLive() {
                   <span key={c.key} className="text-center text-[9px] font-semibold text-[#777]">{c.label}</span>
                 ))}
                 {/* Đội nhà + win% */}
-                <span className="text-[13px] font-semibold text-white truncate">{m.homeTeam}</span>
+                <span className="text-[13px] font-semibold text-white truncate" style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
                 {cols.map((c) => (
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#4ade80]">{c.s.aWinPct}%</span>
                 ))}
@@ -269,7 +272,7 @@ export default function RankingLive() {
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#999]">{c.s.drawPct}%</span>
                 ))}
                 {/* Đội khách + win% */}
-                <span className="text-[12px] text-[#888] truncate">{m.awayTeam}</span>
+                <span className="text-[12px] text-[#888] truncate" style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
                 {cols.map((c) => (
                   <span key={c.key} className="text-center text-[15px] font-bold tabular-nums text-[#fb7185]">{c.s.bWinPct}%</span>
                 ))}

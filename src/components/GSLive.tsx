@@ -12,6 +12,7 @@ import MatchupView from './MatchupView';
 import HcWatchDrawer from './HcWatchDrawer';
 import H1StatsPanel from './H1StatsPanel';
 import SearchDropdown from './SearchDropdown';
+import { teamNameColors } from '../lib/matchupStrength';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
 import type { GsPickLite } from '../app/api/gs-picks/route';
 import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
@@ -949,6 +950,9 @@ function LeagueSection({
             //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
             const hasStats = hasStatsSet.has(m.eventId);
             const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
+            const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
+            const nameSplit = sp && sp.meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
+            const nc = teamNameColors(nameSplit);
             return (
               <div
                 key={m.eventId}
@@ -965,11 +969,11 @@ function LeagueSection({
                   <span className="text-[11px] text-[#555] mt-0.5 w-4 flex-shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <span className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'}`}>{m.homeTeam}</span>
+                      <span className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
                       <CardBadges yellow={m.yellowHome} red={m.redHome} />
                     </div>
                     <div className="mt-0.5 flex items-center gap-1">
-                      <span className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`}>{m.awayTeam}</span>
+                      <span className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
                       <CardBadges yellow={m.yellowAway} red={m.redAway} />
                     </div>
                   </div>
@@ -1086,6 +1090,9 @@ function LeagueSection({
                 //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
                 const hasStats = hasStatsSet.has(m.eventId);
                 const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
+                const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
+                const nameSplit = sp && sp.meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
+                const nc = teamNameColors(nameSplit);
                 return (
                   <tr
                     key={m.eventId}
@@ -1107,11 +1114,11 @@ function LeagueSection({
                     {/* Trận đấu — 2 dòng, compact */}
                     <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
                       <div className="flex items-center gap-1">
-                        <span className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'}`}>{m.homeTeam}</span>
+                        <span className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
                         <CardBadges yellow={m.yellowHome} red={m.redHome} />
                       </div>
                       <div className="mt-1 flex items-center gap-1">
-                        <span className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`}>{m.awayTeam}</span>
+                        <span className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
                         <CardBadges yellow={m.yellowAway} red={m.redAway} />
                       </div>
                       {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
