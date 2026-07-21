@@ -12,7 +12,7 @@ import MatchupView from './MatchupView';
 import HcWatchDrawer from './HcWatchDrawer';
 import H1StatsPanel from './H1StatsPanel';
 import SearchDropdown from './SearchDropdown';
-import { teamNameColors } from '../lib/matchupStrength';
+import { h2hStrength, type StrengthPct } from '../lib/matchupStrength';
 import type { GsBetsResponse } from '../app/api/gs-bets/route';
 import type { GsPickLite } from '../app/api/gs-picks/route';
 import type { GsTeamHistoryResponse, GsTeamHistoryRow } from '../app/api/gs-team-history/route';
@@ -625,6 +625,35 @@ export function H2HLines({ splits, className }: { splits?: PairResult; className
   );
 }
 
+function AdvantageBar({ strength, homeTeam, awayTeam, className }: {
+  strength: StrengthPct | null;
+  homeTeam: string;
+  awayTeam: string;
+  className?: string;
+}) {
+  if (!strength) return null;
+  const homeNum = strength.isBalanced ? '#666' : strength.homeLeads ? '#4ade80' : '#f87171';
+  const awayNum = strength.isBalanced ? '#666' : strength.homeLeads ? '#f87171' : '#4ade80';
+  const ACCENT = '#22d3ee';
+  const homeBar = strength.isBalanced ? '#3a3a3a' : strength.homeLeads ? ACCENT : '#3a3a3a';
+  const awayBar = strength.isBalanced ? '#3a3a3a' : strength.homeLeads ? '#3a3a3a' : ACCENT;
+  return (
+    <div className={className}>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0" style={{ color: homeNum }}>{strength.homePct}%</span>
+        <div className="flex-1 flex h-1.5 rounded-full overflow-hidden bg-[#222]">
+          <div className="transition-all duration-500" style={{ width: `${strength.homePct}%`, background: homeBar }} />
+          <div className="transition-all duration-500" style={{ width: `${strength.awayPct}%`, background: awayBar }} />
+        </div>
+        <span className="text-[13px] font-bold leading-none tabular-nums flex-shrink-0" style={{ color: awayNum }}>{strength.awayPct}%</span>
+      </div>
+      <div className="mt-1 text-[10px] font-bold leading-none truncate" style={{ color: strength.isBalanced ? '#fbbf24' : '#4ade80' }}>
+        {strength.isBalanced ? 'Cân bằng' : `${strength.homeLeads ? homeTeam : awayTeam} ưu thế`}
+      </div>
+    </div>
+  );
+}
+
 function HcCell({
   lines, prevLines, suspended,
 }: {
@@ -952,7 +981,9 @@ function LeagueSection({
             const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
             const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
             const nameSplit = sp && sp.meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
-            const nc = teamNameColors(nameSplit);
+            const strength = h2hStrength(nameSplit, m.h1Home - m.h1Away);
+            const nameHome = strength && !strength.isBalanced ? (strength.homeLeads ? '#4ade80' : '#f87171') : null;
+            const nameAway = strength && !strength.isBalanced ? (strength.homeLeads ? '#f87171' : '#4ade80') : null;
             return (
               <div
                 key={m.eventId}
@@ -969,11 +1000,11 @@ function LeagueSection({
                   <span className="text-[11px] text-[#555] mt-0.5 w-4 flex-shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <span className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
+                      <span className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nameHome ? { color: nameHome } : undefined}>{m.homeTeam}</span>
                       <CardBadges yellow={m.yellowHome} red={m.redHome} />
                     </div>
                     <div className="mt-0.5 flex items-center gap-1">
-                      <span className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
+                      <span className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nameAway ? { color: nameAway } : undefined}>{m.awayTeam}</span>
                       <CardBadges yellow={m.yellowAway} red={m.redAway} />
                     </div>
                   </div>
@@ -1010,6 +1041,7 @@ function LeagueSection({
                 {/* Đối Đầu — 2 dòng (H1 split trên, H2 split dưới) ngay dưới nút Kèo trận, luôn hiện trên mobile */}
                 <div className="px-3 py-2 border-b border-[#222]">
                   <H2HLines splits={h2hMap.get(`${m.homeTeam}|${m.awayTeam}`)} />
+                  <AdvantageBar strength={strength} homeTeam={m.homeTeam} awayTeam={m.awayTeam} className="mt-2 pt-2 border-t border-[#222]" />
                 </div>
 
                 {/* Odds: 2 segments (TT / H1), mỗi segment 2 kèo */}
@@ -1092,7 +1124,9 @@ function LeagueSection({
                 const accentColor = hasStats ? ACCENT_YELLOW : m.isH2 ? ACCENT_GREEN : null;
                 const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
                 const nameSplit = sp && sp.meetings > 0 ? (m.isH2 || m.period === 4 ? sp.h2 : sp.h1) : null;
-                const nc = teamNameColors(nameSplit);
+                const strength = h2hStrength(nameSplit, m.h1Home - m.h1Away);
+                const nameHome = strength && !strength.isBalanced ? (strength.homeLeads ? '#4ade80' : '#f87171') : null;
+                const nameAway = strength && !strength.isBalanced ? (strength.homeLeads ? '#f87171' : '#4ade80') : null;
                 return (
                   <tr
                     key={m.eventId}
@@ -1114,11 +1148,11 @@ function LeagueSection({
                     {/* Trận đấu — 2 dòng, compact */}
                     <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
                       <div className="flex items-center gap-1">
-                        <span className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nc.home ? { color: nc.home } : undefined}>{m.homeTeam}</span>
+                        <span className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'}`} style={nameHome ? { color: nameHome } : undefined}>{m.homeTeam}</span>
                         <CardBadges yellow={m.yellowHome} red={m.redHome} />
                       </div>
                       <div className="mt-1 flex items-center gap-1">
-                        <span className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nc.away ? { color: nc.away } : undefined}>{m.awayTeam}</span>
+                        <span className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`} style={nameAway ? { color: nameAway } : undefined}>{m.awayTeam}</span>
                         <CardBadges yellow={m.yellowAway} red={m.redAway} />
                       </div>
                       {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
@@ -1132,6 +1166,7 @@ function LeagueSection({
                       </button>
                       {/* Đối Đầu — 2 dòng (H1 split trên, H2 split dưới) ngay dưới nút Kèo trận */}
                       <H2HLines splits={h2hMap.get(`${m.homeTeam}|${m.awayTeam}`)} className="mt-1.5" />
+                      <AdvantageBar strength={strength} homeTeam={m.homeTeam} awayTeam={m.awayTeam} className="mt-1.5" />
                       {/* tạm ẩn "Kèo giá" — bật lại: đổi false → true */}
                       {false && (
                       <button
