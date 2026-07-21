@@ -56,7 +56,7 @@ const PROMPT =
 
 export async function GET(req: NextRequest) {
   if (!process.env.ANTHROPIC_API_KEY) {
-    return Response.json({ error: 'ANTHROPIC_API_KEY not set' }, { status: 503 });
+    return Response.json({ error: '⚠️ AI OCR đang tạm tắt — hết credit (ANTHROPIC_API_KEY chưa cấu hình).' }, { status: 503 });
   }
   const eventId = req.nextUrl.searchParams.get('eventId');
   if (!eventId || !/^\d+$/.test(eventId)) {

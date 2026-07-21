@@ -494,5 +494,9 @@ export async function POST(req: NextRequest) {
   if (process.env.ANTHROPIC_API_KEY) {
     return claudeStream(body, oddsHistory);
   }
-  return statsStream(buildStatisticalAnalysis(body));
+  // Không có key → AI Claude đang tắt (hết credit). Báo cho UI + fallback thống kê offline.
+  const notice =
+    '⚠️ **AI (Claude) đang tạm tắt — hết credit.**\n' +
+    '_Dưới đây là phân tích thống kê offline (miễn phí, không dùng AI)._\n\n';
+  return statsStream(notice + buildStatisticalAnalysis(body));
 }
