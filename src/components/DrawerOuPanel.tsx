@@ -199,8 +199,8 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
   if (detail !== null) {
     const marketTitle = detail === 'ft' ? 'FT cả trận' : 'H1 hiệp 1';
     return (
-      <div className="flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
-        <div className="flex items-center gap-2">
+      <div className="flex h-full flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
+        <div className="flex shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={() => setDetail(null)}
@@ -213,7 +213,8 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
             {shortName(data.away)}
           </div>
         </div>
-        <div className="rounded-lg border border-[#2a2a2a] bg-[#141414]">
+        {/* List cuộn trong chiều cao còn lại của drawer; header trên cố định */}
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[#2a2a2a] bg-[#141414]">
           {data.matches.length === 0 ? (
             <div className="px-3 py-4 text-center text-[12px] text-[#666]">Chưa có trận đối đầu</div>
           ) : (

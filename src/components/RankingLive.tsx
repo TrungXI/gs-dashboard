@@ -469,9 +469,10 @@ export default function RankingLive() {
       {selected && (() => {
         // Danh sách phẳng theo đúng thứ tự hiển thị (group20 rồi group16).
         const flat = [...group20, ...group16];
+        const n = flat.length;
         const idx = flat.findIndex((m) => m.eventId === selected.eventId);
-        const hasPrev = idx > 0;
-        const hasNext = idx >= 0 && idx < flat.length - 1;
+        // Vòng lặp vô hạn: cuối → về đầu, đầu → về cuối (chỉ cần >1 trận).
+        const canCycle = idx >= 0 && n > 1;
         return (
           <MatchDetailDrawer
             eventId={selected.eventId}
@@ -479,10 +480,10 @@ export default function RankingLive() {
             away={selected.awayTeam}
             initialTab="h2h"
             onClose={() => setSelected(null)}
-            hasPrev={hasPrev}
-            hasNext={hasNext}
-            onPrev={hasPrev ? () => setSelected(flat[idx - 1]) : undefined}
-            onNext={hasNext ? () => setSelected(flat[idx + 1]) : undefined}
+            hasPrev={canCycle}
+            hasNext={canCycle}
+            onPrev={canCycle ? () => setSelected(flat[(idx - 1 + n) % n]) : undefined}
+            onNext={canCycle ? () => setSelected(flat[(idx + 1) % n]) : undefined}
           />
         );
       })()}
