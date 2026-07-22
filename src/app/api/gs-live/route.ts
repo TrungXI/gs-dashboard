@@ -79,6 +79,10 @@ export interface GsLiveMatch {
   oddsHome: number | null;
   oddsAway: number | null;
   oddsDraw: number | null;
+  // 1X2 Hiệp 1 (ev['7']['2']) — chỉ có khi trận đang H1; null khi đã sang H2/nghỉ.
+  oddsH1Home: number | null;
+  oddsH1Away: number | null;
+  oddsH1Draw: number | null;
   // Malay-format odds strings (e.g. "-4.76", "+9.00"). null when unavailable.
   malayHome: string | null;
   malayAway: string | null;
@@ -106,17 +110,19 @@ function decToMalay(dec: number): string {
 }
 
 /**
- * Parse the 1X2 market from ev['7']['1'].
+ * Parse a 1X2 market from ev['7'][key].
+ *   key '1' = full-time 1X2 · key '2' = Hiệp 1 (H1) 1X2 — same h/a/d format.
  * Each entry looks like "1.47*SELECTION_IDh 6.0*SELECTION_IDa 3.7*SELECTION_IDd ..."
  * — split by space, then by '*' to get [decimalOdds, selectionId+suffix].
  * The trailing char of the selection id encodes the side: h = home, a = away, d = draw.
  */
 function parse1x2(
   market7: unknown,
+  key = '1',
 ): { home: number | null; away: number | null; draw: number | null } {
   const empty = { home: null, away: null, draw: null };
   if (!market7 || typeof market7 !== 'object') return empty;
-  const m = (market7 as Record<string, unknown>)['1'];
+  const m = (market7 as Record<string, unknown>)[key];
   if (m == null) return empty;
 
   // The market may be a single string or an array of strings.
@@ -207,7 +213,8 @@ function buildMatch(
   const redAway = score['3'] ?? 0;
   const cornersHome = score['5'] ?? 0;
   const cornersAway = score['6'] ?? 0;
-  const odds = parse1x2(ev['7']);
+  const odds = parse1x2(ev['7']);       // 1X2 toàn trận
+  const oddsH1 = parse1x2(ev['7'], '2'); // 1X2 Hiệp 1 (chỉ có khi đang H1)
   const hcRaw = parseAsianMarket(ev['7'], '5');
   const ouRaw = parseAsianMarket(ev['7'], '3');
   // H1 market keys: '6' = HC H1, '4' = OU H1 (different from pre-match keys '15'/'13')
@@ -245,6 +252,9 @@ function buildMatch(
     oddsHome: odds.home,
     oddsAway: odds.away,
     oddsDraw: odds.draw,
+    oddsH1Home: oddsH1.home,
+    oddsH1Away: oddsH1.away,
+    oddsH1Draw: oddsH1.draw,
     malayHome: odds.home != null ? decToMalay(odds.home) : null,
     malayAway: odds.away != null ? decToMalay(odds.away) : null,
     malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,

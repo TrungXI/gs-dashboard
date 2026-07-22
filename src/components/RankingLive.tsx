@@ -262,27 +262,42 @@ export default function RankingLive() {
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
             )}
           </div>
-          <div className="flex-1 flex items-center justify-center gap-2.5">
+          <div className="flex-1 flex items-center justify-center gap-3">
             {halves.length === 0 ? (
               <span className="text-[11px] text-[#555]">ĐĐ —</span>
             ) : (
-              halves.map((h) => (
-                <div
-                  key={h.key}
-                  className={`flex flex-col items-center rounded-md border px-3 py-1 min-w-[56px] ${
-                    h.key === activeHalf
-                      ? 'border-[#f59e0b]/60 bg-[#f59e0b]/20'
-                      : 'border-[#2a2a2a] bg-[#1c1c1c]'
-                  }`}
-                >
-                  <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">
-                    {h.label} <span className="normal-case tracking-normal text-[#555]">n={meetings}</span>
-                  </span>
-                  <span className="text-[15px] font-bold tabular-nums text-[#4ade80] leading-tight">{h.s.aWinPct}%</span>
-                  <span className="text-[12px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{h.s.drawPct}%</span>
-                  <span className="text-[15px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
-                </div>
-              ))
+              halves.map((h) => {
+                const active = h.key === activeHalf;
+                // 1X2 odds live theo hiệp: H1 → market H1, H2 → toàn trận. null khi market đóng.
+                const o = h.key === 'h1'
+                  ? { home: m.oddsH1Home, draw: m.oddsH1Draw, away: m.oddsH1Away }
+                  : { home: m.oddsHome, draw: m.oddsDraw, away: m.oddsAway };
+                const fmt = (v: number | null) => (v == null ? '—' : v.toFixed(2));
+                return (
+                  <div
+                    key={h.key}
+                    className={`flex flex-col items-center rounded-md border px-2.5 py-1 ${
+                      active ? 'border-[#f59e0b]/60 bg-[#f59e0b]/20' : 'border-[#2a2a2a] bg-[#1c1c1c]'
+                    }`}
+                  >
+                    {/* Header: hiệp + số trận */}
+                    <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">
+                      {h.label} <span className="normal-case tracking-normal text-[#555]">n={meetings}</span>
+                    </span>
+                    {/* 2 cột: tỉ lệ đối đầu (%) | kèo 1X2 live. Cùng hàng nhà/hoà/khách. */}
+                    <div className="mt-0.5 grid grid-cols-2 gap-x-2.5 items-center text-center">
+                      <span className="text-[7px] font-semibold uppercase tracking-wide text-[#555]">%</span>
+                      <span className="text-[7px] font-semibold uppercase tracking-wide text-[#555]">1X2</span>
+                      <span className="text-[14px] font-bold tabular-nums text-[#4ade80] leading-tight">{h.s.aWinPct}%</span>
+                      <span className="text-[12px] font-bold tabular-nums text-[#4ade80] leading-tight">{fmt(o.home)}</span>
+                      <span className="text-[12px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{h.s.drawPct}%</span>
+                      <span className="text-[11px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{fmt(o.draw)}</span>
+                      <span className="text-[14px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
+                      <span className="text-[12px] font-bold tabular-nums text-[#fb7185] leading-tight">{fmt(o.away)}</span>
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
         </div>

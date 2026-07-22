@@ -38,6 +38,9 @@ export interface GsLiveMatch {
   oddsHome: number | null;
   oddsAway: number | null;
   oddsDraw: number | null;
+  oddsH1Home: number | null;
+  oddsH1Away: number | null;
+  oddsH1Draw: number | null;
   malayHome: string | null;
   malayAway: string | null;
   malayDraw: string | null;
