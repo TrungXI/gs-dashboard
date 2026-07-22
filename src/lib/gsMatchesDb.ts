@@ -817,12 +817,23 @@ export interface H2HPairStat {
   avgMargin: number;
 }
 
+export interface H2HPairMatch {
+  date: string; // 'YYYY-MM-DD' giờ VN (match_time + 7h)
+  home: string; // tên đội nhà THẬT của trận lịch sử (theo orientation)
+  away: string;
+  htScore: string; // 'h-a' (h1_home-h1_away)
+  ftScore: string; // 'h-a' (tt_home-tt_away)
+  ft: { total: number; line: number | null; result: 'tai' | 'xiu' | 'hoa' | null };
+  h1: { total: number; line: number | null; result: 'tai' | 'xiu' | 'hoa' | null };
+}
+
 export interface H2HPair {
   home: string;
   away: string;
   league: '20p' | '16p';
   ft: H2HPairStat | null;
   h1: H2HPairStat | null;
+  matches: H2HPairMatch[];
 }
 
 /**
@@ -935,5 +946,72 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
   const ft = toStat(r.ft_n ?? 0, r.ft_over ?? 0, r.ft_under ?? 0, r.ft_avg_total, r.ft_avg_margin);
   const h1 = toStat(r.h1_n ?? 0, r.h1_over ?? 0, r.h1_under ?? 0, r.h1_avg_total, r.h1_avg_margin);
 
-  return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1 };
+  // 4) Per-match list — same first_seen/ev/pre CTEs, but ev keeps match_time +
+  //    orientation ids so we can map real home/away names. Returns ALL H2H
+  //    matches (even those missing a line → result=null); rows with a line
+  //    match the aggregate `stat.n`. Newest first.
+  const listSql = `
+    WITH first_seen AS (
+      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      FROM match_odds_log
+      GROUP BY event_id, home_team_id, away_team_id, match_date
+    ),
+    ev AS (
+      SELECT DISTINCT ON (mh.id)
+        mh.id AS mh_id,
+        mh.match_time,
+        mh.home_team_id, mh.away_team_id,
+        mh.h1_home, mh.h1_away, mh.tt_home, mh.tt_away,
+        fs.event_id
+      FROM gs_matches_history mh
+      JOIN first_seen fs
+        ON fs.home_team_id = mh.home_team_id
+       AND fs.away_team_id = mh.away_team_id
+       AND fs.match_date = (mh.match_time + interval '7 hours')::date
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+      WHERE mh.match_type = $1
+        AND ((mh.home_team_id = $2 AND mh.away_team_id = $3)
+          OR (mh.home_team_id = $3 AND mh.away_team_id = $2))
+      ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
+    ),
+    pre AS (
+      SELECT DISTINCT ON (event_id) event_id, ou_line, ou_h1_line
+      FROM match_odds_log
+      WHERE snapshot_type = 'first_seen' AND period = 2
+      ORDER BY event_id, recorded_at
+    )
+    SELECT
+      to_char((ev.match_time + interval '7 hours')::date, 'YYYY-MM-DD') AS date,
+      ev.home_team_id, ev.away_team_id,
+      ev.h1_home, ev.h1_away, ev.tt_home, ev.tt_away,
+      pre.ou_line::numeric AS ft_line,
+      pre.ou_h1_line::numeric AS h1_line
+    FROM ev
+    LEFT JOIN pre ON pre.event_id = ev.event_id
+    ORDER BY ev.match_time DESC
+  `;
+
+  const listRes = await db.query(listSql, [league, homeId, awayId]);
+  const resultOf = (total: number, line: number | null): 'tai' | 'xiu' | 'hoa' | null =>
+    line == null ? null : total > line ? 'tai' : total < line ? 'xiu' : 'hoa';
+
+  const matches: H2HPairMatch[] = listRes.rows.map((row) => {
+    const mHomeId = Number(row.home_team_id);
+    const mAwayId = Number(row.away_team_id);
+    const ftTotal = (Number(row.tt_home) || 0) + (Number(row.tt_away) || 0);
+    const ftLine = row.ft_line == null ? null : Number(row.ft_line);
+    const h1Total = (Number(row.h1_home) || 0) + (Number(row.h1_away) || 0);
+    const h1Line = row.h1_line == null ? null : Number(row.h1_line);
+    return {
+      date: row.date as string,
+      home: nameById.get(mHomeId) ?? String(mHomeId),
+      away: nameById.get(mAwayId) ?? String(mAwayId),
+      htScore: `${Number(row.h1_home) || 0}-${Number(row.h1_away) || 0}`,
+      ftScore: `${Number(row.tt_home) || 0}-${Number(row.tt_away) || 0}`,
+      ft: { total: ftTotal, line: ftLine, result: resultOf(ftTotal, ftLine) },
+      h1: { total: h1Total, line: h1Line, result: resultOf(h1Total, h1Line) },
+    };
+  });
+
+  return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1, matches };
 }

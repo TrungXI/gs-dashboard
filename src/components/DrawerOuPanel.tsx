@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { H2HPair, H2HPairStat } from '../lib/gsMatchesDb';
+import type { H2HPair, H2HPairStat, H2HPairMatch } from '../lib/gsMatchesDb';
 import { LoadingState } from './Spinner';
 import { pct, shortName } from './H2HMatrix';
 
@@ -17,11 +17,13 @@ function VerdictCard({
   home,
   away,
   stat,
+  onClick,
 }: {
   title: string;
   home: string;
   away: string;
   stat: H2HPairStat | null;
+  onClick?: () => void;
 }) {
   if (!stat || stat.n === 0) {
     return (
@@ -41,7 +43,11 @@ function VerdictCard({
   const marginSign = stat.avgMargin > 0 ? '+' : '';
 
   return (
-    <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-4">
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-lg border border-[#2a2a2a] bg-[#141414] p-4 text-left transition-colors hover:border-[#3a3a3a] hover:bg-[#181818]"
+    >
       <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#777]">{title}</div>
       <div className="mb-3 flex items-center justify-between gap-2">
         <div className="text-[15px] font-bold text-[#eee]">
@@ -76,6 +82,52 @@ function VerdictCard({
           </span>
         </span>
       </div>
+      <div className="mt-3 border-t border-[#222] pt-2 text-[11px] font-semibold text-[#60a5fa]">
+        👆 Bấm xem {stat.n} trận chi tiết →
+      </div>
+    </button>
+  );
+}
+
+// One row in the drill-down list — a single historical H2H match, showing the
+// score + total/line + Tài/Xỉu/Hòa badge for the currently-viewed market.
+function MatchRow({ match, market }: { match: H2HPairMatch; market: 'ft' | 'h1' }) {
+  const m = market === 'ft' ? match.ft : match.h1;
+  const badge =
+    m.result === 'tai'
+      ? { label: 'TÀI', color: '#4ade80' }
+      : m.result === 'xiu'
+        ? { label: 'XỈU', color: '#f87171' }
+        : m.result === 'hoa'
+          ? { label: 'HÒA', color: '#9a9a9a' }
+          : { label: 'chưa có line', color: '#777' };
+
+  return (
+    <div className="flex items-center gap-2 border-b border-[#1a1a1a]/70 px-3 py-2 last:border-0">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[12px] text-[#ddd]">
+          {shortName(match.home)} <span className="text-[#555]">vs</span> {shortName(match.away)}
+        </div>
+        <div className="mt-0.5 text-[10px] tabular-nums text-[#6f6f6f]">
+          {match.date} · HT <span className="text-[#9a9a9a]">{match.htScore}</span> · FT{' '}
+          <span className="text-[#9a9a9a]">{match.ftScore}</span>
+        </div>
+        <div className="mt-0.5 text-[10px] tabular-nums text-[#6f6f6f]">
+          Tổng <span className="text-[#bbb]">{m.total}</span>
+          {m.line != null && (
+            <>
+              {' '}
+              · line <span className="text-[#bbb]">{m.line.toFixed(1)}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <span
+        className="whitespace-nowrap rounded-md px-2 py-1 text-[11px] font-bold"
+        style={{ background: `${badge.color}22`, color: badge.color }}
+      >
+        {badge.label}
+      </span>
     </div>
   );
 }
@@ -84,12 +136,14 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<H2HPair | null>(null);
+  const [detail, setDetail] = useState<'ft' | 'h1' | null>(null);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setError(null);
     setData(null);
+    setDetail(null);
 
     fetch(`/api/gs-h2h-pair?eventId=${eventId}`, { cache: 'no-store' })
       .then(async (r) => {
@@ -109,6 +163,7 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
           league: json.league ?? '20p',
           ft: json.ft ?? null,
           h1: json.h1 ?? null,
+          matches: json.matches ?? [],
         });
       })
       .catch(() => {
@@ -141,10 +196,54 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
     );
   }
 
+  if (detail !== null) {
+    const marketTitle = detail === 'ft' ? 'FT cả trận' : 'H1 hiệp 1';
+    return (
+      <div className="flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setDetail(null)}
+            className="whitespace-nowrap rounded-md border border-[#2a2a2a] bg-[#141414] px-2.5 py-1.5 text-[12px] font-semibold text-[#ddd] transition-colors hover:bg-[#1c1c1c]"
+          >
+            ← Quay lại
+          </button>
+          <div className="min-w-0 text-[12px] font-bold text-[#eee]">
+            Chi tiết {marketTitle} — {shortName(data.home)} <span className="text-[#555]">vs</span>{' '}
+            {shortName(data.away)}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[#2a2a2a] bg-[#141414]">
+          {data.matches.length === 0 ? (
+            <div className="px-3 py-4 text-center text-[12px] text-[#666]">Chưa có trận đối đầu</div>
+          ) : (
+            <div className="flex flex-col">
+              {data.matches.map((m, i) => (
+                <MatchRow key={`${m.date}-${m.ftScore}-${i}`} match={m} market={detail} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
-      <VerdictCard title="⚽ FT — Cả trận" home={data.home} away={data.away} stat={data.ft} />
-      <VerdictCard title="🕐 H1 — Hiệp 1" home={data.home} away={data.away} stat={data.h1} />
+      <VerdictCard
+        title="⚽ FT — Cả trận"
+        home={data.home}
+        away={data.away}
+        stat={data.ft}
+        onClick={() => setDetail('ft')}
+      />
+      <VerdictCard
+        title="🕐 H1 — Hiệp 1"
+        home={data.home}
+        away={data.away}
+        stat={data.h1}
+        onClick={() => setDetail('h1')}
+      />
     </div>
   );
 }
