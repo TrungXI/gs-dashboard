@@ -42,6 +42,15 @@ export default function RankingLive() {
     setH2hLimitState(n);
     localStorage.setItem('gs_h2h_limit', String(n));
   }
+  // Gộp 2 chiều đối đầu (A vs B + B vs A) khi bật. Mặc định tắt (chỉ A-nhà vs B-khách).
+  const [h2hBoth, setH2hBothState] = useState<boolean>(false);
+  useEffect(() => {
+    if (localStorage.getItem('gs_h2h_both') === '1') setH2hBothState(true);
+  }, []);
+  function setH2hBoth(v: boolean) {
+    setH2hBothState(v);
+    localStorage.setItem('gs_h2h_both', v ? '1' : '0');
+  }
 
   // H1 final scores tracked across H1→H2 transition
   const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
@@ -190,7 +199,7 @@ export default function RankingLive() {
       .join(',');
     async function loadOne(limit: number) {
       try {
-        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}&limit=${limit}`, { cache: 'no-store' });
+        const res = await fetch(`/api/gs-h2h-splits?pairs=${pairsParam}&limit=${limit}${h2hBoth ? '&both=1' : ''}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; pairs?: PairResult[] };
         if (!alive || !json.ok || !json.pairs) return;
         const m = new Map(json.pairs.map((p) => [`${p.teamA}|${p.teamB}`, p]));
@@ -203,7 +212,7 @@ export default function RankingLive() {
     loadAll();
     const id = setInterval(loadAll, 300_000);
     return () => { alive = false; clearInterval(id); };
-  }, [pairsKey]);
+  }, [pairsKey, h2hBoth]);
 
   // Map hiển thị = mức đang chọn (đã prefetch). Đổi filter chỉ đổi con trỏ này.
   const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
@@ -358,8 +367,17 @@ export default function RankingLive() {
         >
           {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
         </button>
+        {/* Toggle gộp 2 chiều đối đầu (A vs B + B vs A) */}
+        <button
+          type="button"
+          onClick={() => setH2hBoth(!h2hBoth)}
+          className={`ml-auto rounded px-2 py-0.5 text-[11px] border transition-colors ${h2hBoth ? 'border-[#a855f7]/50 text-[#c084fc] bg-[#a855f7]/15 hover:bg-[#a855f7]/25' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          title={h2hBoth ? 'Đang gộp cả 2 chiều A↔B — bấm để chỉ tính A gặp B (đúng chiều nhà-khách)' : 'Chỉ tính A-nhà vs B-khách — bấm để gộp cả 2 chiều A↔B'}
+        >
+          {h2hBoth ? '🔀 2 chiều ON' : '🔀 2 chiều OFF'}
+        </button>
         {/* Filter số trận đối đầu để tính % */}
-        <div className="ml-auto flex items-center gap-1">
+        <div className="flex items-center gap-1">
           <span className="text-[11px] text-[#666]">ĐĐ:</span>
           {[20, 50, 100].map((n) => (
             <button

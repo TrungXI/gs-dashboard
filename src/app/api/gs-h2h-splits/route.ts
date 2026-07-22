@@ -58,6 +58,11 @@ function parseLimit(params: URLSearchParams): number {
   return ALLOWED_LIMITS.has(raw) ? raw : DEFAULT_LIMIT;
 }
 
+/** ?both=1 — gộp cả 2 chiều đối đầu (A vs B + B vs A). Mặc định tắt (1 chiều). */
+function parseBoth(params: URLSearchParams): boolean {
+  return params.get('both') === '1';
+}
+
 function pct(count: number, meetings: number): number {
   return meetings > 0 ? Math.round((count / meetings) * 100) : 0;
 }
@@ -116,9 +121,13 @@ interface RawRow {
 }
 
 // One parameterized query over all requested pairs: UNNEST parallel arrays into a
-// pair list, keep ONLY the exact orientation (Team A at home vs Team B away — no
-// home/away swap), cap at last 100 by match_time, then aggregate W/D/L.
-// LEFT JOIN so 0-meeting pairs return.
+// pair list, cap at last N by match_time, then aggregate W/D/L. LEFT JOIN so
+// 0-meeting pairs return.
+//   $4 = both-directions toggle:
+//     false → keep ONLY the exact orientation (Team A home vs Team B away).
+//     true  → also include the reverse fixtures (Team B home vs Team A away),
+//             with scores normalized to Team A's perspective via CASE, so
+//             "A vs B" and "B vs A" are merged into one head-to-head record.
 //   "h1" bucket = HALFTIME result (h1_home vs h1_away).
 //   "h2" bucket = FULL-TIME result (tt_home vs tt_away) — the FINAL score,
 //                  NOT second-half-only goals. (draw = trận hoà chung cuộc.)
@@ -129,17 +138,18 @@ WITH req AS (
 oriented AS (
   SELECT
     r.team_a, r.team_b,
-    h.h1_home AS a_h1,
-    h.h1_away AS b_h1,
-    h.tt_home AS a_ft,
-    h.tt_away AS b_ft,
+    CASE WHEN h.home_team = r.team_a THEN h.h1_home ELSE h.h1_away END AS a_h1,
+    CASE WHEN h.home_team = r.team_a THEN h.h1_away ELSE h.h1_home END AS b_h1,
+    CASE WHEN h.home_team = r.team_a THEN h.tt_home ELSE h.tt_away END AS a_ft,
+    CASE WHEN h.home_team = r.team_a THEN h.tt_away ELSE h.tt_home END AS b_ft,
     ROW_NUMBER() OVER (
       PARTITION BY r.team_a, r.team_b
       ORDER BY h.match_time DESC
     ) AS rn
   FROM req r
   JOIN gs_matches_history h
-    ON h.home_team = r.team_a AND h.away_team = r.team_b
+    ON (h.home_team = r.team_a AND h.away_team = r.team_b)
+    OR ($4::bool AND h.home_team = r.team_b AND h.away_team = r.team_a)
 ),
 capped AS (
   SELECT * FROM oriented WHERE rn <= $3::int
@@ -166,14 +176,16 @@ export async function GET(req: NextRequest) {
   if (requested.length === 0) return Response.json({ ok: true, pairs: [] } satisfies GsH2HSplitsResponse);
 
   const limit = parseLimit(req.nextUrl.searchParams);
+  const both = parseBoth(req.nextUrl.searchParams);
   const now = Date.now();
 
   // Split into fresh cache-hits vs misses; only query the misses. Cache is keyed
-  // per (limit, pair) so switching 20/50/100 doesn't collide.
+  // per (limit, both, pair) so switching 20/50/100 or the 2-chiều toggle doesn't collide.
+  const ckey = (a: string, b: string) => `${limit}|${both ? 'B' : '1'}|${cacheKey(a, b)}`;
   const hits: PairResult[] = [];
   const misses: [string, string][] = [];
   for (const [a, b] of requested) {
-    const entry = cache.get(`${limit}|${cacheKey(a, b)}`);
+    const entry = cache.get(ckey(a, b));
     if (entry && now - entry.ts < CACHE_TTL_MS) hits.push(entry.data);
     else misses.push([a, b]);
   }
@@ -185,7 +197,7 @@ export async function GET(req: NextRequest) {
   try {
     const teamAs = misses.map(([a]) => a);
     const teamBs = misses.map(([, b]) => b);
-    const res = await pool.query<RawRow>(SQL, [teamAs, teamBs, limit]);
+    const res = await pool.query<RawRow>(SQL, [teamAs, teamBs, limit, both]);
 
     const fetched: PairResult[] = res.rows.map((r) => {
       const meetings = Number(r.meetings);
@@ -196,7 +208,7 @@ export async function GET(req: NextRequest) {
         h1: toSplits(Number(r.h1_awin), Number(r.h1_draw), Number(r.h1_bwin), meetings),
         h2: toSplits(Number(r.h2_awin), Number(r.h2_draw), Number(r.h2_bwin), meetings),
       };
-      cache.set(`${limit}|${cacheKey(r.team_a, r.team_b)}`, { data: result, ts: now });
+      cache.set(ckey(r.team_a, r.team_b), { data: result, ts: now });
       return result;
     });
 
