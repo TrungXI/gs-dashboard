@@ -429,15 +429,26 @@ export default function RankingLive() {
         </>
       )}
 
-      {selected && (
-        <MatchDetailDrawer
-          eventId={selected.eventId}
-          home={selected.homeTeam}
-          away={selected.awayTeam}
-          initialTab="h2h"
-          onClose={() => setSelected(null)}
-        />
-      )}
+      {selected && (() => {
+        // Danh sách phẳng theo đúng thứ tự hiển thị (group20 rồi group16).
+        const flat = [...group20, ...group16];
+        const idx = flat.findIndex((m) => m.eventId === selected.eventId);
+        const hasPrev = idx > 0;
+        const hasNext = idx >= 0 && idx < flat.length - 1;
+        return (
+          <MatchDetailDrawer
+            eventId={selected.eventId}
+            home={selected.homeTeam}
+            away={selected.awayTeam}
+            initialTab="h2h"
+            onClose={() => setSelected(null)}
+            hasPrev={hasPrev}
+            hasNext={hasNext}
+            onPrev={hasPrev ? () => setSelected(flat[idx - 1]) : undefined}
+            onNext={hasNext ? () => setSelected(flat[idx + 1]) : undefined}
+          />
+        );
+      })()}
     </div>
   );
 }

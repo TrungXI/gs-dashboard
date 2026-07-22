@@ -807,3 +807,133 @@ export async function fetchH2HMatrix(
 
   return { teams, cells, leadersTai, leadersXiu };
 }
+
+export interface H2HPairStat {
+  n: number;
+  over: number;
+  under: number;
+  overPct: number; // over / n, 0..1
+  avgTotal: number;
+  avgMargin: number;
+}
+
+export interface H2HPair {
+  home: string;
+  away: string;
+  league: '20p' | '16p';
+  ft: H2HPairStat | null;
+  h1: H2HPairStat | null;
+}
+
+/**
+ * Head-to-head Tài/Xỉu stats for the exact team pair of a live match, resolved
+ * from `eventId`. Reuses the fetchH2HMatrix aggregation (first_seen / ev / pre /
+ * graded joins) but restricts to the two team ids of this event (either
+ * orientation) within the same league. Returns both markets (ft = full-match
+ * total vs ou_line, h1 = H1 total vs ou_h1_line). No ≥5-match threshold — the
+ * caller decides how to warn on small `n`.
+ */
+export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; error?: string } & Partial<H2HPair>> {
+  const db = getPool();
+
+  // 1) Resolve the two team ids + league from the event's odds log.
+  const idRes = await db.query(
+    `SELECT home_team_id, away_team_id, match_type
+     FROM match_odds_log
+     WHERE event_id = $1
+     LIMIT 1`,
+    [eventId],
+  );
+  if (idRes.rows.length === 0) {
+    return { ok: false, error: 'event not found' };
+  }
+  const homeId: number = idRes.rows[0].home_team_id;
+  const awayId: number = idRes.rows[0].away_team_id;
+  const league: string = idRes.rows[0].match_type;
+
+  // 2) Resolve display names of the two teams.
+  const nameRes = await db.query(
+    `SELECT id, name || ' (' || type || ')' AS display
+     FROM gs_teams
+     WHERE id = $1 OR id = $2`,
+    [homeId, awayId],
+  );
+  const nameById = new Map<number, string>();
+  for (const r of nameRes.rows) nameById.set(Number(r.id), r.display);
+  const home = nameById.get(homeId) ?? String(homeId);
+  const away = nameById.get(awayId) ?? String(awayId);
+
+  // 3) Aggregate H2H for this exact pair (either orientation), both markets.
+  //    Same first_seen/ev/pre/graded shape as fetchH2HMatrix, but filtered to
+  //    the two team ids + league, and computing FT + H1 in one pass.
+  const sql = `
+    WITH first_seen AS (
+      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      FROM match_odds_log
+      GROUP BY event_id, home_team_id, away_team_id, match_date
+    ),
+    ev AS (
+      SELECT DISTINCT ON (mh.id)
+        mh.id AS mh_id,
+        mh.h1_home, mh.h1_away, mh.tt_home, mh.tt_away,
+        fs.event_id
+      FROM gs_matches_history mh
+      JOIN first_seen fs
+        ON fs.home_team_id = mh.home_team_id
+       AND fs.away_team_id = mh.away_team_id
+       AND fs.match_date = (mh.match_time + interval '7 hours')::date
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+      WHERE mh.match_type = $1
+        AND ((mh.home_team_id = $2 AND mh.away_team_id = $3)
+          OR (mh.home_team_id = $3 AND mh.away_team_id = $2))
+      ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
+    ),
+    pre AS (
+      SELECT DISTINCT ON (event_id) event_id, ou_line, ou_h1_line
+      FROM match_odds_log
+      WHERE snapshot_type = 'first_seen' AND period = 2
+      ORDER BY event_id, recorded_at
+    ),
+    graded AS (
+      SELECT
+        (ev.tt_home + ev.tt_away) AS ft_total,
+        pre.ou_line::numeric AS ft_line,
+        (ev.h1_home + ev.h1_away) AS h1_total,
+        pre.ou_h1_line::numeric AS h1_line
+      FROM ev
+      JOIN pre ON pre.event_id = ev.event_id
+    )
+    SELECT
+      COUNT(*) FILTER (WHERE ft_line IS NOT NULL)::int AS ft_n,
+      COUNT(*) FILTER (WHERE ft_line IS NOT NULL AND ft_total > ft_line)::int AS ft_over,
+      COUNT(*) FILTER (WHERE ft_line IS NOT NULL AND ft_total < ft_line)::int AS ft_under,
+      ROUND(AVG(ft_total) FILTER (WHERE ft_line IS NOT NULL)::numeric, 2)::float8 AS ft_avg_total,
+      ROUND(AVG(ft_total - ft_line) FILTER (WHERE ft_line IS NOT NULL)::numeric, 2)::float8 AS ft_avg_margin,
+      COUNT(*) FILTER (WHERE h1_line IS NOT NULL)::int AS h1_n,
+      COUNT(*) FILTER (WHERE h1_line IS NOT NULL AND h1_total > h1_line)::int AS h1_over,
+      COUNT(*) FILTER (WHERE h1_line IS NOT NULL AND h1_total < h1_line)::int AS h1_under,
+      ROUND(AVG(h1_total) FILTER (WHERE h1_line IS NOT NULL)::numeric, 2)::float8 AS h1_avg_total,
+      ROUND(AVG(h1_total - h1_line) FILTER (WHERE h1_line IS NOT NULL)::numeric, 2)::float8 AS h1_avg_margin
+    FROM graded
+  `;
+
+  const { rows } = await db.query(sql, [league, homeId, awayId]);
+  const r = rows[0] ?? {};
+
+  const toStat = (n: number, over: number, under: number, avgTotal: number, avgMargin: number): H2HPairStat | null =>
+    n > 0
+      ? {
+          n,
+          over,
+          under,
+          overPct: n > 0 ? over / n : 0,
+          avgTotal: Number(avgTotal) || 0,
+          avgMargin: Number(avgMargin) || 0,
+        }
+      : null;
+
+  const ft = toStat(r.ft_n ?? 0, r.ft_over ?? 0, r.ft_under ?? 0, r.ft_avg_total, r.ft_avg_margin);
+  const h1 = toStat(r.h1_n ?? 0, r.h1_over ?? 0, r.h1_under ?? 0, r.h1_avg_total, r.h1_avg_margin);
+
+  return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1 };
+}

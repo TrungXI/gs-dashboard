@@ -16,11 +16,11 @@ interface H2HResponse extends Partial<H2HMatrixData> {
 }
 
 // Short team label — strip the " (S)" / " (V)" suffix (redundant once a league is chosen).
-function shortName(name: string): string {
+export function shortName(name: string): string {
   return name.replace(/\s*\([SV]\)\s*$/, '');
 }
 
-function pct(v: number): string {
+export function pct(v: number): string {
   return `${Math.round(v * 100)}%`;
 }
 

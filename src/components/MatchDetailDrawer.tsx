@@ -5,6 +5,7 @@ import { LoadingState } from './Spinner';
 import H1StatsPanel from './H1StatsPanel';
 import MatchAnalysis from './MatchAnalysis';
 import MatchupView from './MatchupView';
+import DrawerOuPanel from './DrawerOuPanel';
 import type { GsBetsResponse, GsBetPick, GsBetStats } from '../app/api/gs-bets/route';
 
 function parseScore(s: string | null): [number, number] | null {
@@ -32,27 +33,37 @@ export default function MatchDetailDrawer({
   away,
   onClose,
   initialTab,
+  onPrev,
+  onNext,
+  hasPrev = false,
+  hasNext = false,
 }: {
   eventId: number;
   home: string;
   away: string;
   onClose: () => void;
-  initialTab?: 'h1' | 'h2h' | 'matchup';
+  initialTab?: 'h1' | 'h2h' | 'matchup' | 'ou';
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<GsBetPick | null>(null);
   const [stats, setStats] = useState<GsBetStats | null>(null);
-  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup'>(initialTab ?? 'h1');
+  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup' | 'ou'>(initialTab ?? 'h1');
 
-  // ESC đóng drawer
+  // ESC đóng drawer · ← / → sang trận trước / kế (giữ nguyên tab đang xem)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+      else if (e.key === 'ArrowLeft' && hasPrev) onPrev?.();
+      else if (e.key === 'ArrowRight' && hasNext) onNext?.();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, onPrev, onNext, hasPrev, hasNext]);
 
   useEffect(() => {
     let alive = true;
@@ -96,6 +107,7 @@ export default function MatchDetailDrawer({
     ['h1', '📊 Chỉ Số H1'],
     ['matchup', '🔥 Diễn biến'],
     ['h2h', '⚔️ Đối Kháng'],
+    ['ou', '🎯 Tài/Xỉu'],
   ];
 
   return (
@@ -112,6 +124,27 @@ export default function MatchDetailDrawer({
             <div className="text-[10px] text-[#555] mt-0.5">
               {loading ? 'Đang tải…' : error ? 'Lỗi tải dữ liệu' : 'Chi tiết trận'}
             </div>
+          </div>
+          {/* Prev / Next — sang trận trước/kế trong bảng Xếp hạng Live (giữ nguyên tab) */}
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => onPrev?.()}
+              disabled={!hasPrev}
+              title="Trận trước (←)"
+              className="rounded-md border border-[#2a2a2a] bg-[#1a1a1a] px-2 py-1 text-[13px] leading-none text-[#aaa] transition-colors enabled:hover:border-[#444] enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ◀
+            </button>
+            <button
+              type="button"
+              onClick={() => onNext?.()}
+              disabled={!hasNext}
+              title="Trận kế (→)"
+              className="rounded-md border border-[#2a2a2a] bg-[#1a1a1a] px-2 py-1 text-[13px] leading-none text-[#aaa] transition-colors enabled:hover:border-[#444] enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              ▶
+            </button>
           </div>
           <button
             onClick={onClose}
@@ -180,6 +213,9 @@ export default function MatchDetailDrawer({
           {tab === 'h2h' && (
             <MatchAnalysis embedded initialTeamA={home} initialTeamB={away} />
           )}
+
+          {/* Tab — Tài/Xỉu (đối đầu H2H Tài/Xỉu của đúng cặp trận live này) */}
+          {tab === 'ou' && <DrawerOuPanel eventId={eventId} />}
         </div>
       </div>
     </>
