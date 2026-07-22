@@ -231,18 +231,18 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
   return (
     <div className="flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
       <VerdictCard
-        title="⚽ FT — Cả trận"
-        home={data.home}
-        away={data.away}
-        stat={data.ft}
-        onClick={() => setDetail('ft')}
-      />
-      <VerdictCard
         title="🕐 H1 — Hiệp 1"
         home={data.home}
         away={data.away}
         stat={data.h1}
         onClick={() => setDetail('h1')}
+      />
+      <VerdictCard
+        title="⚽ FT — Cả trận"
+        home={data.home}
+        away={data.away}
+        stat={data.ft}
+        onClick={() => setDetail('ft')}
       />
     </div>
   );
