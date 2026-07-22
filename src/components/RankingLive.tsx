@@ -229,6 +229,17 @@ export default function RankingLive() {
   const leagueName16 = group16[0]?.leagueName ?? '16 Phút';
   const leagueName20 = group20[0]?.leagueName ?? '20 Phút';
 
+  // Badge thẻ đỏ — hiện ô đỏ + số lượng khi đội có ≥1 thẻ đỏ, ẩn khi 0.
+  function RedCardBadge({ n }: { n: number }) {
+    if (!n || n <= 0) return null;
+    return (
+      <span className="inline-flex shrink-0 items-center gap-0.5" title={`${n} thẻ đỏ`}>
+        <span className="inline-block h-[13px] w-[9px] rounded-[2px] bg-[#ef4444] shadow-[0_0_3px_rgba(239,68,68,.6)]" />
+        {n > 1 && <span className="text-[10px] font-bold tabular-nums text-[#ef4444]">×{n}</span>}
+      </span>
+    );
+  }
+
   function MatchBox({ m }: { m: GsLiveMatch }) {
     const isHT = m.period === 4;
     const scored = scoredIds.has(m.eventId);
@@ -260,9 +271,15 @@ export default function RankingLive() {
         {/* Left: tên đội + tỉ số ở trái, khối H1/H2 tách riêng canh giữa (mobile & desktop giống nhau) */}
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <div className="min-w-0 shrink-0 basis-[42%]">
-            <div className="text-[13px] font-semibold text-white truncate leading-tight">{m.homeTeam}</div>
+            <div className="flex items-center gap-1 text-[13px] font-semibold text-white leading-tight">
+              <span className="truncate">{m.homeTeam}</span>
+              <RedCardBadge n={m.redHome} />
+            </div>
             <div className="text-[10px] text-[#666] my-0.5 leading-tight">Hoà</div>
-            <div className="text-[12px] text-[#888] truncate leading-tight">{m.awayTeam}</div>
+            <div className="flex items-center gap-1 text-[12px] text-[#888] leading-tight">
+              <span className="truncate">{m.awayTeam}</span>
+              <RedCardBadge n={m.redAway} />
+            </div>
             <div className={`mt-1.5 text-[18px] font-bold leading-none ${scored ? 'text-[#22c55e]' : 'text-[#fbbf24]'}`}>
               {m.h1Home} - {m.h1Away}
             </div>
