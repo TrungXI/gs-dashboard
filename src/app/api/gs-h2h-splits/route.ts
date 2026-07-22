@@ -116,8 +116,9 @@ interface RawRow {
 }
 
 // One parameterized query over all requested pairs: UNNEST parallel arrays into a
-// pair list, union both fixture orientations, orient to Team A, cap at last 100 by
-// match_time, then aggregate W/D/L. LEFT JOIN so 0-meeting pairs return.
+// pair list, keep ONLY the exact orientation (Team A at home vs Team B away — no
+// home/away swap), cap at last 100 by match_time, then aggregate W/D/L.
+// LEFT JOIN so 0-meeting pairs return.
 //   "h1" bucket = HALFTIME result (h1_home vs h1_away).
 //   "h2" bucket = FULL-TIME result (tt_home vs tt_away) — the FINAL score,
 //                  NOT second-half-only goals. (draw = trận hoà chung cuộc.)
@@ -128,18 +129,17 @@ WITH req AS (
 oriented AS (
   SELECT
     r.team_a, r.team_b,
-    CASE WHEN h.home_team = r.team_a THEN h.h1_home ELSE h.h1_away END AS a_h1,
-    CASE WHEN h.home_team = r.team_a THEN h.h1_away ELSE h.h1_home END AS b_h1,
-    CASE WHEN h.home_team = r.team_a THEN h.tt_home ELSE h.tt_away END AS a_ft,
-    CASE WHEN h.home_team = r.team_a THEN h.tt_away ELSE h.tt_home END AS b_ft,
+    h.h1_home AS a_h1,
+    h.h1_away AS b_h1,
+    h.tt_home AS a_ft,
+    h.tt_away AS b_ft,
     ROW_NUMBER() OVER (
       PARTITION BY r.team_a, r.team_b
       ORDER BY h.match_time DESC
     ) AS rn
   FROM req r
   JOIN gs_matches_history h
-    ON (h.home_team = r.team_a AND h.away_team = r.team_b)
-    OR (h.home_team = r.team_b AND h.away_team = r.team_a)
+    ON h.home_team = r.team_a AND h.away_team = r.team_b
 ),
 capped AS (
   SELECT * FROM oriented WHERE rn <= $3::int

@@ -225,13 +225,15 @@ export default function RankingLive() {
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
     const phase = phaseParts(m, nowMs);
+    // Hiệp đang diễn ra → tô nền cam box tương ứng (phân biệt đang H1 hay H2).
+    const activeHalf = phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'h2' : null;
     // H2H theo hiệp: H1 (đang đá H1) hiện cả H1+H2; đã sang H2/nghỉ chỉ hiện H2.
     const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
     const meetings = sp?.meetings ?? 0;
     const showBoth = !m.isH2 && m.period !== 4;
     const halves = sp && meetings > 0
       ? (showBoth
-          ? [{ key: 'h1', label: 'H1', s: sp.h1 }, { key: 'h2', label: 'H2', s: sp.h2 }]
+          ? [{ key: 'h2', label: 'H2', s: sp.h2 }, { key: 'h1', label: 'H1', s: sp.h1 }]
           : [{ key: 'h2', label: 'H2', s: sp.h2 }])
       : [];
     return (
@@ -267,9 +269,15 @@ export default function RankingLive() {
               halves.map((h) => (
                 <div
                   key={h.key}
-                  className="flex flex-col items-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-3 py-1 min-w-[56px]"
+                  className={`flex flex-col items-center rounded-md border px-3 py-1 min-w-[56px] ${
+                    h.key === activeHalf
+                      ? 'border-[#f59e0b]/60 bg-[#f59e0b]/20'
+                      : 'border-[#2a2a2a] bg-[#1c1c1c]'
+                  }`}
                 >
-                  <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">{h.label}</span>
+                  <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">
+                    {h.label} <span className="normal-case tracking-normal text-[#555]">n={meetings}</span>
+                  </span>
                   <span className="text-[15px] font-bold tabular-nums text-[#4ade80] leading-tight">{h.s.aWinPct}%</span>
                   <span className="text-[12px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{h.s.drawPct}%</span>
                   <span className="text-[15px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
