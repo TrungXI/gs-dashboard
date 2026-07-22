@@ -62,18 +62,26 @@ function LeaderList({
         )}
         {rows.map((r) => {
           const value = metric === 'tai' ? r.overPct : r.underPct;
+          const marginSign = r.avgMargin > 0 ? '+' : '';
           return (
             <button
               key={`${r.t1}|${r.t2}`}
               type="button"
               onClick={() => onOpenPair({ type, team: r.t1, team2: r.t2 })}
-              className="flex items-center gap-2 border-b border-[#1a1a1a]/70 px-3 py-2 text-left text-[12px] transition-colors last:border-0 hover:bg-white/[.03]"
+              className="flex items-center gap-2 border-b border-[#1a1a1a]/70 px-3 py-2 text-left transition-colors last:border-0 hover:bg-white/[.03]"
             >
-              <span className="min-w-0 flex-1 truncate text-[#ddd]">
-                {shortName(r.t1)} <span className="text-[#555]">vs</span> {shortName(r.t2)}
-              </span>
-              <span className="tabular-nums text-[11px] text-[#777]">{r.n} trận</span>
-              <span className="w-11 text-right font-bold tabular-nums" style={{ color: accent }}>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12px] text-[#ddd]">
+                  {shortName(r.t1)} <span className="text-[#555]">vs</span> {shortName(r.t2)}
+                </div>
+                <div className="mt-0.5 text-[10px] tabular-nums text-[#6f6f6f]">
+                  {r.n} trận · TB <span className="text-[#9a9a9a]">{r.avgTotal.toFixed(1)}</span> bàn · chênh{' '}
+                  <span style={{ color: r.avgMargin >= 0 ? '#4ade80' : '#f87171' }}>
+                    {marginSign}{r.avgMargin.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              <span className="w-12 text-right text-[13px] font-bold tabular-nums" style={{ color: accent }}>
                 {pct(value)}
               </span>
             </button>
@@ -180,7 +188,10 @@ export default function H2HMatrix({ onOpenPair }: { onOpenPair: OpenPairFn }) {
       <h1 className="mb-1 text-[18px] font-extrabold">🔥 Ma trận Tài/Xỉu</h1>
       <p className="mb-4 text-[12px] text-[#888]">
         Tỉ lệ ra <span className="font-semibold text-[#4ade80]">Tài</span> của từng cặp đối đầu trong
-        cùng giải. Xanh = nghiêng Tài, đỏ = nghiêng Xỉu. Ô trống khi &lt; 5 trận. Bấm ô để xem chi tiết kèo.
+        cùng giải, theo hiệp đang chọn. Xanh = nghiêng Tài, đỏ = nghiêng Xỉu. Ô trống khi &lt; 5 trận.
+        Bảng dưới có <span className="text-[#9a9a9a]">TB</span> = trung bình tổng bàn của hiệp đó và{' '}
+        <span className="text-[#4ade80]">chênh</span> = TB (tổng bàn − line kèo); chênh dương = vượt line
+        (Tài), âm = dưới line (Xỉu). Bấm để xem chi tiết kèo.
       </p>
 
       {/* Toggles */}
@@ -348,7 +359,9 @@ export default function H2HMatrix({ onOpenPair }: { onOpenPair: OpenPairFn }) {
                           }
                           title={`${shortName(cell.t1)} vs ${shortName(cell.t2)} — ${cell.n} trận · Tài ${pct(
                             cell.overPct,
-                          )} · Xỉu ${pct(cell.n > 0 ? cell.under / cell.n : 0)}`}
+                          )} · Xỉu ${pct(cell.n > 0 ? cell.under / cell.n : 0)} · TB ${cell.avgTotal.toFixed(
+                            1,
+                          )} bàn · chênh ${cell.avgMargin >= 0 ? '+' : ''}${cell.avgMargin.toFixed(2)}`}
                           className={`h-7 w-7 cursor-pointer border text-center font-bold tabular-nums transition-all hover:scale-110 ${
                             pair
                               ? 'relative z-10 ring-2 ring-amber-400 ring-inset'

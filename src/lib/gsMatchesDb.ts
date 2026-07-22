@@ -674,6 +674,8 @@ export interface H2HCell {
   over: number;
   under: number;
   overPct: number; // over / n, 0..1
+  avgTotal: number; // avg total goals of the market period (H1 total or FT total)
+  avgMargin: number; // avg (total − line) — how far above/below the Over line, in goals
 }
 
 export interface H2HLeader {
@@ -684,6 +686,8 @@ export interface H2HLeader {
   under: number;
   overPct: number;
   underPct: number; // under / n
+  avgTotal: number;
+  avgMargin: number;
 }
 
 export interface H2HMatrix {
@@ -753,7 +757,9 @@ export async function fetchH2HMatrix(
       t1, t2,
       COUNT(*)::int AS n,
       COUNT(*) FILTER (WHERE total > line)::int AS over_c,
-      COUNT(*) FILTER (WHERE total < line)::int AS under_c
+      COUNT(*) FILTER (WHERE total < line)::int AS under_c,
+      ROUND(AVG(total)::numeric, 2)::float8 AS avg_total,
+      ROUND(AVG(total - line)::numeric, 2)::float8 AS avg_margin
     FROM graded
     WHERE t1 IS NOT NULL AND t2 IS NOT NULL AND t1 <> t2
     GROUP BY t1, t2
@@ -762,13 +768,15 @@ export async function fetchH2HMatrix(
 
   const { rows } = await db.query(sql, [type]);
 
-  const cells: H2HCell[] = rows.map((r: { t1: string; t2: string; n: number; over_c: number; under_c: number }) => ({
+  const cells: H2HCell[] = rows.map((r: { t1: string; t2: string; n: number; over_c: number; under_c: number; avg_total: number; avg_margin: number }) => ({
     t1: r.t1,
     t2: r.t2,
     n: r.n,
     over: r.over_c,
     under: r.under_c,
     overPct: r.n > 0 ? r.over_c / r.n : 0,
+    avgTotal: Number(r.avg_total) || 0,
+    avgMargin: Number(r.avg_margin) || 0,
   }));
 
   const teamSet = new Set<string>();
@@ -786,6 +794,8 @@ export async function fetchH2HMatrix(
     under: c.under,
     overPct: c.overPct,
     underPct: c.n > 0 ? c.under / c.n : 0,
+    avgTotal: c.avgTotal,
+    avgMargin: c.avgMargin,
   }));
 
   const leadersTai = [...leaders]
