@@ -65,15 +65,21 @@ export default function RankingLive() {
   const [osNotiHT, setOsNotiHT] = useState(false);
   const osNotiGoalRef = useRef(false);
   const osNotiHTRef = useRef(false);
+  // Toast in-app: bật/tắt popup. Mặc định BẬT (chỉ tắt khi localStorage = '0').
+  const [toastOn, setToastOn] = useState(true);
+  const toastOnRef = useRef(true);
 
   useEffect(() => {
     const g = localStorage.getItem('gs_os_noti_goal') === '1';
     const h = localStorage.getItem('gs_os_noti_ht') === '1';
     setOsNotiGoal(g); osNotiGoalRef.current = g;
     setOsNotiHT(h);   osNotiHTRef.current = h;
+    const t = localStorage.getItem('gs_toast_rank') !== '0';
+    setToastOn(t); toastOnRef.current = t;
   }, []);
   useEffect(() => { osNotiGoalRef.current = osNotiGoal; }, [osNotiGoal]);
   useEffect(() => { osNotiHTRef.current = osNotiHT; }, [osNotiHT]);
+  useEffect(() => { toastOnRef.current = toastOn; }, [toastOn]);
 
   async function requestAndSet(
     key: string,
@@ -103,6 +109,7 @@ export default function RankingLive() {
   }
 
   function pushToast(kind: Toast['kind'], message: string) {
+    if (!toastOnRef.current) return; // toast đang tắt
     const id = ++toastIdRef.current;
     setToasts((prev) => [...prev, { id, kind, message }]);
     setTimeout(() => {
@@ -401,6 +408,19 @@ export default function RankingLive() {
           title={osNotiHT ? 'Tắt noti hết H1' : 'Bật noti hết H1 ra Macbook'}
         >
           {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
+        </button>
+        {/* Bật/tắt toast popup trong app */}
+        <button
+          type="button"
+          onClick={() => {
+            const next = !toastOn;
+            setToastOn(next); toastOnRef.current = next;
+            localStorage.setItem('gs_toast_rank', next ? '1' : '0');
+          }}
+          className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${toastOn ? 'border-[#17a2b8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+          title={toastOn ? 'Tắt toast popup trong app' : 'Bật toast popup trong app'}
+        >
+          {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
         </button>
         {/* Toggle gộp 2 chiều đối đầu (A vs B + B vs A) */}
         <button
