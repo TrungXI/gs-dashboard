@@ -9,10 +9,12 @@ import { LoadingState, Spinner } from './Spinner';
 import GSLive from './GSLive';
 import MatchAnalysis from './MatchAnalysis';
 import BetStatsView from './BetStatsView';
+import BetStatsTable from './BetStatsTable';
+import H2HMatrix, { type OpenPairFn } from './H2HMatrix';
 import TeamFormReport from './TeamFormReport';
 import RankingLive from './RankingLive';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'team-form';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -52,6 +54,13 @@ export default function Dashboard({
   // Deep-link: eventId to auto-open in the routed view's drawer (consumed once).
   const [deepLinkMatch, setDeepLinkMatch] = useState<number | null>(null);
   const deepLinkConsumed = useRef(false);
+  // Preset carried from the H2H matrix → bet-table (league + team pair). Keyed so
+  // a fresh click always remounts BetStatsTable with the new pair.
+  const [betTablePreset, setBetTablePreset] = useState<{ key: number; type: FType; team: string; team2: string } | null>(null);
+  const openPairInBetTable = useCallback<OpenPairFn>((p) => {
+    setBetTablePreset({ key: Date.now(), type: p.type, team: p.team, team2: p.team2 });
+    setView('bet-table');
+  }, []);
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all'); // 'all' | YYYY-MM-DD
   const [fTeam, setFTeam] = useState('all');
@@ -232,6 +241,8 @@ export default function Dashboard({
     ['report', '🏆', 'Xếp hạng'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
     ['bet-stats', '📊', 'Thống kê kèo'],
+    ['bet-table', '🧮', 'Bảng kèo per-trận'],
+    ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],
     ['team-form', '🔄', 'Quy luật phong độ'],
   ];
 
@@ -410,6 +421,13 @@ export default function Dashboard({
           <MatchAnalysis />
         ) : view === 'bet-stats' ? (
           <BetStatsView initialMatch={deepLinkMatch} />
+        ) : view === 'bet-table' ? (
+          <BetStatsTable
+            key={betTablePreset?.key ?? 'default'}
+            preset={betTablePreset}
+          />
+        ) : view === 'h2h-matrix' ? (
+          <H2HMatrix onOpenPair={openPairInBetTable} />
         ) : view === 'team-form' ? (
           <TeamFormReport />
         ) : (

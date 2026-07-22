@@ -236,21 +236,20 @@ export default function RankingLive() {
     const phase = phaseParts(m, nowMs);
     // Hiệp đang diễn ra → tô nền cam box tương ứng (phân biệt đang H1 hay H2).
     const activeHalf = phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'h2' : null;
-    // H2H theo hiệp: H1 (đang đá H1) hiện cả H1+H2; đã sang H2/nghỉ chỉ hiện H2.
+    // H2H theo hiệp: LUÔN hiện cả 2 box (H2 + H1) ở vị trí cố định, bất kể phase —
+    // không collapse còn 1 box khi sang H2 (tránh layout nhảy/lệch). Ở H2, box H1
+    // vẫn hiện % đối đầu H1 (sp.h1); cột odds/Tài-Xỉu H1 tự về "—" vì market đã đóng.
     const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
     const meetings = sp?.meetings ?? 0;
-    const showBoth = !m.isH2 && m.period !== 4;
     const halves = sp && meetings > 0
-      ? (showBoth
-          ? [{ key: 'h2', label: 'H2', s: sp.h2 }, { key: 'h1', label: 'H1', s: sp.h1 }]
-          : [{ key: 'h2', label: 'H2', s: sp.h2 }])
+      ? [{ key: 'h2', label: 'H2', s: sp.h2 }, { key: 'h1', label: 'H1', s: sp.h1 }]
       : [];
     return (
       <div
         data-event-id={m.eventId}
         role="button"
         onClick={() => setSelected(m)}
-        className={`rounded-lg border p-2.5 w-full md:w-[360px] flex-shrink-0 transition-all cursor-pointer hover:border-[#444] flex items-stretch ${
+        className={`rounded-lg border p-3 w-full min-w-0 h-full transition-all cursor-pointer hover:border-[#444] flex items-stretch gap-1 ${
           scored
             ? 'border-[#22c55e]/60 !bg-[#16a34a]/15'
             : isHT
@@ -271,9 +270,9 @@ export default function RankingLive() {
               <div className="text-[10px] text-[#aaa] mt-0.5">H1: {h1Final.home}-{h1Final.away}</div>
             )}
           </div>
-          <div className="flex-1 flex items-center justify-center gap-3">
+          <div className="flex-1 flex items-stretch justify-center gap-2.5">
             {halves.length === 0 ? (
-              <span className="text-[11px] text-[#555]">ĐĐ —</span>
+              <span className="flex items-center text-[11px] text-[#555]">ĐĐ —</span>
             ) : (
               halves.map((h) => {
                 const active = h.key === activeHalf;
@@ -282,10 +281,13 @@ export default function RankingLive() {
                   ? { home: m.oddsH1Home, draw: m.oddsH1Draw, away: m.oddsH1Away }
                   : { home: m.oddsHome, draw: m.oddsDraw, away: m.oddsAway };
                 const fmt = (v: number | null) => (v == null ? '—' : v.toFixed(2));
+                // Tài/Xỉu live theo hiệp: H1 → market H1, H2 → toàn trận. Lấy dòng chính [0].
+                const ou = h.key === 'h1' ? m.ouH1Lines?.[0] : m.ouLines?.[0];
+                const fmtOu = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
                 return (
                   <div
                     key={h.key}
-                    className={`flex flex-col items-center rounded-md border px-2.5 py-1 ${
+                    className={`flex flex-1 flex-col items-center rounded-md border px-3 py-1.5 ${
                       active ? 'border-[#f59e0b]/60 bg-[#f59e0b]/20' : 'border-[#2a2a2a] bg-[#1c1c1c]'
                     }`}
                   >
@@ -303,6 +305,22 @@ export default function RankingLive() {
                       <span className="text-[11px] font-bold tabular-nums text-[#8a8a8a] leading-tight my-0.5">{fmt(o.draw)}</span>
                       <span className="text-[14px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
                       <span className="text-[12px] font-bold tabular-nums text-[#fb7185] leading-tight">{fmt(o.away)}</span>
+                    </div>
+                    {/* Tài/Xỉu live: cột dọc — line trên cùng, rồi Tài / Xỉu mỗi dòng. Ẩn giá trị khi market đóng. */}
+                    <div className="mt-1.5 w-full border-t border-[#2a2a2a] pt-1">
+                      <div className="text-center text-[9px] font-semibold uppercase tracking-wide text-[#777] leading-tight">
+                        T/X <span className="text-[#aaa] tabular-nums">{fmtOu(ou?.line)}</span>
+                      </div>
+                      <div className="mt-1 flex flex-col gap-0.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-[#666]">Tài</span>
+                          <span className="text-[13px] font-bold tabular-nums text-[#4ade80] leading-tight">{fmtOu(ou?.over)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-[#666]">Xỉu</span>
+                          <span className="text-[13px] font-bold tabular-nums text-[#fb7185] leading-tight">{fmtOu(ou?.under)}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 );
@@ -331,7 +349,7 @@ export default function RankingLive() {
           <span className="text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">{title}</span>
           <span className="text-[11px] text-[#555]">{items.length} trận</span>
         </div>
-        <div className="flex flex-col md:flex-row md:flex-wrap gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 items-stretch">
           {items.map((m) => <MatchBox key={m.eventId} m={m} />)}
         </div>
       </div>
@@ -339,7 +357,7 @@ export default function RankingLive() {
   }
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-6xl">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3 flex-wrap">
