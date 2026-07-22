@@ -240,7 +240,7 @@ export default function Dashboard({
     ['gs-live', '🔴', 'GS Live'],
     ['report', '🏆', 'Xếp hạng'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
-    ['bet-stats', '📊', 'Thống kê kèo'],
+    // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     ['bet-table', '🧮', 'Bảng kèo per-trận'],
     ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],
     ['team-form', '🔄', 'Quy luật phong độ'],
