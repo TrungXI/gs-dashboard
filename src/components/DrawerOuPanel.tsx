@@ -18,16 +18,22 @@ function VerdictCard({
   away,
   stat,
   onClick,
+  active = false,
 }: {
   title: string;
   home: string;
   away: string;
   stat: H2HPairStat | null;
   onClick?: () => void;
+  // Market của hiệp đang đá → tô viền/nền xanh da trời (đồng bộ Kiểu 2 ở list Xếp hạng).
+  active?: boolean;
 }) {
+  // Class active giống hệt box active ngoài list (RankingLive Kiểu 2) — xanh da trời nhẹ.
+  const activeCls = 'border-[#38bdf8]/50 bg-[#38bdf8]/15';
+
   if (!stat || stat.n === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-[#3a3a3a] bg-[#141414] p-4">
+      <div className={`rounded-lg border border-dashed p-4 ${active ? activeCls : 'border-[#3a3a3a] bg-[#141414]'}`}>
         <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#777]">{title}</div>
         <div className="text-[13px] text-[#888]">Chưa đủ dữ liệu đối đầu cho cặp này.</div>
       </div>
@@ -46,7 +52,9 @@ function VerdictCard({
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-lg border border-[#2a2a2a] bg-[#141414] p-4 text-left transition-colors hover:border-[#3a3a3a] hover:bg-[#181818]"
+      className={`w-full rounded-lg border p-4 text-left transition-colors ${
+        active ? activeCls : 'border-[#2a2a2a] bg-[#141414] hover:border-[#3a3a3a] hover:bg-[#181818]'
+      }`}
     >
       <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#777]">{title}</div>
       <div className="mb-3 flex items-center justify-between gap-2">
@@ -132,7 +140,14 @@ function MatchRow({ match, market }: { match: H2HPairMatch; market: 'ft' | 'h1' 
   );
 }
 
-export default function DrawerOuPanel({ eventId }: { eventId: number }) {
+export default function DrawerOuPanel({
+  eventId,
+  activeMarket,
+}: {
+  eventId: number;
+  // Hiệp đang đá: 'h1'→thẻ H1 xanh, 'ft'→thẻ FT xanh, null/undefined→không tô.
+  activeMarket?: 'ft' | 'h1' | null;
+}) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<H2HPair | null>(null);
@@ -250,6 +265,7 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
           away={data.away}
           stat={data.h1}
           onClick={() => setDetail('h1')}
+          active={activeMarket === 'h1'}
         />
         <VerdictCard
           title="⚽ FT — Cả trận"
@@ -257,6 +273,7 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
           away={data.away}
           stat={data.ft}
           onClick={() => setDetail('ft')}
+          active={activeMarket === 'ft'}
         />
       </div>
     </div>

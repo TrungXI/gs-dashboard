@@ -33,6 +33,7 @@ export default function MatchDetailDrawer({
   away,
   onClose,
   initialTab,
+  activeMarket,
   onPrev,
   onNext,
   hasPrev = false,
@@ -43,6 +44,8 @@ export default function MatchDetailDrawer({
   away: string;
   onClose: () => void;
   initialTab?: 'h1' | 'h2h' | 'matchup' | 'ou';
+  // Market đang chạy (đồng bộ Kiểu 2 list): 'h1'→thẻ H1 xanh, 'ft'→thẻ FT xanh, null→không.
+  activeMarket?: 'ft' | 'h1' | null;
   onPrev?: () => void;
   onNext?: () => void;
   hasPrev?: boolean;
@@ -226,7 +229,7 @@ export default function MatchDetailDrawer({
           )}
 
           {/* Tab — Tài/Xỉu (đối đầu H2H Tài/Xỉu của đúng cặp trận live này) */}
-          {tab === 'ou' && <DrawerOuPanel eventId={eventId} />}
+          {tab === 'ou' && <DrawerOuPanel eventId={eventId} activeMarket={activeMarket} />}
         </div>
       </div>
     </>

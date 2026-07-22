@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import SearchDropdown from './SearchDropdown';
+import { LoadingState, Spinner } from './Spinner';
 
 interface Snapshot {
   snapshotType: string;
@@ -433,11 +434,13 @@ export default function MatchAnalysis({
   const [analyzedA, setAnalyzedA] = useState('');
   const [analyzedB, setAnalyzedB] = useState('');
 
-  // Auto-fetch when embedded with pre-filled teams
+  // Auto-fetch when embedded with pre-filled teams. Refetch khi đổi trận qua ◀▶
+  // (initialTeamA/initialTeamB đổi) — giữ data cũ + phủ mờ, không blank trắng.
   useEffect(() => {
     if (!embedded || !initialTeamA || !initialTeamB) return;
     let alive = true;
     setLoading(true);
+    setError(null);
     fetch(`/api/match-analysis?homeTeam=${encodeURIComponent(initialTeamA)}&awayTeam=${encodeURIComponent(initialTeamB)}`)
       .then(r => r.json())
       .then((json: { ok: boolean; aMatches?: MatchGroup[]; bMatches?: MatchGroup[] }) => {
@@ -449,8 +452,7 @@ export default function MatchAnalysis({
         setTab('all');
       }).catch(e => { if (alive) setError(String(e)); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [embedded, initialTeamA, initialTeamB]);
 
   useEffect(() => {
     if (embedded) return; // skip teams + recent fetch when embedded
@@ -598,44 +600,51 @@ export default function MatchAnalysis({
         </div>
       )}
 
-      {/* Loading state for embedded mode */}
-      {embedded && loading && (
-        <div className="flex h-[120px] items-center justify-center text-[13px] text-white/40">
-          Đang tải…
-        </div>
+      {/* Loading state for embedded mode — lần đầu (chưa analyzed) → full loader;
+          refetch khi đổi trận (đã analyzed) → giữ khung + phủ mờ ở block dưới. */}
+      {embedded && loading && !analyzed && (
+        <LoadingState label="Đang tải đối đầu…" />
       )}
       {embedded && error && (
         <div className="mx-3 mt-3 rounded-md bg-[#f87171]/10 px-3 py-2 text-[11px] text-[#f87171]">{error}</div>
       )}
 
       {analyzed ? (
-        <>
-          {/* Tabs */}
-          <div className={`flex gap-1.5 overflow-x-auto scrollbar-none ${embedded ? 'px-3 pt-2.5 pb-2' : 'mb-3'}`}>
-            {([
-              ['all', '🔀 Tất cả', allMatches.length],
-              ['a', analyzedA, aMatches.length],
-              ['b', analyzedB, bMatches.length],
-            ] as [typeof tab, string, number][]).map(([key, label, count]) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => setTab(key)}
-                className={`flex-shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
-                  tab === key
-                    ? 'bg-[#17a2b8] text-white'
-                    : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
-                }`}
-              >
-                {label} <span className="opacity-70">({count})</span>
-              </button>
-            ))}
-          </div>
+        <div className="relative">
+          {/* Reload (đổi trận) → spinner nhỏ + phủ mờ data cũ, không blank trắng */}
+          {embedded && loading && (
+            <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+              <Spinner size={12} /> Đang tải…
+            </div>
+          )}
+          <div className={`transition-opacity duration-200 ${embedded && loading ? 'pointer-events-none opacity-40' : ''}`}>
+            {/* Tabs */}
+            <div className={`flex gap-1.5 overflow-x-auto scrollbar-none ${embedded ? 'px-3 pt-2.5 pb-2' : 'mb-3'}`}>
+              {([
+                ['all', '🔀 Tất cả', allMatches.length],
+                ['a', analyzedA, aMatches.length],
+                ['b', analyzedB, bMatches.length],
+              ] as [typeof tab, string, number][]).map(([key, label, count]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setTab(key)}
+                  className={`flex-shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                    tab === key
+                      ? 'bg-[#17a2b8] text-white'
+                      : 'bg-white/10 text-white/60 hover:bg-white/20 hover:text-white'
+                  }`}
+                >
+                  {label} <span className="opacity-70">({count})</span>
+                </button>
+              ))}
+            </div>
 
-          <div className={embedded ? 'px-3 pb-4' : ''}>
-            <MatchList matches={tab === 'all' ? allMatches : tab === 'a' ? aMatches : bMatches} />
+            <div className={embedded ? 'px-3 pb-4' : ''}>
+              <MatchList matches={tab === 'all' ? allMatches : tab === 'a' ? aMatches : bMatches} />
+            </div>
           </div>
-        </>
+        </div>
       ) : !embedded ? (
         <>
           <div className="mb-3 flex items-center gap-2">
