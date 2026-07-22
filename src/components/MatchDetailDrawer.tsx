@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LoadingState } from './Spinner';
+import { LoadingState, Spinner } from './Spinner';
 import H1StatsPanel from './H1StatsPanel';
 import MatchAnalysis from './MatchAnalysis';
 import MatchupView from './MatchupView';
@@ -69,8 +69,8 @@ export default function MatchDetailDrawer({
     let alive = true;
     setLoading(true);
     setError(null);
-    setPick(null);
-    setStats(null);
+    // Giữ pick/stats cũ trong lúc reload (đổi trận qua ◀▶) — vùng tab H1 phủ mờ
+    // thay vì blank trắng rồi reflow. Data mới thay data cũ khi fetch xong.
 
     fetch(`/api/gs-bets?eventId=${eventId}`)
       .then(async (r) => {
@@ -177,7 +177,11 @@ export default function MatchDetailDrawer({
           {/* Tab 1 — Chỉ Số H1 */}
           {tab === 'h1' && (
             <>
-              {loading && <LoadingState label="Đang tải chi tiết trận…" />}
+              {/* Lần đầu (chưa có data) → full loading. Reload (đổi trận, đã có data)
+                  → giữ khung + phủ mờ, không blank trắng. */}
+              {loading && pick === null && stats === null && (
+                <LoadingState label="Đang tải chi tiết trận…" />
+              )}
 
               {!loading && error && (
                 <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
@@ -185,21 +189,28 @@ export default function MatchDetailDrawer({
                 </div>
               )}
 
-              {!loading && !error && (
-                <div className="flex flex-col gap-0">
-                  {/* Tỉ số: HT (hết H1) + FT (chung cuộc) */}
-                  <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
-                    <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚽ Tỉ số</div>
-                    <div className="flex gap-2">
-                      <ScoreCell label="Hết H1" score={ht ? `${ht[0]} - ${ht[1]}` : '—'} />
-                      <ScoreCell label="Chung cuộc" score={ft ? `${ft[0]} - ${ft[1]}` : '—'} strong />
+              {!error && (pick !== null || stats !== null) && (
+                <div className="relative">
+                  {loading && (
+                    <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+                      <Spinner size={12} /> Đang tải…
                     </div>
-                  </div>
+                  )}
+                  <div className={`flex flex-col gap-0 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
+                    {/* Tỉ số: HT (hết H1) + FT (chung cuộc) */}
+                    <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                      <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">⚽ Tỉ số</div>
+                      <div className="flex gap-2">
+                        <ScoreCell label="Hết H1" score={ht ? `${ht[0]} - ${ht[1]}` : '—'} />
+                        <ScoreCell label="Chung cuộc" score={ft ? `${ft[0]} - ${ft[1]}` : '—'} strong />
+                      </div>
+                    </div>
 
-                  {/* Panel chỉ số Hiệp 1 */}
-                  <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
-                    <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
-                    <H1StatsPanel stats={stats} homeName={home} awayName={away} />
+                    {/* Panel chỉ số Hiệp 1 */}
+                    <div className="px-3 py-3 md:px-4 md:py-4 border-b border-[#1a1a1a]">
+                      <div className="mb-2 text-[10px] md:text-[11px] font-bold uppercase tracking-wide text-[#555]">📊 Chỉ số H1</div>
+                      <H1StatsPanel stats={stats} homeName={home} awayName={away} />
+                    </div>
                   </div>
                 </div>
               )}

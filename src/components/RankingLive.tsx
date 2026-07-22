@@ -478,7 +478,7 @@ export default function RankingLive() {
             eventId={selected.eventId}
             home={selected.homeTeam}
             away={selected.awayTeam}
-            initialTab="h2h"
+            initialTab="ou"
             onClose={() => setSelected(null)}
             hasPrev={canCycle}
             hasNext={canCycle}

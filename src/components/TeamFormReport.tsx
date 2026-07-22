@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import SearchDropdown from './SearchDropdown';
-import { LoadingState } from './Spinner';
+import { LoadingState, Spinner } from './Spinner';
 import MatchupCard from './MatchupCard';
 import type {
   GsTeamHistoryResponse,
@@ -181,7 +181,8 @@ export default function TeamFormReport() {
 
       {isMatchup ? (
         <MatchupCard matchup={matchup} loading={loading} error={error} />
-      ) : loading ? (
+      ) : loading && data.length === 0 ? (
+        // Lần đầu (chưa có data) → full loading.
         <LoadingState label="Đang tải phong độ đội…" />
       ) : error ? (
         <div className="flex h-[200px] flex-col items-center justify-center gap-2 rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
@@ -194,10 +195,18 @@ export default function TeamFormReport() {
           <div className="text-[14px] text-[#888]">Không có dữ liệu phong độ</div>
         </div>
       ) : (
-        <div className="mt-4 flex flex-col gap-4">
-          {data.map((block) => (
-            <TeamBlock key={block.team} block={block} />
-          ))}
+        // Reload (đổi đội / đổi 20↔100) → giữ danh sách cũ + phủ mờ, không blank trắng.
+        <div className="relative">
+          {loading && (
+            <div className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+              <Spinner size={12} /> Đang tải…
+            </div>
+          )}
+          <div className={`mt-4 flex flex-col gap-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
+            {data.map((block) => (
+              <TeamBlock key={block.team} block={block} />
+            ))}
+          </div>
         </div>
       )}
     </>

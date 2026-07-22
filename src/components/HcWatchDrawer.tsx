@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { LoadingState } from './Spinner';
+import { LoadingState, Spinner } from './Spinner';
 import type { HcWatchRow, HcWatchSummary } from '../app/api/gs-hc-watch/route';
 
 // ── Response shape from GET /api/gs-hc-watch ────────────────────────────────
@@ -85,8 +85,8 @@ export default function HcWatchDrawer({
     let alive = true;
     setLoading(true);
     setError(null);
-    setRows([]);
-    setSummary([]);
+    // Giữ rows/summary cũ trong lúc đổi filter — phủ mờ thay vì blank trắng rồi
+    // reflow. Data mới thay data cũ khi fetch xong.
 
     const url =
       filter === 'pair'
@@ -166,8 +166,12 @@ export default function HcWatchDrawer({
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {loading && <LoadingState label="Đang tải kèo giá…" />}
+        <div className="relative flex-1 overflow-y-auto">
+          {/* Lần đầu (chưa có data) → full loading. Đổi filter (đã có data) →
+              giữ khung + phủ mờ, không blank trắng. */}
+          {loading && rows.length === 0 && summary.length === 0 && (
+            <LoadingState label="Đang tải kèo giá…" />
+          )}
 
           {!loading && error && (
             <div className="m-3 rounded-lg border border-[#f87171]/30 bg-[#f87171]/10 px-4 py-3 text-[12px] text-[#f87171]">
@@ -175,8 +179,16 @@ export default function HcWatchDrawer({
             </div>
           )}
 
-          {!loading && !error && (
+          {!error && (rows.length > 0 || summary.length > 0) && (
             <>
+              {loading && (
+                <div className="pointer-events-none sticky top-2 z-10 mr-3 flex justify-end">
+                  <span className="flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+                    <Spinner size={12} /> Đang tải…
+                  </span>
+                </div>
+              )}
+              <div className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
               {/* Summary strip */}
               {summary.length > 0 && (
                 <div className="flex gap-2 px-3 py-3 border-b border-[#1a1a1a]">
@@ -249,6 +261,7 @@ export default function HcWatchDrawer({
                   </table>
                 </div>
               )}
+              </div>
             </>
           )}
         </div>

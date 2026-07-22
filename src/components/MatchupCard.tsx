@@ -1,6 +1,6 @@
 'use client';
 
-import { LoadingState } from './Spinner';
+import { LoadingState, Spinner } from './Spinner';
 import type { MatchupBlock, MatchupSummary, ScenarioBlock, Lean } from '../lib/teamForm';
 import {
   levelSentence,
@@ -67,7 +67,9 @@ export default function MatchupCard({
   loading: boolean;
   error: string | null;
 }) {
-  if (loading) return <LoadingState label="Đang tải đối đầu…" />;
+  // Lần đầu (chưa có data) → full loading. Reload (đã có matchup, đổi trận) →
+  // giữ khung cũ + phủ mờ bên dưới, không blank trắng.
+  if (loading && !matchup) return <LoadingState label="Đang tải đối đầu…" />;
 
   if (error) {
     return (
@@ -104,7 +106,14 @@ export default function MatchupCard({
   const { summary, rows } = matchup;
 
   return (
-    <div className={`${CARD} mt-4`}>
+    <div className="relative">
+      {/* Reload (đổi trận) → phủ mờ data cũ + spinner nhỏ, không blank trắng */}
+      {loading && (
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+          <Spinner size={12} /> Đang tải…
+        </div>
+      )}
+    <div className={`${CARD} mt-4 transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
       <div className={`${TITLE} flex flex-wrap items-center gap-2`}>
         <span>{teamA}</span>
         <span className="text-[#666]">vs</span>
@@ -175,6 +184,7 @@ export default function MatchupCard({
         {/* H2H match list — newest→oldest, team-oriented (A's goals first) */}
         <MatchupMatchList rows={rows} teamA={teamA} teamB={teamB} />
       </div>
+    </div>
     </div>
   );
 }

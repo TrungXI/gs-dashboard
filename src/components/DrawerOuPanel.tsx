@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { H2HPair, H2HPairStat, H2HPairMatch } from '../lib/gsMatchesDb';
-import { LoadingState } from './Spinner';
+import { LoadingState, Spinner } from './Spinner';
 import { pct, shortName } from './H2HMatrix';
 
 interface H2HPairResponse extends Partial<H2HPair> {
@@ -142,7 +142,8 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
     let alive = true;
     setLoading(true);
     setError(null);
-    setData(null);
+    // Giữ data + drill-down cũ trong lúc reload (đổi trận qua ◀▶) — phủ mờ thay
+    // vì blank trắng. Data mới thay data cũ khi fetch xong.
     setDetail(null);
 
     fetch(`/api/gs-h2h-pair?eventId=${eventId}`, { cache: 'no-store' })
@@ -178,7 +179,8 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
     };
   }, [eventId]);
 
-  if (loading) return <LoadingState label="Đang tải dữ liệu đối đầu…" />;
+  // Lần đầu (chưa có data) → full loading; reload (đã có data) → giữ khung + phủ mờ.
+  if (loading && !data) return <LoadingState label="Đang tải dữ liệu đối đầu…" />;
 
   if (error) {
     return (
@@ -199,8 +201,10 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
   if (detail !== null) {
     const marketTitle = detail === 'ft' ? 'FT cả trận' : 'H1 hiệp 1';
     return (
-      <div className="flex h-full flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
-        <div className="flex shrink-0 items-center gap-2">
+      // Cả header + list nằm trong vùng cuộn của drawer body (parent). Header
+      // sticky top-0 nền đục để luôn thấy nút "← Quay lại" khi list dài.
+      <div className="px-3 pb-3 md:px-4 md:pb-4">
+        <div className="sticky top-0 z-10 -mx-3 flex items-center gap-2 border-b border-[#1a1a1a] bg-[#111] px-3 py-3 md:-mx-4 md:px-4">
           <button
             type="button"
             onClick={() => setDetail(null)}
@@ -213,8 +217,7 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
             {shortName(data.away)}
           </div>
         </div>
-        {/* List cuộn trong chiều cao còn lại của drawer; header trên cố định */}
-        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-[#2a2a2a] bg-[#141414]">
+        <div className="mt-3 rounded-lg border border-[#2a2a2a] bg-[#141414]">
           {data.matches.length === 0 ? (
             <div className="px-3 py-4 text-center text-[12px] text-[#666]">Chưa có trận đối đầu</div>
           ) : (
@@ -230,21 +233,32 @@ export default function DrawerOuPanel({ eventId }: { eventId: number }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4">
-      <VerdictCard
-        title="🕐 H1 — Hiệp 1"
-        home={data.home}
-        away={data.away}
-        stat={data.h1}
-        onClick={() => setDetail('h1')}
-      />
-      <VerdictCard
-        title="⚽ FT — Cả trận"
-        home={data.home}
-        away={data.away}
-        stat={data.ft}
-        onClick={() => setDetail('ft')}
-      />
+    <div className="relative">
+      {loading && (
+        <div className="pointer-events-none absolute right-3 top-3 z-10 flex items-center gap-1.5 rounded-md bg-[#141414]/80 px-2 py-1 text-[11px] font-semibold text-[#17a2b8]">
+          <Spinner size={12} /> Đang tải…
+        </div>
+      )}
+      <div
+        className={`flex flex-col gap-3 px-3 py-3 md:px-4 md:py-4 transition-opacity duration-200 ${
+          loading ? 'pointer-events-none opacity-40' : ''
+        }`}
+      >
+        <VerdictCard
+          title="🕐 H1 — Hiệp 1"
+          home={data.home}
+          away={data.away}
+          stat={data.h1}
+          onClick={() => setDetail('h1')}
+        />
+        <VerdictCard
+          title="⚽ FT — Cả trận"
+          home={data.home}
+          away={data.away}
+          stat={data.ft}
+          onClick={() => setDetail('ft')}
+        />
+      </div>
     </div>
   );
 }

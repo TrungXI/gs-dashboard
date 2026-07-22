@@ -26,7 +26,8 @@ export default function MatchupView({ teamA, teamB }: { teamA: string; teamB: st
     let alive = true;
     setLoading(true);
     setError(null);
-    setMatchup(null);
+    // Giữ matchup cũ trong lúc reload (đổi trận qua ◀▶) — MatchupCard sẽ phủ mờ
+    // thay vì blank trắng rồi reflow.
     const url =
       `/api/gs-team-history?v=2&mode=matchup` +
       `&teamA=${encodeURIComponent(teamA)}&teamB=${encodeURIComponent(teamB)}`;
