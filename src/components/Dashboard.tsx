@@ -22,7 +22,7 @@ function loadUiState() {
     const s = localStorage.getItem(LS_UI);
     if (!s) return null;
     return JSON.parse(s) as {
-      view?: View; fType?: FType; fDate?: string; fTeam?: string;
+      view?: View; fType?: FType; fDate?: string; fTeam?: string; fTeam2?: string;
     };
   } catch { return null; }
 }
@@ -55,6 +55,7 @@ export default function Dashboard({
   const [fType, setFType] = useState<FType>('all');
   const [fDate, setFDate] = useState('all'); // 'all' | YYYY-MM-DD
   const [fTeam, setFTeam] = useState('all');
+  const [fTeam2, setFTeam2] = useState('all'); // second team → head-to-head filter
   const uiRestored = useRef(false);
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
@@ -93,23 +94,23 @@ export default function Dashboard({
     if (!uiRestored.current) return;
     if (lsTimer.current) clearTimeout(lsTimer.current);
     lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam }));
+      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, fTeam2 }));
     }, 300);
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [view, fType, fDate, fTeam]);
+  }, [view, fType, fDate, fTeam, fTeam2]);
 
   // ── Fetch a server-filtered page. offset 0 replaces, >0 appends. ────────
   // `loadPageWith` takes explicit filters (used at mount before state settles);
   // `loadPage` uses the current filter state.
   const loadPageWith = useCallback(async (
-    type: string, date: string, team: string, offset: number, withOptions: boolean,
+    type: string, date: string, team: string, team2: string, offset: number, withOptions: boolean,
   ) => {
     const append = offset > 0;
     if (append) setLoadingMore(true); else setDataLoading(true);
     setDataError(null);
     try {
       const p = new URLSearchParams({
-        type, date, team, limit: String(pageSize), offset: String(offset),
+        type, date, team, team2, limit: String(pageSize), offset: String(offset),
       });
       if (withOptions) p.set('options', '1');
       const res = await fetch(`/api/gs-matches?${p.toString()}`);
@@ -130,8 +131,8 @@ export default function Dashboard({
   }, [pageSize]);
 
   const loadPage = useCallback((offset: number, withOptions: boolean) =>
-    loadPageWith(fType, fDate, fTeam, offset, withOptions),
-  [loadPageWith, fType, fDate, fTeam]);
+    loadPageWith(fType, fDate, fTeam, fTeam2, offset, withOptions),
+  [loadPageWith, fType, fDate, fTeam, fTeam2]);
 
   const didInitialFetch = useRef(false);
 
@@ -143,6 +144,7 @@ export default function Dashboard({
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       if (ui.fTeam) setFTeam(ui.fTeam);
+      if (ui.fTeam2) setFTeam2(ui.fTeam2);
     }
     uiRestored.current = true;
 
@@ -152,11 +154,12 @@ export default function Dashboard({
     const rType = ui?.fType ?? 'all';
     const rDate = ui?.fDate ?? 'all';
     const rTeam = ui?.fTeam ?? 'all';
-    const isDefault = rType === 'all' && rDate === 'all' && rTeam === 'all';
+    const rTeam2 = ui?.fTeam2 ?? 'all';
+    const isDefault = rType === 'all' && rDate === 'all' && rTeam === 'all' && rTeam2 === 'all';
     const ssrOk = initialMatches.length > 0 || !!initialOptions;
     if (isDefault && !ssrOk) {
       // Default filters but SSR failed → fetch page 0 now.
-      loadPageWith('all', 'all', 'all', 0, true);
+      loadPageWith('all', 'all', 'all', 'all', 0, true);
     } else if (isDefault && ssrOk) {
       // Default filters and SSR succeeded → SSR page 0 is already correct,
       // just mark the initial fetch as done so the filter effect doesn't skip
@@ -179,7 +182,7 @@ export default function Dashboard({
     if (!didInitialFetch.current) { didInitialFetch.current = true; return; }
     loadPage(0, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fType, fDate, fTeam]);
+  }, [fType, fDate, fTeam, fTeam2]);
 
   // Periodically refresh page 0 (sync with collector poll) while on data view.
   useEffect(() => {
@@ -187,6 +190,12 @@ export default function Dashboard({
     const id = setInterval(() => loadPage(0, true), 2 * 60 * 1000);
     return () => clearInterval(id);
   }, [view, loadPage]);
+
+  // Keep the H2H pair valid: if the first team is cleared or changed to the
+  // same value as the second, drop the second team back to "all".
+  useEffect(() => {
+    if (fTeam2 !== 'all' && (fTeam === 'all' || fTeam === fTeam2)) setFTeam2('all');
+  }, [fTeam, fTeam2]);
 
   const loadMore = useCallback(() => {
     if (loadingMore || dataMatches.length >= dataTotal) return;
@@ -197,6 +206,16 @@ export default function Dashboard({
   const dataTeamOptions = useMemo(
     () => [{ value: 'all', label: '-- Tất cả đội --' }, ...options.teams.map((t) => ({ value: t, label: t }))],
     [options.teams],
+  );
+
+  // Second-team options for the head-to-head filter. Drop the team already
+  // chosen in the first dropdown so the same team can't be picked twice.
+  const dataTeam2Options = useMemo(
+    () => [
+      { value: 'all', label: '-- Đội đối đầu --' },
+      ...options.teams.filter((t) => t !== fTeam).map((t) => ({ value: t, label: t })),
+    ],
+    [options.teams, fTeam],
   );
 
   const typeChips: [FType, string][] = [
@@ -323,6 +342,15 @@ export default function Dashboard({
                   placeholder="-- Tất cả đội --"
                 />
               </div>
+              <span className="text-xs font-semibold text-white/40">vs</span>
+              <div className="w-52">
+                <SearchDropdown
+                  options={dataTeam2Options}
+                  value={fTeam2}
+                  onChange={setFTeam2}
+                  placeholder="-- Đội đối đầu --"
+                />
+              </div>
               <span className="text-xs text-white/50 ml-auto flex items-center gap-1.5">
                 {dataLoading && <Spinner size={13} />}
                 <span>
@@ -354,7 +382,11 @@ export default function Dashboard({
               </div>
             ) : (
               <>
-                <DataTable matches={dataMatches} highlightTeam={fTeam !== 'all' ? fTeam : undefined} />
+                <DataTable
+                  matches={dataMatches}
+                  highlightTeam={fTeam !== 'all' ? fTeam : undefined}
+                  highlightTeam2={fTeam2 !== 'all' ? fTeam2 : undefined}
+                />
                 {hasMore && (
                   <div className="mt-4 flex justify-center">
                     <button

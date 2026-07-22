@@ -14,7 +14,17 @@ function ScoreCell({ my, opp }: { my: string; opp: string }) {
   return <span className={`font-bold ${cls}`}>{my}</span>;
 }
 
-function DataTable({ matches, highlightTeam }: { matches: Match[]; highlightTeam?: string }) {
+// Highlight pill styles: team1 = amber/red, team2 = blue — distinct so H2H rows read at a glance.
+const HL1 = 'inline-block rounded px-1.5 py-0.5 bg-[#ffedd5] text-[#b91c1c] font-bold text-[11px]';
+const HL2 = 'inline-block rounded px-1.5 py-0.5 bg-[#dbeafe] text-[#1d4ed8] font-bold text-[11px]';
+
+function hlClass(team: string, team1?: string, team2?: string): string {
+  if (team1 && team === team1) return HL1;
+  if (team2 && team === team2) return HL2;
+  return '';
+}
+
+function DataTable({ matches, highlightTeam, highlightTeam2 }: { matches: Match[]; highlightTeam?: string; highlightTeam2?: string }) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -80,12 +90,12 @@ function DataTable({ matches, highlightTeam }: { matches: Match[]; highlightTeam
                     <TypeBadge type={m.matchType} />
                   </td>
                   <td className="border-b border-[#222] px-2.5 py-2">
-                    <span className={highlightTeam && m.homeTeam === highlightTeam ? 'inline-block rounded px-1.5 py-0.5 bg-[#ffedd5] text-[#b91c1c] font-bold text-[11px]' : ''}>
+                    <span className={hlClass(m.homeTeam, highlightTeam, highlightTeam2)}>
                       <TeamBadge name={m.homeTeam} />
                     </span>
                   </td>
                   <td className="border-b border-[#222] px-2.5 py-2">
-                    <span className={highlightTeam && m.awayTeam === highlightTeam ? 'inline-block rounded px-1.5 py-0.5 bg-[#ffedd5] text-[#b91c1c] font-bold text-[11px]' : ''}>
+                    <span className={hlClass(m.awayTeam, highlightTeam, highlightTeam2)}>
                       <TeamBadge name={m.awayTeam} />
                     </span>
                   </td>

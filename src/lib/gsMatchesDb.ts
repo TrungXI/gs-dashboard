@@ -76,6 +76,7 @@ export interface MatchQuery {
   type?: string; // 'all' | '20p' | '16p'
   date?: string; // 'all' | 'YYYY-MM-DD'
   team?: string; // 'all' | display name
+  team2?: string; // 'all' | display name — when set with `team`, restricts to H2H matches between the two
   limit?: number;
   offset?: number;
 }
@@ -103,6 +104,13 @@ function buildWhere(q: MatchQuery): { where: string; params: unknown[] } {
   }
   if (q.team && q.team !== 'all') {
     params.push(q.team);
+    const p = `$${params.length}`;
+    clauses.push(`(${HOME_NAME_EXPR} = ${p} OR ${AWAY_NAME_EXPR} = ${p})`);
+  }
+  // Second team → head-to-head. ANDed with the first team's clause, so only
+  // matches where BOTH teams appear (i.e. they played each other) survive.
+  if (q.team2 && q.team2 !== 'all') {
+    params.push(q.team2);
     const p = `$${params.length}`;
     clauses.push(`(${HOME_NAME_EXPR} = ${p} OR ${AWAY_NAME_EXPR} = ${p})`);
   }
