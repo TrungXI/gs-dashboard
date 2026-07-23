@@ -583,9 +583,9 @@ export async function fetchBetStatsPage(q: BetStatsQuery): Promise<BetStatsPage>
   // start-of-H2 OU snapshot (period 8).
   const baseCte = `
     WITH first_seen AS (
-      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      SELECT event_id, home_team_id, away_team_id, MIN(recorded_at) AS fs_at
       FROM match_odds_log
-      GROUP BY event_id, home_team_id, away_team_id, match_date
+      GROUP BY event_id, home_team_id, away_team_id
     ),
     ev AS (
       SELECT DISTINCT ON (mh.id)
@@ -600,8 +600,7 @@ export async function fetchBetStatsPage(q: BetStatsQuery): Promise<BetStatsPage>
       JOIN first_seen fs
         ON fs.home_team_id = mh.home_team_id
        AND fs.away_team_id = mh.away_team_id
-       AND fs.match_date = (mh.match_time + interval '7 hours')::date
-       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 900
       ${where}
       ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
     ),
@@ -716,9 +715,9 @@ export async function fetchH2HMatrix(
   // Base rows: resolved match → (unordered pair, total, line). Then aggregate.
   const sql = `
     WITH first_seen AS (
-      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      SELECT event_id, home_team_id, away_team_id, MIN(recorded_at) AS fs_at
       FROM match_odds_log
-      GROUP BY event_id, home_team_id, away_team_id, match_date
+      GROUP BY event_id, home_team_id, away_team_id
     ),
     ev AS (
       SELECT DISTINCT ON (mh.id)
@@ -732,8 +731,7 @@ export async function fetchH2HMatrix(
       JOIN first_seen fs
         ON fs.home_team_id = mh.home_team_id
        AND fs.away_team_id = mh.away_team_id
-       AND fs.match_date = (mh.match_time + interval '7 hours')::date
-       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 900
       WHERE mh.match_type = $1
       ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
     ),
@@ -879,9 +877,9 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
   //    the two team ids + league, and computing FT + H1 in one pass.
   const sql = `
     WITH first_seen AS (
-      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      SELECT event_id, home_team_id, away_team_id, MIN(recorded_at) AS fs_at
       FROM match_odds_log
-      GROUP BY event_id, home_team_id, away_team_id, match_date
+      GROUP BY event_id, home_team_id, away_team_id
     ),
     ev AS (
       SELECT DISTINCT ON (mh.id)
@@ -892,8 +890,7 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
       JOIN first_seen fs
         ON fs.home_team_id = mh.home_team_id
        AND fs.away_team_id = mh.away_team_id
-       AND fs.match_date = (mh.match_time + interval '7 hours')::date
-       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 900
       WHERE mh.match_type = $1
         AND ((mh.home_team_id = $2 AND mh.away_team_id = $3)
           OR (mh.home_team_id = $3 AND mh.away_team_id = $2))
@@ -952,9 +949,9 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
   //    match the aggregate `stat.n`. Newest first.
   const listSql = `
     WITH first_seen AS (
-      SELECT event_id, home_team_id, away_team_id, match_date, MIN(recorded_at) AS fs_at
+      SELECT event_id, home_team_id, away_team_id, MIN(recorded_at) AS fs_at
       FROM match_odds_log
-      GROUP BY event_id, home_team_id, away_team_id, match_date
+      GROUP BY event_id, home_team_id, away_team_id
     ),
     ev AS (
       SELECT DISTINCT ON (mh.id)
@@ -967,8 +964,7 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
       JOIN first_seen fs
         ON fs.home_team_id = mh.home_team_id
        AND fs.away_team_id = mh.away_team_id
-       AND fs.match_date = (mh.match_time + interval '7 hours')::date
-       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 3600
+       AND abs(extract(epoch FROM (fs.fs_at - mh.match_time))) <= 900
       WHERE mh.match_type = $1
         AND ((mh.home_team_id = $2 AND mh.away_team_id = $3)
           OR (mh.home_team_id = $3 AND mh.away_team_id = $2))
