@@ -607,8 +607,8 @@ export async function fetchBetStatsPage(q: BetStatsQuery): Promise<BetStatsPage>
     pre AS (
       SELECT DISTINCT ON (event_id)
         event_id, hc_line, hc_home_odds, hc_away_odds, hc_home_gives,
-        ou_h1_line, ou_h1_over, ou_h1_under,
-        ou_line, ou_over, ou_under
+        COALESCE(NULLIF(ou_h1_line,''), ou_h1_line_recovered) AS ou_h1_line, ou_h1_over, ou_h1_under,
+        COALESCE(NULLIF(ou_line,''),    ou_line_recovered)    AS ou_line,    ou_over, ou_under
       FROM match_odds_log
       WHERE snapshot_type = 'first_seen' AND period = 2
       ORDER BY event_id, recorded_at
@@ -736,7 +736,8 @@ export async function fetchH2HMatrix(
       ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
     ),
     pre AS (
-      SELECT DISTINCT ON (event_id) event_id, ${lineCol} AS line
+      SELECT DISTINCT ON (event_id) event_id,
+        COALESCE(NULLIF(${lineCol},''), ${lineCol}_recovered) AS line
       FROM match_odds_log
       WHERE snapshot_type = 'first_seen' AND period = 2
       ORDER BY event_id, recorded_at
@@ -897,7 +898,9 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
       ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
     ),
     pre AS (
-      SELECT DISTINCT ON (event_id) event_id, ou_line, ou_h1_line
+      SELECT DISTINCT ON (event_id) event_id,
+        COALESCE(NULLIF(ou_line,''),    ou_line_recovered)    AS ou_line,
+        COALESCE(NULLIF(ou_h1_line,''), ou_h1_line_recovered) AS ou_h1_line
       FROM match_odds_log
       WHERE snapshot_type = 'first_seen' AND period = 2
       ORDER BY event_id, recorded_at
@@ -971,7 +974,9 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
       ORDER BY mh.id, abs(extract(epoch FROM (fs.fs_at - mh.match_time)))
     ),
     pre AS (
-      SELECT DISTINCT ON (event_id) event_id, ou_line, ou_h1_line
+      SELECT DISTINCT ON (event_id) event_id,
+        COALESCE(NULLIF(ou_line,''),    ou_line_recovered)    AS ou_line,
+        COALESCE(NULLIF(ou_h1_line,''), ou_h1_line_recovered) AS ou_h1_line
       FROM match_odds_log
       WHERE snapshot_type = 'first_seen' AND period = 2
       ORDER BY event_id, recorded_at
