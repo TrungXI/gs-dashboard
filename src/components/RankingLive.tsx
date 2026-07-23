@@ -589,14 +589,14 @@ export default function RankingLive() {
         </div>
       ) : (
         <>
-          <LeagueGroup title={leagueName20} items={group20} />
           <LeagueGroup title={leagueName16} items={group16} />
+          <LeagueGroup title={leagueName20} items={group20} />
         </>
       )}
 
       {selected && (() => {
-        // Danh sách phẳng theo đúng thứ tự hiển thị (group20 rồi group16).
-        const flat = [...group20, ...group16];
+        // Danh sách phẳng theo đúng thứ tự hiển thị (group16 rồi group20).
+        const flat = [...group16, ...group20];
         const n = flat.length;
         const idx = flat.findIndex((m) => m.eventId === selected.eventId);
         // Vòng lặp vô hạn: cuối → về đầu, đầu → về cuối (chỉ cần >1 trận).
