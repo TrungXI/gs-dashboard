@@ -421,7 +421,7 @@ export default function RankingLive() {
               )}
             </div>
           ) : (
-            <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} />
+            <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
           )}
         </div>
       );
@@ -429,7 +429,7 @@ export default function RankingLive() {
 
   // Dòng 2 của Kiểu 'h2h': 2 box FT + H1 (cùng khung box gọn như Kiểu 'live').
   // Trong lúc chờ /api/gs-h2h-pair → spinner per-box; lỗi → "—"; sẵn → Tài%/Xỉu%.
-  function PairStatBox({ label, stat, active }: { label: string; stat: H2HPairStat | null; active?: boolean }) {
+  function PairStatBox({ label, stat, active, line }: { label: string; stat: H2HPairStat | null; active?: boolean; line?: string | null }) {
     return (
       <div
         className={`flex flex-1 min-w-0 flex-col items-center rounded-md border px-2 py-1.5 md:px-3 ${
@@ -437,13 +437,17 @@ export default function RankingLive() {
         }`}
       >
         <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">
-          {label} <span className="normal-case tracking-normal text-[#555]">n={stat?.n ?? 0}</span>
+          {label}
+          {line != null && line !== '' && (
+            <span className="normal-case tracking-normal text-[#aaa] tabular-nums"> · {line}</span>
+          )}{' '}
+          <span className="normal-case tracking-normal text-[#555]">n={stat?.n ?? 0}</span>
         </span>
         {!stat || stat.n === 0 ? (
           <div className="mt-1 text-[11px] text-[#555]">chưa đủ</div>
         ) : (
           <>
-            {/* Tài% · Xỉu% — cùng cỡ chữ như Kiểu 'live' */}
+            {/* Tài% · Hoà% · Xỉu% — hoà = tổng bàn đúng bằng line (n − over − under). */}
             <div className="mt-0.5 flex items-center justify-center gap-3 md:gap-4 text-center">
               <div className="leading-tight">
                 <div className="text-[8px] font-semibold uppercase tracking-wide text-[#4ade80]/70">Tài</div>
@@ -451,14 +455,20 @@ export default function RankingLive() {
                 <div className="text-[8px] tabular-nums text-[#6f6f6f]">{stat.over}/{stat.n}</div>
               </div>
               <div className="leading-tight">
+                <div className="text-[8px] font-semibold uppercase tracking-wide text-[#8a8a8a]/80">Hoà</div>
+                <div className="text-[14px] md:text-[15px] font-bold tabular-nums text-[#8a8a8a]">{pct(stat.n > 0 ? (stat.n - stat.over - stat.under) / stat.n : 0)}</div>
+                <div className="text-[8px] tabular-nums text-[#6f6f6f]">{stat.n - stat.over - stat.under}/{stat.n}</div>
+              </div>
+              <div className="leading-tight">
                 <div className="text-[8px] font-semibold uppercase tracking-wide text-[#fb7185]/70">Xỉu</div>
                 <div className="text-[14px] md:text-[15px] font-bold tabular-nums text-[#fb7185]">{pct(stat.n > 0 ? stat.under / stat.n : 0)}</div>
                 <div className="text-[8px] tabular-nums text-[#6f6f6f]">{stat.under}/{stat.n}</div>
               </div>
             </div>
-            {/* TB bàn · chênh */}
+            {/* TB bàn · OU TB (line trung bình = TB − chênh) · chênh */}
             <div className="mt-1 w-full border-t border-[#2a2a2a] pt-1 text-center text-[9px] text-[#888] leading-tight">
-              TB <span className="text-[#bbb] tabular-nums">{stat.avgTotal.toFixed(1)}</span> · chênh{' '}
+              TB {label} <span className="text-[#bbb] tabular-nums">{stat.avgTotal.toFixed(1)}</span> · OU TB{' '}
+              <span className="text-[#f0c674] tabular-nums">{(stat.avgTotal - stat.avgMargin).toFixed(2)}</span> · chênh{' '}
               <span className="tabular-nums" style={{ color: stat.avgMargin >= 0 ? '#4ade80' : '#f87171' }}>
                 {stat.avgMargin > 0 ? '+' : ''}{stat.avgMargin.toFixed(2)}
               </span>
@@ -469,7 +479,7 @@ export default function RankingLive() {
     );
   }
 
-  function PairH2HRow({ eventId, activeMarket }: { eventId: number; activeMarket: 'ft' | 'h1' | null }) {
+  function PairH2HRow({ eventId, activeMarket, ftLine, h1Line }: { eventId: number; activeMarket: 'ft' | 'h1' | null; ftLine?: string | null; h1Line?: string | null }) {
     const st = pairByEvent.get(eventId);
     if (!st || st.status === 'loading') {
       return (
@@ -487,8 +497,8 @@ export default function RankingLive() {
     }
     return (
       <div className="flex gap-2.5">
-        <PairStatBox label="FT" stat={st.ft} active={activeMarket === 'ft'} />
-        <PairStatBox label="H1" stat={st.h1} active={activeMarket === 'h1'} />
+        <PairStatBox label="FT" stat={st.ft} active={activeMarket === 'ft'} line={ftLine} />
+        <PairStatBox label="H1" stat={st.h1} active={activeMarket === 'h1'} line={h1Line} />
       </div>
     );
   }

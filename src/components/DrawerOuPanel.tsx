@@ -42,6 +42,9 @@ function VerdictCard({
 
   const taiPct = stat.overPct;
   const xiuPct = stat.n > 0 ? stat.under / stat.n : 0;
+  // Hoà = trận tổng bàn đúng bằng line (không tài không xỉu) = n − over − under.
+  const hoa = stat.n - stat.over - stat.under;
+  const hoaPct = stat.n > 0 ? hoa / stat.n : 0;
   const leanTai = stat.over > stat.under;
   const leanXiu = stat.under > stat.over;
   const verdict = leanTai ? 'NGHIÊNG TÀI' : leanXiu ? 'NGHIÊNG XỈU' : 'CÂN BẰNG';
@@ -68,11 +71,16 @@ function VerdictCard({
           {verdict}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <div className="rounded-md bg-[#22c55e]/[.08] px-3 py-2.5 text-center">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-[#4ade80]">Tài</div>
           <div className="text-[22px] font-extrabold tabular-nums text-[#4ade80]">{pct(taiPct)}</div>
           <div className="text-[10px] tabular-nums text-[#6f6f6f]">{stat.over}/{stat.n} trận</div>
+        </div>
+        <div className="rounded-md bg-[#9a9a9a]/[.08] px-3 py-2.5 text-center">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-[#9a9a9a]">Hoà</div>
+          <div className="text-[22px] font-extrabold tabular-nums text-[#9a9a9a]">{pct(hoaPct)}</div>
+          <div className="text-[10px] tabular-nums text-[#6f6f6f]">{hoa}/{stat.n} trận</div>
         </div>
         <div className="rounded-md bg-[#ef4444]/[.08] px-3 py-2.5 text-center">
           <div className="text-[11px] font-semibold uppercase tracking-wide text-[#f87171]">Xỉu</div>
