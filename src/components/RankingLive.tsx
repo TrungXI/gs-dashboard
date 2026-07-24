@@ -22,9 +22,10 @@ const LEAGUE_20P = 2125;
 
 // ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
-const P_MIN_VAO = 0.70;       // cửa nghiêng phải đạt P≥70% mới được suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
+const P_MIN_VAO = 0.70;       // XỈU: cửa nghiêng phải đạt P≥70% mới suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
+const P_MIN_TAI = 0.78;       // TÀI siết cao hơn (BẤT ĐỐI XỨNG): Tài là cửa hay thua trên GS virtual (tracking 2h: Tài 25% vs Xỉu 67%) → cần P≥78%
 const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
-const TAI_LINE_MAX = 1.25;    // CHỈ VÀO TÀI khi line ≤ 1.25 (gần ăn, đỡ rủi ro); line cao hơn (1.75…) → chờ line tụt về
+const TAI_LINE_MAX = 0.75;    // CHỈ VÀO TÀI khi CÒN CẦN ≤ 0.75 bàn (siết từ 1.25): Tài chỉ đáng khi gần như đã ăn; xa hơn → chờ
 const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị trường ≥6% mới VÀO (mức ra kèo thoải mái như bản gốc)
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
@@ -153,8 +154,10 @@ function computeSignal(args: {
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
   const edgeProb = p - pMarket; // biên so với thị trường đã de-vig (buffer 6% / H2 10%)
 
-  // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin P≥70% → KHÔNG suggest vào cửa nào.
-  if (p < P_MIN_VAO) {
+  // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin → KHÔNG suggest vào cửa nào.
+  // BẤT ĐỐI XỨNG: TÀI cần P≥78% (cửa hay thua), XỈU giữ P≥70%.
+  const pGate = side === 'tai' ? P_MIN_TAI : P_MIN_VAO;
+  if (p < pGate) {
     return { kind: 'none', lowConf: args.lowConf };
   }
   // Giá cửa vào phải đáng tiền: Malay > 0.7 HOẶC âm. Khoảng (0, 0.7] = dương nhỏ payout tệ → không VÀO odd đó.
