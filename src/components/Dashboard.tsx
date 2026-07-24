@@ -196,7 +196,8 @@ export default function Dashboard({
   // Periodically refresh page 0 (sync with collector poll) while on data view.
   useEffect(() => {
     if (view !== 'data') return;
-    const id = setInterval(() => loadPage(0, true), 2 * 60 * 1000);
+    // 4G: ngừng refresh khi tab ẩn / màn tắt.
+    const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) loadPage(0, true); }, 2 * 60 * 1000);
     return () => clearInterval(id);
   }, [view, loadPage]);
 

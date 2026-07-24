@@ -299,6 +299,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     let alive = true;
 
     async function poll() {
+      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng poll khi tab ẩn / màn tắt
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',
@@ -355,10 +356,15 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
 
     if (!autoRefresh) return () => { alive = false; };
     poll();
-    const id = setInterval(poll, 2000);
+    // 4G: trên Vercel (prod) poll 5s; local dev giữ 2s để test nhanh.
+    const POLL_MS = typeof window !== 'undefined' && !/localhost|127\.0\.0\.1/.test(window.location.hostname) ? 5000 : 2000;
+    const id = setInterval(poll, POLL_MS);
+    const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, [autoRefresh]);
 
@@ -371,6 +377,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     if (!eventIdsKey) { setHasStatsSet(new Set()); return; }
     let alive = true;
     async function loadHasStats() {
+      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng khi tab ẩn
       try {
         const res = await fetch(`/api/gs-has-stats?eventIds=${eventIdsKey}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; eventIds?: number[] };
@@ -392,6 +399,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     if (!pairsKey) { setH2hMap(new Map()); return; }
     let alive = true;
     async function loadH2H() {
+      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng khi tab ẩn
       try {
         // Encode team names but keep the , (pair sep) and | (A|B sep) literal so the server splits correctly.
         const pairsParam = pairsKey
