@@ -158,8 +158,6 @@ function computeSignal(args: {
   return { kind: 'cho', side, waitPrice, pct: p, lowConf: args.lowConf };
 }
 
-// Prefetch cả 3 mức đối đầu để bấm filter đổi số tức thì (không chờ API).
-const H2H_LIMITS = [20, 50, 100] as const;
 const EMPTY_H2H = new Map<string, PairResult>();
 
 function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string | null; color: string } {
@@ -204,7 +202,7 @@ export default function RankingLive() {
   // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
   const [pairRetryTick, setPairRetryTick] = useState(0);
   useEffect(() => {
-    const id = setInterval(() => setPairRetryTick((t) => t + 1), 3000);
+    const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) setPairRetryTick((t) => t + 1); }, 3000);
     return () => clearInterval(id);
   }, []);
 
@@ -288,6 +286,7 @@ export default function RankingLive() {
     let alive = true;
 
     async function poll() {
+      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng poll khi tab ẩn / màn tắt
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',
@@ -343,15 +342,18 @@ export default function RankingLive() {
     }
 
     poll();
-    const id = setInterval(poll, 2000);
+    const id = setInterval(poll, 3000); // 2s→3s: giảm ~33% request (tiết kiệm data 4G)
+    const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
+    document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
       clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
     };
   }, []);
 
   // H2H splits — keyed by stable pair set, refresh every 5 min.
-  // Prefetch cả 20/50/100 song song → đổi filter là đọc cache, không call API lại.
+  // 4G: CHỈ tải mức đang chọn (không prefetch cả 20/50/100). Đổi filter → effect chạy lại tải mức mới (lazy).
   const pairsKey = Array.from(new Set(matches.map((m) => `${m.homeTeam}|${m.awayTeam}`))).sort().join(',');
   useEffect(() => {
     if (!pairsKey) { setH2hByLimit(new Map()); return; }
@@ -372,11 +374,13 @@ export default function RankingLive() {
         /* giữ cache cũ khi lỗi mạng tạm thời */
       }
     }
-    function loadAll() { for (const l of H2H_LIMITS) loadOne(l); }
-    loadAll();
-    const id = setInterval(loadAll, 300_000);
+    // Tải mức đang chọn (effect chạy lại khi pairsKey/h2hLimit đổi → luôn khớp trận hiện tại). Ngừng khi tab ẩn.
+    const loadSel = () => { if (typeof document !== 'undefined' && document.hidden) return; loadOne(h2hLimit); };
+    loadSel();
+    const id = setInterval(loadSel, 300_000);
     return () => { alive = false; clearInterval(id); };
-  }, [pairsKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pairsKey, h2hLimit]);
 
   // Map hiển thị = mức đang chọn (đã prefetch). Đổi filter chỉ đổi con trỏ này.
   const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
