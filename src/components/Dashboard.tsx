@@ -13,8 +13,9 @@ import BetStatsTable from './BetStatsTable';
 import H2HMatrix, { type OpenPairFn } from './H2HMatrix';
 import TeamFormReport from './TeamFormReport';
 import RankingLive from './RankingLive';
+import TxReport from './TxReport';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -242,9 +243,10 @@ export default function Dashboard({
     ['report', '🏆', 'Xếp hạng'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
-    ['bet-table', '🧮', 'Bảng kèo per-trận'],
-    ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],
+    // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)
+    // ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],   // hidden per OPS task (matrix)
     ['team-form', '🔄', 'Quy luật phong độ'],
+    ['tx-report', '💰', 'Báo cáo TX'],
   ];
 
   const sidebarRange = dates.length > 0
@@ -431,6 +433,8 @@ export default function Dashboard({
           <H2HMatrix onOpenPair={openPairInBetTable} />
         ) : view === 'team-form' ? (
           <TeamFormReport />
+        ) : view === 'tx-report' ? (
+          <TxReport />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
