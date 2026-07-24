@@ -24,8 +24,8 @@ const LEAGUE_20P = 2125;
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
 const P_MIN_VAO = 0.70;       // cửa nghiêng phải đạt P≥70% mới được suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
 const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
-const BUFFER_EV = 0.12;       // TIN THỊ TRƯỜNG HƠN: P_model phải hơn xác suất thị trường ≥12% mới VÀO (chống overconfidence value-bet)
-const BUFFER_EV_H2 = 0.16;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
+const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị trường ≥6% mới VÀO (mức ra kèo thoải mái như bản gốc)
+const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -189,7 +189,12 @@ export default function RankingLive() {
   // Sống qua các lần effect re-run (retry 3s) — CHỈ hủy khi component unmount. Trước đây dùng
   // `alive` per-effect nên retry tick giết fetch đang bay → entry kẹt 'loading' vĩnh viễn.
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // PHẢI set lại true khi mount (dev StrictMode mount→unmount→remount, nếu chỉ set false ở cleanup
+  // thì remount kẹt false → mọi fetch đối đầu bị chặn → kẹt "đang tải" toàn bộ).
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
   const [pairRetryTick, setPairRetryTick] = useState(0);
