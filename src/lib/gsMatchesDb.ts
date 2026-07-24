@@ -833,6 +833,12 @@ export interface H2HPair {
   ft: H2HPairStat | null;
   h1: H2HPairStat | null;
   matches: H2HPairMatch[];
+  // ── Phase 2: mảng tổng bàn THÔ của N trận đối đầu gần nhất, ĐỒNG BỘ theo trận
+  //    (cùng index = cùng trận). FE suy H2 mỗi trận = ftTotals[i] − h1Totals[i].
+  //    Chỉ gồm trận có ĐỦ CẢ hai line (ft_line & h1_line) → 1 index = 1 trận đầy đủ.
+  //    Thứ tự: MỚI → CŨ (match_time DESC). Bất biến: h1Totals.length === ftTotals.length.
+  h1Totals: number[];
+  ftTotals: number[];
 }
 
 /**
@@ -1014,5 +1020,17 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
     };
   });
 
-  return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1, matches };
+  // 5) Phase 2: mảng tổng bàn thô ĐỒNG BỘ theo trận, CHỈ trận có đủ cả 2 line
+  //    (ft_line & h1_line) → index nhất quán giữa h1Totals/ftTotals & khớp bản chất
+  //    "trận đối đầu đầy đủ". Tái dùng listRes.rows (mới→cũ, match_time DESC) —
+  //    KHÔNG thêm SQL/round-trip DB.
+  const h1Totals: number[] = [];
+  const ftTotals: number[] = [];
+  for (const row of listRes.rows) {
+    if (row.ft_line == null || row.h1_line == null) continue; // thiếu line → bỏ (đồng bộ 2 mảng)
+    h1Totals.push((Number(row.h1_home) || 0) + (Number(row.h1_away) || 0));
+    ftTotals.push((Number(row.tt_home) || 0) + (Number(row.tt_away) || 0));
+  }
+
+  return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1, matches, h1Totals, ftTotals };
 }

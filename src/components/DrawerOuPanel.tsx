@@ -188,6 +188,8 @@ export default function DrawerOuPanel({
           ft: json.ft ?? null,
           h1: json.h1 ?? null,
           matches: json.matches ?? [],
+          h1Totals: json.h1Totals ?? [],
+          ftTotals: json.ftTotals ?? [],
         });
       })
       .catch(() => {

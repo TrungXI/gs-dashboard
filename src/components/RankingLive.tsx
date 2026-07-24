@@ -12,12 +12,142 @@ import { Spinner } from './Spinner';
 type PairState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; ft: H2HPairStat | null; h1: H2HPairStat | null };
+  | { status: 'ready'; ft: H2HPairStat | null; h1: H2HPairStat | null; h1Totals: number[]; ftTotals: number[] };
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
 const LEAGUE_16P = 2140;
 const LEAGUE_20P = 2125;
+
+// ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
+const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
+const P_MIN_VAO = 0.70;       // cửa nghiêng phải đạt P≥70% mới được suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
+const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
+const BUFFER_EV = 0.06;       // biên xác suất phải thắng thị trường ≥6% mới VÀO (bù ước lượng + vig + sai số join)
+const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
+const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
+
+const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+// Parse line "2.5" | "3" | "2.5-3" (quarter). Trả null nếu rỗng/không parse được.
+function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; loLine: number; hiLine: number } | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (s === '') return null;
+  // Quarter "a-b" — mỗi vế có thể ÂM (H2 line quy đổi = lineFT − H1 final có thể xuống <0).
+  // Dùng regex để không vỡ ở dấu trừ dẫn đầu (split('-') sẽ cắt nhầm "-0.5-0").
+  const q = s.match(/^(-?\d+(?:\.\d+)?)-(-?\d+(?:\.\d+)?)$/);
+  if (q) {
+    const a = Number(q[1]), b = Number(q[2]);
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+    return { lineVal: (a + b) / 2, isQuarter: true, loLine: a, hiLine: b };
+  }
+  const v = Number(s);
+  if (!Number.isFinite(v)) return null;
+  return { lineVal: v, isQuarter: false, loLine: v, hiLine: v };
+}
+
+// Quy line FT về hệ HIỆP 2: lineH2 = lineFT − tổng bàn H1 cuối (§3.2). Giữ dạng quarter
+// ("2.5-3" → trừ cả 2 mức) để parseLine ở computeSignal vẫn nội suy 50/50 đúng.
+// Trả string để tái dùng parseLine; null khi line rỗng/không parse được.
+function adjustLineH2(raw: string | null | undefined, h1FinalTotal: number): string | null {
+  const parsed = parseLine(raw);
+  if (!parsed) return null;
+  if (parsed.isQuarter) return `${parsed.loLine - h1FinalTotal}-${parsed.hiLine - h1FinalTotal}`;
+  return String(parsed.lineVal - h1FinalTotal);
+}
+
+// Xác suất Malay hoà vốn ngụ ý bởi giá m (đảo của implied): m>0 → 1/(1+m); m<0 → |m|/(1+|m|).
+function malayToProb(m: number): number {
+  if (m === 0) return 0.5;
+  if (m > 0) return 1 / (1 + m);
+  return -m / (1 - m); // m<0 → |m|/(1+|m|)
+}
+
+// P → giá Malay fair (đảo malayToProb). p>=0.5 → giá dương nhỏ (odds-on); else giá âm.
+function malayFair(p: number): number {
+  const pc = clamp01(p);
+  if (pc >= 0.5) return (1 - pc) / pc;
+  return -(pc / (1 - pc));
+}
+
+// P(Tài) EMPIRICAL cho MỘT mức line, có làm mịn Laplace + override realtime (§3.1).
+//   totals = mảng tổng bàn của N trận đối đầu (đã filter theo leg đang xét).
+//   scored = tổng bàn HIỆN TẠI của market/leg đang đá.
+// PUSH (t == line, chỉ khi line nguyên): KHÔNG tính là over (hoà không phải Tài) → về phía Xỉu.
+function pTaiEmpirical(line: number, scored: number, totals: number[]): number {
+  if (scored > line) return 1;              // tỉ số đã vượt line → Tài chắc thắng (override)
+  const n = totals.length;
+  if (n === 0) return NaN;                  // rỗng → caller ẩn (không bịa)
+  const over = totals.reduce((c, t) => c + (t > line ? 1 : 0), 0); // push (t==line) KHÔNG tính over
+  return (over + LAPLACE_A) / (n + 2 * LAPLACE_A);
+}
+
+// Ngưỡng "trần" H1 của cặp = số bàn H1 cao nhất từng xảy ra trong lịch sử đối đầu (§4.1).
+// Rỗng → không guard được → Infinity (không kích hoạt).
+function h1Ceiling(h1Totals: number[]): number {
+  return h1Totals.length ? Math.max(...h1Totals) : Infinity;
+}
+
+type TxSignal =
+  | { kind: 'vao'; side: 'tai' | 'xiu'; price: string; pct: number; line: string; lowConf: boolean }
+  | { kind: 'cho'; side: 'tai' | 'xiu'; waitPrice: number; pct: number; lowConf: boolean }
+  | { kind: 'none'; lowConf: boolean }
+  | { kind: 'break'; scope: 'h1' | 'h2'; lowConf: boolean }   // ← lệch quy luật (phá trần lịch sử)
+  | null;
+
+// Tính tín hiệu Tài/Xỉu cho market đang đá. Trả null khi thiếu điều kiện (§7) → ẩn dòng.
+// TÍNH INLINE mỗi render (2s) — KHÔNG memo, KHÔNG cache theo eventId (§10 #8).
+// EMPIRICAL: P(Tài) đếm phân phối tổng bàn thực `totals` (đã filter theo leg), làm mịn Laplace.
+// H2 leg: caller đã trừ H1 final khỏi line + scored + truyền h2Totals (§3.2).
+function computeSignal(args: {
+  totals: number[];          // mảng tổng bàn N trận ĐĐ theo leg (H1: h1Totals; H2: ftTotals−h1Totals)
+  lowConf: boolean;          // H2 leg
+  scored: number;            // bàn đã ghi trong market/leg đang đá (đã quy về hệ leg)
+  lineRaw: string | null | undefined;   // line đã quy về hệ leg (H2: đã trừ H1 final)
+  overRaw: string | null | undefined;  // giá Malay cửa Tài
+  underRaw: string | null | undefined; // giá Malay cửa Xỉu
+}): TxSignal {
+  const parsed = parseLine(args.lineRaw);
+  if (!parsed) return null;            // line không parse được → ẩn
+
+  // P(Tài) empirical: quarter → nội suy 50/50 hai mức; else một mức. NaN (totals rỗng) → ẩn.
+  const pTai = parsed.isQuarter
+    ? (pTaiEmpirical(parsed.loLine, args.scored, args.totals) + pTaiEmpirical(parsed.hiLine, args.scored, args.totals)) / 2
+    : pTaiEmpirical(parsed.lineVal, args.scored, args.totals);
+  if (!Number.isFinite(pTai)) return null; // totals rỗng → NaN → ẩn
+  const pXiu = 1 - pTai;
+
+  // Cửa nghiêng + giá live tương ứng.
+  const leanTai = pTai >= pXiu;
+  const p = leanTai ? pTai : pXiu;
+  const priceRaw = leanTai ? args.overRaw : args.underRaw;
+  const priceNum = priceRaw == null || priceRaw === '' ? NaN : Number(priceRaw);
+  if (!Number.isFinite(priceNum)) return null; // giá cửa nghiêng không parse được → market đóng → ẩn
+
+  const side: 'tai' | 'xiu' = leanTai ? 'tai' : 'xiu';
+  const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
+  const edgeProb = p - malayToProb(priceNum); // P ta ước lượng − P thị trường ngụ ý
+
+  // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin P≥70% → KHÔNG suggest vào cửa nào.
+  if (p < P_MIN_VAO) {
+    return { kind: 'none', lowConf: args.lowConf };
+  }
+  // Giá cửa vào phải đáng tiền: Malay > 0.7 HOẶC âm. Khoảng (0, 0.7] = dương nhỏ payout tệ → không VÀO odd đó.
+  const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
+
+  if (edgeProb >= buffer && priceEnterable) {
+    return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
+  }
+  if (edgeProb < 0) {
+    return { kind: 'none', lowConf: args.lowConf }; // ta còn thấp hơn thị trường → chưa có kèo rõ
+  }
+  // Chờ giá: mốc theo EV (malayToProb = p − buffer). Nếu cửa dương mà mốc EV vẫn ở band xấu
+  // (0, 0.7] → nâng mốc chờ lên PRICE_MIN_VAO để chỉ vào khi odd đáng tiền (>0.7).
+  const evWait = malayFair(clamp01(p - buffer));
+  const waitPrice = evWait >= 0 && evWait <= PRICE_MIN_VAO ? PRICE_MIN_VAO : evWait;
+  return { kind: 'cho', side, waitPrice, pct: p, lowConf: args.lowConf };
+}
 
 // Prefetch cả 3 mức đối đầu để bấm filter đổi số tức thì (không chờ API).
 const H2H_LIMITS = [20, 50, 100] as const;
@@ -57,6 +187,13 @@ export default function RankingLive() {
   const [pairByEvent, setPairByEvent] = useState<Map<number, PairState>>(new Map());
   const pairByEventRef = useRef(pairByEvent);
   useEffect(() => { pairByEventRef.current = pairByEvent; }, [pairByEvent]);
+
+  // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
+  const [pairRetryTick, setPairRetryTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setPairRetryTick((t) => t + 1), 3000);
+    return () => clearInterval(id);
+  }, []);
 
   // H1 final scores tracked across H1→H2 transition
   const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
@@ -242,18 +379,25 @@ export default function RankingLive() {
   // per-event OK; cache theo eventId nên không refetch trận đã có.
   const liveEventIdsKey = sorted.map((m) => m.eventId).join(',');
   useEffect(() => {
-    const missing = sorted
+    // Fetch cái CHƯA có + retry cái đang 'error' (mỗi nhịp pairRetryTick) — đừng để kẹt lỗi.
+    const toFetch = sorted
       .map((m) => m.eventId)
-      .filter((id) => !pairByEventRef.current.has(id));
-    if (missing.length === 0) return;
+      .filter((id) => {
+        const s = pairByEventRef.current.get(id);
+        return !s || s.status === 'error';
+      });
+    if (toFetch.length === 0) return;
     let alive = true;
-    // Đánh dấu loading ngay để hiện spinner per-box, tránh fetch trùng.
-    setPairByEvent((prev) => {
-      const next = new Map(prev);
-      for (const id of missing) next.set(id, { status: 'loading' });
-      return next;
-    });
-    for (const id of missing) {
+    // Chỉ set 'loading' cho cái CHƯA có (giữ text lỗi khi retry, không nháy spinner).
+    const fresh = toFetch.filter((id) => !pairByEventRef.current.has(id));
+    if (fresh.length > 0) {
+      setPairByEvent((prev) => {
+        const next = new Map(prev);
+        for (const id of fresh) next.set(id, { status: 'loading' });
+        return next;
+      });
+    }
+    for (const id of toFetch) {
       fetch(`/api/gs-h2h-pair?eventId=${id}`, { cache: 'no-store' })
         .then(async (r) => {
           const json = (await r.json()) as { ok: boolean } & Partial<H2HPair>;
@@ -261,7 +405,7 @@ export default function RankingLive() {
           setPairByEvent((prev) => {
             const next = new Map(prev);
             next.set(id, json.ok
-              ? { status: 'ready', ft: json.ft ?? null, h1: json.h1 ?? null }
+              ? { status: 'ready', ft: json.ft ?? null, h1: json.h1 ?? null, h1Totals: json.h1Totals ?? [], ftTotals: json.ftTotals ?? [] }
               : { status: 'error' });
             return next;
           });
@@ -273,7 +417,7 @@ export default function RankingLive() {
     }
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveEventIdsKey]);
+  }, [liveEventIdsKey, pairRetryTick]);
 
   const group16 = sorted.filter((m) => m.leagueId === LEAGUE_16P);
   const group20 = sorted.filter((m) => m.leagueId === LEAGUE_20P);
@@ -308,7 +452,7 @@ export default function RankingLive() {
     const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
     const meetings = sp?.meetings ?? 0;
     const halves = sp && meetings > 0
-      ? [{ key: 'h2', label: 'H2', s: sp.h2 }, { key: 'h1', label: 'H1', s: sp.h1 }]
+      ? [{ key: 'h2', label: 'Tỉ lệ Thắng Hiệp 2', s: sp.h2 }, { key: 'h1', label: 'Tỉ lệ Thắng H1', s: sp.h1 }]
       : [];
     const boxClass = `rounded-lg border p-3 w-full min-w-0 h-full transition-all cursor-pointer hover:border-[#444] ${
       scored
@@ -364,9 +508,6 @@ export default function RankingLive() {
               ) : (
                 halves.map((h) => {
                   const active = h.key === activeHalf;
-                  // Tài/Xỉu live theo hiệp: H1 → market H1, H2 → toàn trận. Lấy dòng chính [0].
-                  const ou = h.key === 'h1' ? m.ouH1Lines?.[0] : m.ouLines?.[0];
-                  const fmtOu = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
                   return (
                     <div
                       key={h.key}
@@ -384,23 +525,6 @@ export default function RankingLive() {
                         <span className="text-[12px] md:text-[13px] font-bold tabular-nums text-[#8a8a8a] leading-tight">{h.s.drawPct}%</span>
                         <span className="text-[14px] md:text-[15px] font-bold tabular-nums text-[#fb7185] leading-tight">{h.s.bWinPct}%</span>
                       </div>
-                      {/* Tài/Xỉu live: line trên cùng, rồi Tài / Xỉu mỗi dòng. Ẩn giá trị khi market đóng. */}
-                      <div className="mt-1.5 w-full border-t border-[#2a2a2a] pt-1">
-                        <div className="text-center text-[9px] font-semibold uppercase tracking-wide text-[#777] leading-tight">
-                          T/X <span className="text-[#aaa] tabular-nums">{fmtOu(ou?.line)}</span>
-                        </div>
-                        {/* Cụm Tài/Xỉu canh giữa, rộng cố định — không giãn hở khi box desktop rộng */}
-                        <div className="mx-auto mt-1 flex w-fit min-w-[72px] flex-col gap-0.5">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-[9px] font-semibold uppercase tracking-wide text-[#666]">Tài</span>
-                            <span className="text-[13px] md:text-[14px] font-bold tabular-nums text-[#4ade80] leading-tight">{fmtOu(ou?.over)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-[9px] font-semibold uppercase tracking-wide text-[#666]">Xỉu</span>
-                            <span className="text-[13px] md:text-[14px] font-bold tabular-nums text-[#fb7185] leading-tight">{fmtOu(ou?.under)}</span>
-                          </div>
-                        </div>
-                      </div>
                     </div>
                   );
                 })
@@ -408,13 +532,15 @@ export default function RankingLive() {
           </div>
           {/* Dòng 3 (dưới): 2 box số liệu % Tài/Xỉu LỊCH SỬ đối đầu (FT/H1). */}
           <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
+          {/* Dòng gợi ý Tài/Xỉu deterministic — tính inline mỗi 2s (§5). */}
+          <TxSuggestionRow m={m} activeMarket={activeMarket} h1Final={h1Final} />
         </div>
       );
   }
 
   // Dòng 2 của Kiểu 'h2h': 2 box FT + H1 (cùng khung box gọn như Kiểu 'live').
   // Trong lúc chờ /api/gs-h2h-pair → spinner per-box; lỗi → "—"; sẵn → Tài%/Xỉu%.
-  function PairStatBox({ label, stat, active, line }: { label: string; stat: H2HPairStat | null; active?: boolean; line?: string | null }) {
+  function PairStatBox({ label, title, stat, active, line }: { label: string; title?: string; stat: H2HPairStat | null; active?: boolean; line?: string | null }) {
     return (
       <div
         className={`flex flex-1 min-w-0 flex-col items-center rounded-md border px-2 py-1.5 md:px-3 ${
@@ -422,7 +548,7 @@ export default function RankingLive() {
         }`}
       >
         <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">
-          {label}
+          {title ?? label}
           {line != null && line !== '' && (
             <span className="normal-case tracking-normal text-[#aaa] tabular-nums"> · {line}</span>
           )}{' '}
@@ -482,8 +608,99 @@ export default function RankingLive() {
     }
     return (
       <div className="flex gap-2.5">
-        <PairStatBox label="FT" stat={st.ft} active={activeMarket === 'ft'} line={ftLine} />
-        <PairStatBox label="H1" stat={st.h1} active={activeMarket === 'h1'} line={h1Line} />
+        <PairStatBox label="FT" title="Chỉ số TB Tài Xỉu FT" stat={st.ft} active={activeMarket === 'ft'} line={ftLine} />
+        <PairStatBox label="H1" title="Chỉ số TB Tài Xỉu H1" stat={st.h1} active={activeMarket === 'h1'} line={h1Line} />
+      </div>
+    );
+  }
+
+  // Dòng gợi ý Tài/Xỉu (EMPIRICAL, deterministic). Tính INLINE mỗi render 2s từ tỉ số +
+  // phân phối tổng bàn ĐĐ HIỆN TẠI → có bàn vào là verdict tự đổi (không memo, không cache theo eventId).
+  function TxSuggestionRow({ m, activeMarket, h1Final }: { m: GsLiveMatch; activeMarket: 'ft' | 'h1' | null; h1Final?: { home: number; away: number } }) {
+    // Placeholder mờ để MỌI trận đều có dòng (bật tất cả các trận) — không ẩn hẳn.
+    const phBox = 'mt-1 flex items-center justify-center text-[11px] font-normal text-[#4b5563]';
+    const ph = (text: string) => <div className={phBox}>{text}</div>;
+    // Không live / chưa vào hiệp (HT/Chờ/KT) → chưa có kèo để gợi ý.
+    if (!m.isLive || activeMarket === null) return ph('⏸ chưa vào kèo');
+    const st = pairByEvent.get(m.eventId);
+    if (!st || st.status !== 'ready') return ph('⏳ đang tải đối đầu…');
+
+    const lowConf = activeMarket === 'ft'; // FT khi đang H2 = leg H2 (suy ra) → độ tin thấp
+    const tip = lowConf ? 'H2 ước lượng (FT−H1), độ tin thấp' : undefined;
+    const approx = lowConf ? '≈ ' : ''; // nhãn ước lượng cho H2 leg
+    const container = 'mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-0.5 text-[13px] md:text-[14px] font-semibold tabular-nums';
+    // Lệch quy luật (phá trần lịch sử): màu xám-vàng cảnh báo, KHÔNG ra kèo (§4.4).
+    const breakRow = (scope: 'h1' | 'h2') => (
+      <div className={container} title={scope === 'h2' ? 'H1 phá trần lịch sử → phân phối H2 hết đại diện' : 'Tỉ số H1 vượt mọi trận đối đầu → phân phối hết đại diện'} style={{ color: '#d4a72c' }}>
+        <span className="font-normal">{approx}⚠ lệch quy luật{scope === 'h2' ? ' (H1 phá trần)' : ''}</span>
+      </div>
+    );
+
+    const { h1Totals, ftTotals } = st;
+    // Tổng bàn HIỆN TẠI (cả trận). H2 leg quy về hệ H2 phía dưới.
+    const scoredNow = m.h1Home + m.h1Away;
+
+    let totals: number[];
+    let scored: number;
+    let lineRaw: string | null | undefined;
+    let overRaw: string | null | undefined;
+    let underRaw: string | null | undefined;
+
+    if (activeMarket === 'h1') {
+      // Gate đếm trên ĐỘ DÀI MẢNG dùng (không phải stat.n — §4.1/§5.5).
+      if (h1Totals.length < N_MIN) return ph(`— chưa đủ đối đầu (n<${N_MIN})`);
+      // GUARD phá trần H1 (§4.3): đang H1 & scored vượt max lịch sử nhưng CHƯA tới line → lệch quy luật.
+      // Nếu đã vượt line (scored>line) → để computeSignal ra VÀO TÀI (override), guard nhường.
+      const lineH1 = parseLine(m.ouH1Lines?.[0]?.line)?.lineVal;
+      if (scoredNow > h1Ceiling(h1Totals) && !(lineH1 != null && scoredNow > lineH1)) {
+        return breakRow('h1');
+      }
+      totals = h1Totals;
+      scored = scoredNow;
+      lineRaw = m.ouH1Lines?.[0]?.line;
+      overRaw = m.ouH1Lines?.[0]?.over;
+      underRaw = m.ouH1Lines?.[0]?.under;
+    } else {
+      // H2 leg: cần ĐỦ mảng đồng bộ (ft/h1 length bằng nhau) + có mốc cuối H1 (h1Final).
+      if (ftTotals.length < N_MIN) return ph(`— chưa đủ đối đầu (n<${N_MIN})`);
+      if (!h1Final) return ph('— chờ mốc cuối H1');
+      const h1FinalTotal = h1Final.home + h1Final.away;
+      // GUARD phá trần H2 (§4.3): H1 đã kết & tổng H1 > max lịch sử → empirical H2 hết tin → lệch quy luật.
+      if (h1FinalTotal > h1Ceiling(h1Totals)) return breakRow('h2');
+      // Phân phối bàn HIỆP 2 lịch sử (đồng bộ index → đúng trận). Line & scored quy về hệ H2.
+      totals = ftTotals.map((ft, i) => ft - h1Totals[i]);
+      scored = Math.max(0, scoredNow - h1FinalTotal); // bàn đã ghi trong H2 (clamp ≥0)
+      lineRaw = adjustLineH2(m.ouLines?.[0]?.line, h1FinalTotal); // lineH2 = lineFT − tổng bàn H1 cuối
+      overRaw = m.ouLines?.[0]?.over;
+      underRaw = m.ouLines?.[0]?.under;
+    }
+
+    const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw });
+    if (!sig) return ph('— chưa có line kèo'); // thiếu line/giá → placeholder (KHÔNG show VÀO khi thiếu số liệu)
+
+    if (sig.kind === 'vao') {
+      const tai = sig.side === 'tai';
+      return (
+        <div className={container} title={tip} style={{ color: tai ? '#4ade80' : '#fb7185' }}>
+          <span>{approx}⚡ VÀO {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(sig.price).toFixed(2)}</span></span>
+          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}% · line {sig.line})</span>
+        </div>
+      );
+    }
+    if (sig.kind === 'cho') {
+      const tai = sig.side === 'tai';
+      const curOdd = tai ? overRaw : underRaw; // giá ODD hiện tại của cửa nghiêng (realtime)
+      return (
+        <div className={container} title={tip} style={{ color: '#9ca3af' }}>
+          <span>{approx}⏳ Chờ {tai ? 'Tài' : 'Xỉu'} · giá nay <span className="text-[15px] md:text-[16px] font-bold text-[#cbd5e1]">{curOdd != null && curOdd !== '' ? Number(curOdd).toFixed(2) : '—'}</span> → vào khi ~<span className="text-[17px] md:text-[19px] font-extrabold">{sig.waitPrice.toFixed(2)}</span></span>
+          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}%)</span>
+        </div>
+      );
+    }
+    // none → chưa có kèo rõ (xám mờ)
+    return (
+      <div className={container} title={tip} style={{ color: '#6b7280' }}>
+        <span className="font-normal">{approx}— chưa có kèo rõ</span>
       </div>
     );
   }
