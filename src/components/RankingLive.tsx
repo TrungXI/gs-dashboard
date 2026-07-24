@@ -51,20 +51,9 @@ export default function RankingLive() {
     setH2hLimitState(n);
     localStorage.setItem('gs_h2h_limit', String(n));
   }
-  // Kiểu hiển thị list: 'live' = Tài/Xỉu LIVE theo hiệp (H2/H1), 'h2h' = Tài/Xỉu
-  // LỊCH SỬ đối đầu cặp đó (FT/H1, từ /api/gs-h2h-pair). Mặc định 'h2h' (Đối kháng), nhớ localStorage.
-  const [rankMode, setRankMode] = useState<'live' | 'h2h'>('h2h');
-  useEffect(() => {
-    if (localStorage.getItem('gs_rank_view_mode') === 'live') setRankMode('live');
-  }, []);
-  function toggleRankMode() {
-    setRankMode((prev) => {
-      const next = prev === 'live' ? 'h2h' : 'live';
-      localStorage.setItem('gs_rank_view_mode', next);
-      return next;
-    });
-  }
-  // Cache H2H Tài/Xỉu lịch sử theo eventId (chỉ fetch cái chưa có; đổi mode không refetch).
+  // View gộp: mỗi trận hiện CẢ 2 hàng — hàng trên = Tài/Xỉu odds live theo hiệp
+  // (H2/H1), hàng dưới = Tài/Xỉu LỊCH SỬ đối đầu cặp đó (FT/H1, từ /api/gs-h2h-pair).
+  // Cache H2H Tài/Xỉu lịch sử theo eventId (chỉ fetch cái chưa có).
   const [pairByEvent, setPairByEvent] = useState<Map<number, PairState>>(new Map());
   const pairByEventRef = useRef(pairByEvent);
   useEffect(() => { pairByEventRef.current = pairByEvent; }, [pairByEvent]);
@@ -248,12 +237,11 @@ export default function RankingLive() {
 
   const sorted = [...liveMatches].sort((a, b) => a.eventId - b.eventId);
 
-  // Chế độ 'h2h': fetch Tài/Xỉu lịch sử cho từng trận đang hiện — chỉ cái CHƯA có
+  // Fetch Tài/Xỉu lịch sử đối đầu cho từng trận đang hiện — chỉ cái CHƯA có
   // trong cache (loading/error/ready đều coi là "đã có"). Vài trận live nên fetch
-  // per-event OK; đổi mode qua lại không refetch nhờ cache theo eventId.
+  // per-event OK; cache theo eventId nên không refetch trận đã có.
   const liveEventIdsKey = sorted.map((m) => m.eventId).join(',');
   useEffect(() => {
-    if (rankMode !== 'h2h') return;
     const missing = sorted
       .map((m) => m.eventId)
       .filter((id) => !pairByEventRef.current.has(id));
@@ -285,7 +273,7 @@ export default function RankingLive() {
     }
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rankMode, liveEventIdsKey]);
+  }, [liveEventIdsKey]);
 
   const group16 = sorted.filter((m) => m.leagueId === LEAGUE_16P);
   const group20 = sorted.filter((m) => m.leagueId === LEAGUE_20P);
@@ -369,10 +357,8 @@ export default function RankingLive() {
               )}
             </div>
           </div>
-          {/* Dòng 2: 2 box cạnh nhau. Kiểu 'live' = %đối đầu + Tài/Xỉu live theo hiệp
-              (H2/H1); Kiểu 'h2h' = Tài%/Xỉu% lịch sử đối đầu (FT/H1). Cùng khung box. */}
-          {rankMode === 'live' ? (
-            <div className="flex gap-2.5">
+          {/* Dòng 2 (trên): 2 box Tài/Xỉu odds LIVE theo hiệp (H2/H1) + %đối đầu. */}
+          <div className="flex gap-2.5">
               {halves.length === 0 ? (
                 <span className="flex items-center text-[11px] text-[#555]">ĐĐ —</span>
               ) : (
@@ -419,10 +405,9 @@ export default function RankingLive() {
                   );
                 })
               )}
-            </div>
-          ) : (
-            <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
-          )}
+          </div>
+          {/* Dòng 3 (dưới): 2 box số liệu % Tài/Xỉu LỊCH SỬ đối đầu (FT/H1). */}
+          <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
         </div>
       );
   }
@@ -560,17 +545,8 @@ export default function RankingLive() {
         >
           {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
         </button>
-        {/* Switch kiểu hiển thị list: Live (Tài/Xỉu theo hiệp) ↔ Đối đầu T/X (lịch sử FT/H1) */}
-        <button
-          type="button"
-          onClick={toggleRankMode}
-          className={`ml-auto rounded px-2 py-0.5 text-[11px] border transition-colors ${rankMode === 'h2h' ? 'border-[#f59e0b]/50 text-[#fbbf24] bg-[#f59e0b]/15 hover:bg-[#f59e0b]/25' : 'border-[#17a2b8]/50 text-[#22d3ee] bg-[#17a2b8]/15 hover:bg-[#17a2b8]/25'}`}
-          title={rankMode === 'h2h' ? 'Đang xem Tài/Xỉu lịch sử đối đầu — bấm để về Live theo hiệp' : 'Đang xem Tài/Xỉu Live theo hiệp — bấm để xem lịch sử đối đầu T/X'}
-        >
-          {rankMode === 'h2h' ? '🎯 Đối đầu T/X' : '📊 Live'}
-        </button>
         {/* Filter số trận đối đầu để tính % */}
-        <div className="flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1">
           <span className="text-[11px] text-[#666]">ĐĐ:</span>
           {[20, 50, 100].map((n) => (
             <button
@@ -621,7 +597,7 @@ export default function RankingLive() {
             eventId={selected.eventId}
             home={selected.homeTeam}
             away={selected.awayTeam}
-            initialTab="ou"
+            initialTab="h2h"
             activeMarket={drawerActiveMarket}
             onClose={() => setSelected(null)}
             hasPrev={canCycle}
