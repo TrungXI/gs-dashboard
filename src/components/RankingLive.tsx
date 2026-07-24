@@ -22,10 +22,10 @@ const LEAGUE_20P = 2125;
 
 // ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
-const P_MIN_VAO = 0.70;       // XỈU: cửa nghiêng phải đạt P≥70% mới suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
-const P_MIN_TAI = 0.78;       // TÀI siết cao hơn (BẤT ĐỐI XỨNG): Tài là cửa hay thua trên GS virtual (tracking 2h: Tài 25% vs Xỉu 67%) → cần P≥78%
+const P_MIN_VAO = 0.70;       // P≥70% cả 2 cửa mới VÀO (về version d40266c — bỏ siết Tài bất đối xứng)
 const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
-const TAI_LINE_MAX = 0.75;    // CHỈ VÀO TÀI khi CÒN CẦN ≤ 0.75 bàn (siết từ 1.25): Tài chỉ đáng khi gần như đã ăn; xa hơn → chờ
+const TAI_LINE_MAX = 1.25;    // CHỈ VÀO TÀI khi line ≤ 1.25 (TUYỆT ĐỐI, về version cũ); line cao hơn (1.75…) → chờ line tụt về
+const RECENT_N = 10;          // CHỈ thống kê 10 trận đối đầu GẦN NHẤT (totals xếp mới→cũ → slice(0,10))
 const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị trường ≥6% mới VÀO (mức ra kèo thoải mái như bản gốc)
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
@@ -112,10 +112,8 @@ function computeSignal(args: {
   const parsed = parseLine(args.lineRaw);
   if (!parsed) return null;            // line không parse được → ẩn
 
-  // §5.5: gate thật trên POOL ĐÃ ĐIỀU KIỆN (t >= scored), độc lập line — pool nhỏ hơn N_MIN → ẩn.
-  // (raw-length gate ở caller chỉ là pre-check rẻ; đây mới là cửa thật — bài học 0-0→Tài GIẢ.)
-  const poolN = args.totals.filter((t) => t >= args.scored).length;
-  if (poolN < N_MIN) return null;
+  // (BỎ gate pool-điều-kiện ≥N_MIN theo yêu cầu — chấp nhận thống kê trên mẫu nhỏ.
+  //  Chỉ còn raw-length gate ở caller: cặp phải có ≥N_MIN trận trong 10 trận gần nhất.)
 
   // P(Tài) empirical: quarter → nội suy 50/50 hai mức; else một mức. NaN (totals rỗng) → ẩn.
   const pTai = parsed.isQuarter
@@ -154,19 +152,16 @@ function computeSignal(args: {
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
   const edgeProb = p - pMarket; // biên so với thị trường đã de-vig (buffer 6% / H2 10%)
 
-  // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin → KHÔNG suggest vào cửa nào.
-  // BẤT ĐỐI XỨNG: TÀI cần P≥78% (cửa hay thua), XỈU giữ P≥70%.
-  const pGate = side === 'tai' ? P_MIN_TAI : P_MIN_VAO;
-  if (p < pGate) {
+  // Lưỡng lự: cửa nghiêng chưa đạt P≥70% → KHÔNG suggest vào cửa nào (P70 cả 2 cửa, về version cũ).
+  if (p < P_MIN_VAO) {
     return { kind: 'none', lowConf: args.lowConf };
   }
   // Giá cửa vào phải đáng tiền: Malay > 0.7 HOẶC âm. Khoảng (0, 0.7] = dương nhỏ payout tệ → không VÀO odd đó.
   const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
 
   if (edgeProb >= buffer && priceEnterable) {
-    // TÀI đỡ rủi ro: chỉ VÀO khi CÒN CẦN ≤ TAI_LINE_MAX bàn nữa (needed = line − tỉ số hiện tại).
-    // Vd line 1.5 mà đã 1 bàn → cần 0.5 → VÀO. Cần nhiều hơn (line cao, chưa có bàn) → chờ.
-    if (side === 'tai' && parsed.lineVal - args.scored > TAI_LINE_MAX) {
+    // TÀI đỡ rủi ro: chỉ VÀO khi line ≤ TAI_LINE_MAX (TUYỆT ĐỐI, về version cũ). Line cao (1.75…) → chờ line tụt về.
+    if (side === 'tai' && parsed.lineVal > TAI_LINE_MAX) {
       return { kind: 'cho', side, waitPrice: 0, waitLine: TAI_LINE_MAX, pct: p, lowConf: args.lowConf };
     }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
@@ -681,7 +676,9 @@ export default function RankingLive() {
       </div>
     );
 
-    const { h1Totals, ftTotals } = st;
+    // CHỈ lấy 10 trận đối đầu GẦN NHẤT để thống kê (totals xếp mới→cũ → slice đầu mảng).
+    const h1Totals = st.h1Totals.slice(0, RECENT_N);
+    const ftTotals = st.ftTotals.slice(0, RECENT_N);
     // Tổng bàn HIỆN TẠI (cả trận). H2 leg quy về hệ H2 phía dưới.
     const scoredNow = m.h1Home + m.h1Away;
 
