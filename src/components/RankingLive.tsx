@@ -24,6 +24,7 @@ const LEAGUE_20P = 2125;
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
 const P_MIN_VAO = 0.70;       // cửa nghiêng phải đạt P≥70% mới được suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
 const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
+const TAI_LINE_MAX = 1.25;    // CHỈ VÀO TÀI khi line ≤ 1.25 (gần ăn, đỡ rủi ro); line cao hơn (1.75…) → chờ line tụt về
 const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị trường ≥6% mới VÀO (mức ra kèo thoải mái như bản gốc)
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
@@ -96,7 +97,7 @@ function h1Ceiling(h1Totals: number[]): number {
 
 type TxSignal =
   | { kind: 'vao'; side: 'tai' | 'xiu'; price: string; pct: number; line: string; lowConf: boolean }
-  | { kind: 'cho'; side: 'tai' | 'xiu'; waitPrice: number; pct: number; lowConf: boolean }
+  | { kind: 'cho'; side: 'tai' | 'xiu'; waitPrice: number; waitLine?: number; pct: number; lowConf: boolean }
   | { kind: 'none'; lowConf: boolean }
   | { kind: 'break'; scope: 'h1' | 'h2'; lowConf: boolean }   // ← lệch quy luật (phá trần lịch sử)
   | null;
@@ -146,6 +147,10 @@ function computeSignal(args: {
   const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
 
   if (edgeProb >= buffer && priceEnterable) {
+    // TÀI đỡ rủi ro: chỉ VÀO khi line ≤ TAI_LINE_MAX. Line cao (1.75…) → chờ line tụt về, không VÀO ngay.
+    if (side === 'tai' && parsed.lineVal > TAI_LINE_MAX) {
+      return { kind: 'cho', side, waitPrice: 0, waitLine: TAI_LINE_MAX, pct: p, lowConf: args.lowConf };
+    }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
   }
   if (edgeProb < 0) {
@@ -195,6 +200,9 @@ export default function RankingLive() {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
+  // KHÓA 1 KÈO / HIỆP: key = `${eventId}:${market}` → một khi ra VÀO thì giữ nguyên cửa tới hết hiệp,
+  // không đẻ kèo ngược (chỉ báo thắng/thua/rủi ro). H1 và H2 là 2 key riêng.
+  const keoLockRef = useRef<Map<string, { side: 'tai' | 'xiu'; price: string; lineStr: string; lineVal: number; atScore: number }>>(new Map());
 
   // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
   const [pairRetryTick, setPairRetryTick] = useState(0);
@@ -493,12 +501,12 @@ export default function RankingLive() {
           <div className="flex items-center justify-between gap-2 md:gap-3">
             <div className="min-w-0 flex-1 flex items-center gap-2 md:gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 text-[13px] md:text-[14px] font-semibold text-white leading-tight">
+                <div className="flex items-center gap-1 text-[13px] md:text-[14px] font-semibold text-[#4ade80] leading-tight">
                   <span className="truncate">{m.homeTeam}</span>
                   <RedCardBadge n={m.redHome} />
                 </div>
                 <div className="text-[10px] text-[#666] my-0.5 leading-tight">Hoà</div>
-                <div className="flex items-center gap-1 text-[12px] md:text-[13px] text-[#888] leading-tight">
+                <div className="flex items-center gap-1 text-[13px] md:text-[14px] font-semibold text-[#fb7185] leading-tight">
                   <span className="truncate">{m.awayTeam}</span>
                   <RedCardBadge n={m.redAway} />
                 </div>
@@ -698,17 +706,42 @@ export default function RankingLive() {
     const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw });
     if (!sig) return ph('— chưa có line kèo'); // thiếu line/giá → placeholder (KHÔNG show VÀO khi thiếu số liệu)
 
-    if (sig.kind === 'vao') {
-      const tai = sig.side === 'tai';
+    // ── KHÓA 1 KÈO / HIỆP: ra VÀO thì khóa cửa đó, sau chỉ báo thắng/thua/rủi ro (không đẻ kèo ngược).
+    const lockKey = `${m.eventId}:${activeMarket}`;
+    if (!keoLockRef.current.has(lockKey) && sig.kind === 'vao') {
+      keoLockRef.current.set(lockKey, { side: sig.side, price: sig.price, lineStr: sig.line, lineVal: parseLine(lineRaw)?.lineVal ?? 0, atScore: scored });
+    }
+    const lock = keoLockRef.current.get(lockKey);
+    if (lock) {
+      const tai = lock.side === 'tai';
+      let status: string; let sColor: string;
+      if (scored > lock.lineVal) {
+        status = tai ? '✓ THẮNG' : '✗ THUA'; sColor = tai ? '#4ade80' : '#fb7185'; // tổng đã vượt line → chốt
+      } else if (tai) {
+        status = `cần +${Math.max(1, Math.ceil(lock.lineVal - scored))} bàn`; sColor = '#9aa4b2';
+      } else {
+        status = scored > lock.atScore ? '⚠ rủi ro (có bàn)' : '✓ đang giữ'; sColor = scored > lock.atScore ? '#d4a72c' : '#4ade80';
+      }
       return (
         <div className={container} title={tip} style={{ color: tai ? '#4ade80' : '#fb7185' }}>
-          <span>{approx}⚡ VÀO {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(sig.price).toFixed(2)}</span></span>
-          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}% · line {sig.line})</span>
+          <span>{approx}⚡ {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(lock.price).toFixed(2)}</span></span>
+          <span className="text-[13px] md:text-[14px] font-bold" style={{ color: sColor }}>{status}</span>
+          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(line {lock.lineStr})</span>
         </div>
       );
     }
+
     if (sig.kind === 'cho') {
       const tai = sig.side === 'tai';
+      if (sig.waitLine != null) {
+        // Chờ line Tài tụt về ngưỡng an toàn (đỡ rủi ro).
+        return (
+          <div className={container} title={tip} style={{ color: '#9ca3af' }}>
+            <span>{approx}⏳ Chờ {tai ? 'Tài' : 'Xỉu'} — đợi line về ≤<span className="text-[15px] md:text-[16px] font-bold text-[#cbd5e1]">{sig.waitLine}</span> (đỡ rủi ro)</span>
+            <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}%)</span>
+          </div>
+        );
+      }
       const curOdd = tai ? overRaw : underRaw; // giá ODD hiện tại của cửa nghiêng (realtime)
       return (
         <div className={container} title={tip} style={{ color: '#9ca3af' }}>
