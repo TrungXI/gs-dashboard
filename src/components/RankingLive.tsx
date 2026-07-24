@@ -178,16 +178,8 @@ export default function RankingLive() {
   // Cache lồng: limit (20/50/100) → (cặp đấu → kết quả). Cả 3 mức prefetch sẵn.
   const [h2hByLimit, setH2hByLimit] = useState<Map<number, Map<string, PairResult>>>(new Map());
   const [selected, setSelected] = useState<GsLiveMatch | null>(null);
-  // Số trận đối đầu gần nhất để tính % (20/50/100). Mặc định 20, nhớ localStorage.
-  const [h2hLimit, setH2hLimitState] = useState<number>(20);
-  useEffect(() => {
-    const v = Number(localStorage.getItem('gs_h2h_limit'));
-    if (v === 20 || v === 50 || v === 100) setH2hLimitState(v);
-  }, []);
-  function setH2hLimit(n: number) {
-    setH2hLimitState(n);
-    localStorage.setItem('gs_h2h_limit', String(n));
-  }
+  // Số trận đối đầu gần nhất để tính % — CỐ ĐỊNH 50 (đã bỏ filter 20/50/100).
+  const h2hLimit = 50;
   // View gộp: mỗi trận hiện CẢ 2 hàng — hàng trên = Tài/Xỉu odds live theo hiệp
   // (H2/H1), hàng dưới = Tài/Xỉu LỊCH SỬ đối đầu cặp đó (FT/H1, từ /api/gs-h2h-pair).
   // Cache H2H Tài/Xỉu lịch sử theo eventId (chỉ fetch cái chưa có).
@@ -380,7 +372,7 @@ export default function RankingLive() {
     const id = setInterval(loadSel, 300_000);
     return () => { alive = false; clearInterval(id); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pairsKey, h2hLimit]);
+  }, [pairsKey]);
 
   // Map hiển thị = mức đang chọn (đã prefetch). Đổi filter chỉ đổi con trỏ này.
   const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
@@ -782,21 +774,6 @@ export default function RankingLive() {
         >
           {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
         </button>
-        {/* Filter số trận đối đầu để tính % */}
-        <div className="ml-auto flex items-center gap-1">
-          <span className="text-[11px] text-[#666]">ĐĐ:</span>
-          {[20, 50, 100].map((n) => (
-            <button
-              key={n}
-              type="button"
-              onClick={() => setH2hLimit(n)}
-              className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${h2hLimit === n ? 'border-[#17a2b8]/50 text-[#22d3ee] bg-[#17a2b8]/15' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
-              title={`Tính % trên ${n} trận đối đầu gần nhất`}
-            >
-              {n} trận
-            </button>
-          ))}
-        </div>
       </div>
 
       {error && (
