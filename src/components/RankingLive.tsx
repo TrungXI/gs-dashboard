@@ -196,6 +196,10 @@ export default function RankingLive() {
   const [pairByEvent, setPairByEvent] = useState<Map<number, PairState>>(new Map());
   const pairByEventRef = useRef(pairByEvent);
   useEffect(() => { pairByEventRef.current = pairByEvent; }, [pairByEvent]);
+  // Sống qua các lần effect re-run (retry 3s) — CHỈ hủy khi component unmount. Trước đây dùng
+  // `alive` per-effect nên retry tick giết fetch đang bay → entry kẹt 'loading' vĩnh viễn.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
   const [pairRetryTick, setPairRetryTick] = useState(0);
@@ -396,8 +400,8 @@ export default function RankingLive() {
         return !s || s.status === 'error';
       });
     if (toFetch.length === 0) return;
-    let alive = true;
-    // Chỉ set 'loading' cho cái CHƯA có (giữ text lỗi khi retry, không nháy spinner).
+    // KHÔNG cleanup hủy fetch: dùng mountedRef nên fetch sống qua các lần retry re-run (không kẹt 'loading').
+    // Chỉ set 'loading' cho cái CHƯA có (giữ text lỗi khi retry 'error', không nháy spinner).
     const fresh = toFetch.filter((id) => !pairByEventRef.current.has(id));
     if (fresh.length > 0) {
       setPairByEvent((prev) => {
@@ -407,10 +411,13 @@ export default function RankingLive() {
       });
     }
     for (const id of toFetch) {
-      fetch(`/api/gs-h2h-pair?eventId=${id}`, { cache: 'no-store' })
+      const ctrl = new AbortController();
+      const to = setTimeout(() => ctrl.abort(), 12000); // treo >12s → abort → 'error' → retry nhịp sau
+      fetch(`/api/gs-h2h-pair?eventId=${id}`, { cache: 'no-store', signal: ctrl.signal })
         .then(async (r) => {
+          clearTimeout(to);
           const json = (await r.json()) as { ok: boolean } & Partial<H2HPair>;
-          if (!alive) return;
+          if (!mountedRef.current) return;
           setPairByEvent((prev) => {
             const next = new Map(prev);
             next.set(id, json.ok
@@ -420,11 +427,11 @@ export default function RankingLive() {
           });
         })
         .catch(() => {
-          if (!alive) return;
+          clearTimeout(to);
+          if (!mountedRef.current) return;
           setPairByEvent((prev) => new Map(prev).set(id, { status: 'error' }));
         });
     }
-    return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveEventIdsKey, pairRetryTick]);
 
