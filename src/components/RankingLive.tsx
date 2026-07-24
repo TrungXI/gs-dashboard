@@ -24,10 +24,9 @@ const LEAGUE_20P = 2125;
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
 const P_MIN_VAO = 0.70;       // cửa nghiêng phải đạt P≥70% mới được suggest VÀO; dưới ngưỡng = lưỡng lự → không đẩy cửa nào
 const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
-const BUFFER_EV = 0.06;       // biên xác suất phải thắng thị trường ≥6% mới VÀO (bù ước lượng + vig + sai số join)
-const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
+const BUFFER_EV = 0.12;       // TIN THỊ TRƯỜNG HƠN: P_model phải hơn xác suất thị trường ≥12% mới VÀO (chống overconfidence value-bet)
+const BUFFER_EV_H2 = 0.16;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
-const MODEL_W = 0.5;          // TIN THỊ TRƯỜNG HƠN: P dùng = MODEL_W·P_model + (1−MODEL_W)·P_thị_trường (shrink về odds); 0.5 = biên bất đồng hiệu dụng gấp đôi
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -132,12 +131,12 @@ function computeSignal(args: {
   if (!Number.isFinite(priceNum)) return null; // giá cửa nghiêng không parse được → market đóng → ẩn
 
   const side: 'tai' | 'xiu' = leanTai ? 'tai' : 'xiu';
-  // TIN THỊ TRƯỜNG HƠN: kéo P_model về gần xác suất thị trường (shrink). p = blend.
-  // edge = p − P_thị_trường = MODEL_W·(P_model − P_thị_trường) → MODEL_W=0.5 nên phải bất đồng ≥~12% mới đủ buffer 6%.
+  // TIN THỊ TRƯỜNG HƠN qua BIÊN: gate tự tin theo P_model (để CÓ ra kèo), nhưng edge phải ≥12% so với
+  // xác suất thị trường mới VÀO → chống value-bet overconfident mà không giấu hết kèo (bug blend cũ).
   const pMarket = malayToProb(priceNum);
-  const p = MODEL_W * pModel + (1 - MODEL_W) * pMarket;
+  const p = pModel;
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
-  const edgeProb = p - pMarket; // độ lệch (đã shrink) so với thị trường
+  const edgeProb = p - pMarket; // biên bất đồng so với thị trường (buffer đã nâng 12%)
 
   // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin P≥70% → KHÔNG suggest vào cửa nào.
   if (p < P_MIN_VAO) {
