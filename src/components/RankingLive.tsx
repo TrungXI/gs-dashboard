@@ -26,6 +26,7 @@ const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payo
 const BUFFER_EV = 0.06;       // biên xác suất phải thắng thị trường ≥6% mới VÀO (bù ước lượng + vig + sai số join)
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
+const MODEL_W = 0.5;          // TIN THỊ TRƯỜNG HƠN: P dùng = MODEL_W·P_model + (1−MODEL_W)·P_thị_trường (shrink về odds); 0.5 = biên bất đồng hiệu dụng gấp đôi
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
 
@@ -77,9 +78,13 @@ function malayFair(p: number): number {
 // PUSH (t == line, chỉ khi line nguyên): KHÔNG tính là over (hoà không phải Tài) → về phía Xỉu.
 function pTaiEmpirical(line: number, scored: number, totals: number[]): number {
   if (scored > line) return 1;              // tỉ số đã vượt line → Tài chắc thắng (override)
-  const n = totals.length;
-  if (n === 0) return NaN;                  // rỗng → caller ẩn (không bịa)
-  const over = totals.reduce((c, t) => c + (t > line ? 1 : 0), 0); // push (t==line) KHÔNG tính over
+  // ĐIỀU KIỆN theo bàn ĐÃ GHI: chỉ xét trận lịch sử từng đạt ÍT NHẤT `scored` bàn. Đã "bank" scored
+  // bàn thì xác suất qua line phụ thuộc lịch sử của NHÓM trận từng tới mức đó — tránh hô Xỉu khi tỉ số
+  // đã sát/bằng line (vd 0-2, line 2.5). scored=0 → pool = tất cả (không đổi hành vi đầu hiệp).
+  const pool = totals.filter((t) => t >= scored);
+  const n = pool.length;
+  if (n === 0) return NaN;                  // rỗng → caller ẩn (scored>max đã bị guard chặn trước đó)
+  const over = pool.reduce((c, t) => c + (t > line ? 1 : 0), 0); // push (t==line) KHÔNG tính over
   return (over + LAPLACE_A) / (n + 2 * LAPLACE_A);
 }
 
@@ -118,16 +123,20 @@ function computeSignal(args: {
   if (!Number.isFinite(pTai)) return null; // totals rỗng → NaN → ẩn
   const pXiu = 1 - pTai;
 
-  // Cửa nghiêng + giá live tương ứng.
+  // Cửa nghiêng theo MODEL + giá live tương ứng.
   const leanTai = pTai >= pXiu;
-  const p = leanTai ? pTai : pXiu;
+  const pModel = leanTai ? pTai : pXiu;
   const priceRaw = leanTai ? args.overRaw : args.underRaw;
   const priceNum = priceRaw == null || priceRaw === '' ? NaN : Number(priceRaw);
   if (!Number.isFinite(priceNum)) return null; // giá cửa nghiêng không parse được → market đóng → ẩn
 
   const side: 'tai' | 'xiu' = leanTai ? 'tai' : 'xiu';
+  // TIN THỊ TRƯỜNG HƠN: kéo P_model về gần xác suất thị trường (shrink). p = blend.
+  // edge = p − P_thị_trường = MODEL_W·(P_model − P_thị_trường) → MODEL_W=0.5 nên phải bất đồng ≥~12% mới đủ buffer 6%.
+  const pMarket = malayToProb(priceNum);
+  const p = MODEL_W * pModel + (1 - MODEL_W) * pMarket;
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
-  const edgeProb = p - malayToProb(priceNum); // P ta ước lượng − P thị trường ngụ ý
+  const edgeProb = p - pMarket; // độ lệch (đã shrink) so với thị trường
 
   // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin P≥70% → KHÔNG suggest vào cửa nào.
   if (p < P_MIN_VAO) {
