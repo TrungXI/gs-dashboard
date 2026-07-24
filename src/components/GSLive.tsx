@@ -301,7 +301,9 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     let alive = true;
 
     async function poll() {
-      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng poll khi tab ẩn / màn tắt
+      // 4G: ngừng poll khi tab ẩn / màn tắt — TRỪ khi user đã bật noti (ghi bàn / hết H1):
+      // noti chỉ bắn TRONG poll, nên tab ẩn mà vẫn muốn noti thì buộc phải poll nền (chấp nhận tốn pin).
+      if (typeof document !== 'undefined' && document.hidden && !osNotiGoalRef.current && !osNotiHTRef.current) return;
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',

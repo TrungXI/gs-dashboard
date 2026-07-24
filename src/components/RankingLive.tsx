@@ -66,17 +66,21 @@ function malayFair(p: number): number {
 // P(Tài) EMPIRICAL cho MỘT mức line, có làm mịn Laplace + override realtime (§3.1).
 //   totals = mảng tổng bàn của N trận đối đầu (đã filter theo leg đang xét).
 //   scored = tổng bàn HIỆN TẠI của market/leg đang đá.
-// PUSH (t == line, chỉ khi line nguyên): KHÔNG tính là over (hoà không phải Tài) → về phía Xỉu.
-function pTaiEmpirical(line: number, scored: number, totals: number[]): number {
-  if (scored > line) return 1;              // tỉ số đã vượt line → Tài chắc thắng (override)
+// PUSH (t == line, chỉ khi line nguyên) = hoà, VÔ HIỆU → loại khỏi CẢ tử VÀ mẫu (không dồn về Xỉu).
+// Trả { p, n }: p = P(Tài); n = kích thước POOL ĐÃ ĐIỀU KIỆN (t >= scored, incl. pushes) cho gate §5.5.
+function pTaiEmpirical(line: number, scored: number, totals: number[]): { p: number; n: number } {
   // ĐIỀU KIỆN theo bàn ĐÃ GHI: chỉ xét trận lịch sử từng đạt ÍT NHẤT `scored` bàn. Đã "bank" scored
   // bàn thì xác suất qua line phụ thuộc lịch sử của NHÓM trận từng tới mức đó — tránh hô Xỉu khi tỉ số
   // đã sát/bằng line (vd 0-2, line 2.5). scored=0 → pool = tất cả (không đổi hành vi đầu hiệp).
   const pool = totals.filter((t) => t >= scored);
   const n = pool.length;
-  if (n === 0) return NaN;                  // rỗng → caller ẩn (scored>max đã bị guard chặn trước đó)
-  const over = pool.reduce((c, t) => c + (t > line ? 1 : 0), 0); // push (t==line) KHÔNG tính over
-  return (over + LAPLACE_A) / (n + 2 * LAPLACE_A);
+  if (scored > line) return { p: 1, n };    // tỉ số đã vượt line → Tài chắc thắng (override)
+  if (n === 0) return { p: NaN, n: 0 };     // rỗng → caller ẩn (scored>max đã bị guard chặn trước đó)
+  // PUSH (t == line) = hoà, VÔ HIỆU → loại khỏi CẢ tử VÀ mẫu (không dồn về Xỉu).
+  const overs = pool.reduce((c, t) => c + (t > line ? 1 : 0), 0);
+  const unders = pool.reduce((c, t) => c + (t < line ? 1 : 0), 0);
+  const denom = overs + unders;             // pushes bị bỏ khỏi ước lượng
+  return { p: (overs + LAPLACE_A) / (denom + 2 * LAPLACE_A), n };
 }
 
 // Ngưỡng "trần" H1 của cặp = số bàn H1 cao nhất từng xảy ra trong lịch sử đối đầu (§4.1).
@@ -107,11 +111,16 @@ function computeSignal(args: {
   const parsed = parseLine(args.lineRaw);
   if (!parsed) return null;            // line không parse được → ẩn
 
+  // §5.5: gate thật trên POOL ĐÃ ĐIỀU KIỆN (t >= scored), độc lập line — pool nhỏ hơn N_MIN → ẩn.
+  // (raw-length gate ở caller chỉ là pre-check rẻ; đây mới là cửa thật — bài học 0-0→Tài GIẢ.)
+  const poolN = args.totals.filter((t) => t >= args.scored).length;
+  if (poolN < N_MIN) return null;
+
   // P(Tài) empirical: quarter → nội suy 50/50 hai mức; else một mức. NaN (totals rỗng) → ẩn.
   const pTai = parsed.isQuarter
-    ? (pTaiEmpirical(parsed.loLine, args.scored, args.totals) + pTaiEmpirical(parsed.hiLine, args.scored, args.totals)) / 2
-    : pTaiEmpirical(parsed.lineVal, args.scored, args.totals);
-  if (!Number.isFinite(pTai)) return null; // totals rỗng → NaN → ẩn
+    ? (pTaiEmpirical(parsed.loLine, args.scored, args.totals).p + pTaiEmpirical(parsed.hiLine, args.scored, args.totals).p) / 2
+    : pTaiEmpirical(parsed.lineVal, args.scored, args.totals).p;
+  if (!Number.isFinite(pTai)) return null; // pool rỗng → NaN → ẩn
   const pXiu = 1 - pTai;
 
   // Cửa nghiêng theo MODEL + giá live tương ứng.
@@ -122,12 +131,27 @@ function computeSignal(args: {
   if (!Number.isFinite(priceNum)) return null; // giá cửa nghiêng không parse được → market đóng → ẩn
 
   const side: 'tai' | 'xiu' = leanTai ? 'tai' : 'xiu';
-  // TIN THỊ TRƯỜNG HƠN qua BIÊN: gate tự tin theo P_model (để CÓ ra kèo), nhưng edge phải ≥12% so với
-  // xác suất thị trường mới VÀO → chống value-bet overconfident mà không giấu hết kèo (bug blend cũ).
-  const pMarket = malayToProb(priceNum);
+  // TIN THỊ TRƯỜNG HƠN qua BIÊN: gate tự tin theo P_model (để CÓ ra kèo), nhưng edge phải ≥ BUFFER_EV
+  // (6%, H2 = 10%) so với xác suất thị trường ĐÃ DE-VIG mới VÀO → chống value-bet overconfident mà
+  // không giấu hết kèo (bug blend cũ).
+  // §3: DE-VIG — chuẩn hoá implied 2 cửa để bỏ vig trước khi tính biên (edge).
+  // pMarket = impSide / (impOver + impUnder). Thiếu/parse lỗi 1 cửa → fallback implied 1 cửa (như cũ).
+  const parseP = (raw: string | null | undefined): number => {
+    if (raw == null || raw === '') return NaN;
+    const v = Number(raw);
+    return Number.isFinite(v) ? malayToProb(v) : NaN;
+  };
+  const impOver = parseP(args.overRaw);
+  const impUnder = parseP(args.underRaw);
+  const impSide = leanTai ? impOver : impUnder;
+  const sum = impOver + impUnder;
+  const pMarket =
+    Number.isFinite(impOver) && Number.isFinite(impUnder) && sum > 0
+      ? impSide / sum
+      : malayToProb(priceNum); // fallback: raw single-side implied (hành vi cũ)
   const p = pModel;
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
-  const edgeProb = p - pMarket; // biên bất đồng so với thị trường (buffer đã nâng 12%)
+  const edgeProb = p - pMarket; // biên so với thị trường đã de-vig (buffer 6% / H2 10%)
 
   // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng tự tin P≥70% → KHÔNG suggest vào cửa nào.
   if (p < P_MIN_VAO) {
@@ -280,7 +304,9 @@ export default function RankingLive() {
     let alive = true;
 
     async function poll() {
-      if (typeof document !== 'undefined' && document.hidden) return; // 4G: ngừng poll khi tab ẩn / màn tắt
+      // 4G: ngừng poll khi tab ẩn / màn tắt — TRỪ khi user đã bật noti (ghi bàn / hết H1):
+      // noti chỉ bắn TRONG poll, nên tab ẩn mà vẫn muốn noti thì buộc phải poll nền (chấp nhận tốn pin).
+      if (typeof document !== 'undefined' && document.hidden && !osNotiGoalRef.current && !osNotiHTRef.current) return;
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',
@@ -679,6 +705,12 @@ export default function RankingLive() {
     } else {
       // H2: dùng thẳng kèo TOÀN TRẬN (ftTotals + line FT thật + tổng hiện tại) — trực quan, KHÔNG cần h1Final.
       if (ftTotals.length < N_MIN) return ph(`— chưa đủ đối đầu (n<${N_MIN})`);
+      // §5 GUARD phá trần H2 (đối xứng H1): tổng cả trận vượt max lịch sử FT nhưng CHƯA tới line FT
+      // → lệch quy luật, KHÔNG ra kèo. Nếu đã vượt line (scored>line) → computeSignal override, guard nhường.
+      const lineFt = parseLine(m.ouLines?.[0]?.line)?.lineVal;
+      if (scoredNow > h1Ceiling(ftTotals) && !(lineFt != null && scoredNow > lineFt)) {
+        return breakRow('h2');
+      }
       totals = ftTotals;
       scored = scoredNow;                     // tổng bàn CẢ TRẬN hiện tại (line FT không trừ gì)
       lineRaw = m.ouLines?.[0]?.line;
