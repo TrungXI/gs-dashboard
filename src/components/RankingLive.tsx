@@ -52,10 +52,10 @@ export default function RankingLive() {
     localStorage.setItem('gs_h2h_limit', String(n));
   }
   // Kiểu hiển thị list: 'live' = Tài/Xỉu LIVE theo hiệp (H2/H1), 'h2h' = Tài/Xỉu
-  // LỊCH SỬ đối đầu cặp đó (FT/H1, từ /api/gs-h2h-pair). Mặc định 'live', nhớ localStorage.
-  const [rankMode, setRankMode] = useState<'live' | 'h2h'>('live');
+  // LỊCH SỬ đối đầu cặp đó (FT/H1, từ /api/gs-h2h-pair). Mặc định 'h2h' (Đối kháng), nhớ localStorage.
+  const [rankMode, setRankMode] = useState<'live' | 'h2h'>('h2h');
   useEffect(() => {
-    if (localStorage.getItem('gs_rank_view_mode') === 'h2h') setRankMode('h2h');
+    if (localStorage.getItem('gs_rank_view_mode') === 'live') setRankMode('live');
   }, []);
   function toggleRankMode() {
     setRankMode((prev) => {
