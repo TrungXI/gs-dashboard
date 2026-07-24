@@ -49,16 +49,6 @@ function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; 
   return { lineVal: v, isQuarter: false, loLine: v, hiLine: v };
 }
 
-// Quy line FT về hệ HIỆP 2: lineH2 = lineFT − tổng bàn H1 cuối (§3.2). Giữ dạng quarter
-// ("2.5-3" → trừ cả 2 mức) để parseLine ở computeSignal vẫn nội suy 50/50 đúng.
-// Trả string để tái dùng parseLine; null khi line rỗng/không parse được.
-function adjustLineH2(raw: string | null | undefined, h1FinalTotal: number): string | null {
-  const parsed = parseLine(raw);
-  if (!parsed) return null;
-  if (parsed.isQuarter) return `${parsed.loLine - h1FinalTotal}-${parsed.hiLine - h1FinalTotal}`;
-  return String(parsed.lineVal - h1FinalTotal);
-}
-
 // Xác suất Malay hoà vốn ngụ ý bởi giá m (đảo của implied): m>0 → 1/(1+m); m<0 → |m|/(1+|m|).
 function malayToProb(m: number): number {
   if (m === 0) return 0.5;
@@ -561,7 +551,7 @@ export default function RankingLive() {
           {/* Dòng 3 (dưới): 2 box số liệu % Tài/Xỉu LỊCH SỬ đối đầu (FT/H1). */}
           <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
           {/* Dòng gợi ý Tài/Xỉu deterministic — tính inline mỗi 2s (§5). */}
-          <TxSuggestionRow m={m} activeMarket={activeMarket} h1Final={h1Final} />
+          <TxSuggestionRow m={m} activeMarket={activeMarket} />
         </div>
       );
   }
@@ -644,7 +634,7 @@ export default function RankingLive() {
 
   // Dòng gợi ý Tài/Xỉu (EMPIRICAL, deterministic). Tính INLINE mỗi render 2s từ tỉ số +
   // phân phối tổng bàn ĐĐ HIỆN TẠI → có bàn vào là verdict tự đổi (không memo, không cache theo eventId).
-  function TxSuggestionRow({ m, activeMarket, h1Final }: { m: GsLiveMatch; activeMarket: 'ft' | 'h1' | null; h1Final?: { home: number; away: number } }) {
+  function TxSuggestionRow({ m, activeMarket }: { m: GsLiveMatch; activeMarket: 'ft' | 'h1' | null }) {
     // Placeholder mờ để MỌI trận đều có dòng (bật tất cả các trận) — không ẩn hẳn.
     const phBox = 'mt-1 flex items-center justify-center text-[11px] font-normal text-[#4b5563]';
     const ph = (text: string) => <div className={phBox}>{text}</div>;
@@ -653,9 +643,9 @@ export default function RankingLive() {
     const st = pairByEvent.get(m.eventId);
     if (!st || st.status !== 'ready') return ph('⏳ đang tải đối đầu…');
 
-    const lowConf = activeMarket === 'ft'; // FT khi đang H2 = leg H2 (suy ra) → độ tin thấp
-    const tip = lowConf ? 'H2 ước lượng (FT−H1), độ tin thấp' : undefined;
-    const approx = lowConf ? '≈ ' : ''; // nhãn ước lượng cho H2 leg
+    const lowConf = false; // H2 giờ dùng thẳng kèo TOÀN TRẬN (không còn "ước lượng FT−H1")
+    const tip: string | undefined = undefined;
+    const approx = '';
     const container = 'mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-0.5 text-[13px] md:text-[14px] font-semibold tabular-nums';
     // Lệch quy luật (phá trần lịch sử): màu xám-vàng cảnh báo, KHÔNG ra kèo (§4.4).
     const breakRow = (scope: 'h1' | 'h2') => (
@@ -689,16 +679,11 @@ export default function RankingLive() {
       overRaw = m.ouH1Lines?.[0]?.over;
       underRaw = m.ouH1Lines?.[0]?.under;
     } else {
-      // H2 leg: cần ĐỦ mảng đồng bộ (ft/h1 length bằng nhau) + có mốc cuối H1 (h1Final).
+      // H2: dùng thẳng kèo TOÀN TRẬN (ftTotals + line FT thật + tổng hiện tại) — trực quan, KHÔNG cần h1Final.
       if (ftTotals.length < N_MIN) return ph(`— chưa đủ đối đầu (n<${N_MIN})`);
-      if (!h1Final) return ph('— chờ mốc cuối H1');
-      const h1FinalTotal = h1Final.home + h1Final.away;
-      // GUARD phá trần H2 (§4.3): H1 đã kết & tổng H1 > max lịch sử → empirical H2 hết tin → lệch quy luật.
-      if (h1FinalTotal > h1Ceiling(h1Totals)) return breakRow('h2');
-      // Phân phối bàn HIỆP 2 lịch sử (đồng bộ index → đúng trận). Line & scored quy về hệ H2.
-      totals = ftTotals.map((ft, i) => ft - h1Totals[i]);
-      scored = Math.max(0, scoredNow - h1FinalTotal); // bàn đã ghi trong H2 (clamp ≥0)
-      lineRaw = adjustLineH2(m.ouLines?.[0]?.line, h1FinalTotal); // lineH2 = lineFT − tổng bàn H1 cuối
+      totals = ftTotals;
+      scored = scoredNow;                     // tổng bàn CẢ TRẬN hiện tại (line FT không trừ gì)
+      lineRaw = m.ouLines?.[0]?.line;
       overRaw = m.ouLines?.[0]?.over;
       underRaw = m.ouLines?.[0]?.under;
     }
