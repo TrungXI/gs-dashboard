@@ -137,8 +137,9 @@ function computeSignal(args: {
   const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
 
   if (edgeProb >= buffer && priceEnterable) {
-    // TÀI đỡ rủi ro: chỉ VÀO khi line ≤ TAI_LINE_MAX. Line cao (1.75…) → chờ line tụt về, không VÀO ngay.
-    if (side === 'tai' && parsed.lineVal > TAI_LINE_MAX) {
+    // TÀI đỡ rủi ro: chỉ VÀO khi CÒN CẦN ≤ TAI_LINE_MAX bàn nữa (needed = line − tỉ số hiện tại).
+    // Vd line 1.5 mà đã 1 bàn → cần 0.5 → VÀO. Cần nhiều hơn (line cao, chưa có bàn) → chờ.
+    if (side === 'tai' && parsed.lineVal - args.scored > TAI_LINE_MAX) {
       return { kind: 'cho', side, waitPrice: 0, waitLine: TAI_LINE_MAX, pct: p, lowConf: args.lowConf };
     }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
@@ -190,12 +191,6 @@ export default function RankingLive() {
     mountedRef.current = true;
     return () => { mountedRef.current = false; };
   }, []);
-  // KHÓA 1 KÈO / HIỆP: key = `${eventId}:${market}` → một khi ra VÀO thì giữ nguyên cửa tới hết hiệp,
-  // không đẻ kèo ngược (chỉ báo thắng/thua/rủi ro). H1 và H2 là 2 key riêng.
-  const keoLockRef = useRef<Map<string, { side: 'tai' | 'xiu'; price: string; lineStr: string; lineVal: number; atScore: number }>>(new Map());
-  const halfSideRef = useRef<Map<string, 'tai' | 'xiu'>>(new Map()); // chiều đã chốt cho hiệp → chống flip Xỉu↔Tài
-  const wonLineRef = useRef<Map<string, number>>(new Map());          // line CAO nhất đã THẮNG → nhồi chỉ trên line cao hơn
-  const winCountRef = useRef<Map<string, number>>(new Map());         // số lần ăn trong hiệp → hiện dấu tích ✓ bên trái
 
   // Nhịp retry cho trận lỗi tải đối đầu — quét lại đều đặn, đừng để kẹt "Không tải được"/empty.
   const [pairRetryTick, setPairRetryTick] = useState(0);
@@ -694,53 +689,13 @@ export default function RankingLive() {
     const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw });
     if (!sig) return ph('— chưa có line kèo'); // thiếu line/giá → placeholder (KHÔNG show VÀO khi thiếu số liệu)
 
-    // ── KHÓA 1 KÈO/HIỆP + NHỒI SAU KHI ĂN ──────────────────────────────
-    // 1 hiệp KHÔNG flip Xỉu↔Tài (halfSide chốt chiều). Kèo Tài ĂN (tổng vượt line) → +1 dấu tích ✓ (bên trái),
-    // mở khóa để dò kèo NHỒI mới cùng chiều trên line CAO hơn. Xỉu: giữ tới hết hiệp (chốt ở cuối hiệp).
-    const lockKey = `${m.eventId}:${activeMarket}`;
-    // 1) Chốt ĂN kèo Tài đang khóa → cộng dấu tích, ghi line đã ăn, mở khóa.
-    const curLock = keoLockRef.current.get(lockKey);
-    if (curLock && curLock.side === 'tai' && scored > curLock.lineVal) {
-      winCountRef.current.set(lockKey, (winCountRef.current.get(lockKey) ?? 0) + 1);
-      wonLineRef.current.set(lockKey, Math.max(wonLineRef.current.get(lockKey) ?? -Infinity, curLock.lineVal));
-      keoLockRef.current.delete(lockKey);
-    }
-    const wins = winCountRef.current.get(lockKey) ?? 0;
-    const wonLine = wonLineRef.current.get(lockKey) ?? -Infinity;
-    const halfSide = halfSideRef.current.get(lockKey);
-    // 2) Khóa kèo MỚI (nhồi): cùng chiều đã chốt + line CAO hơn line đã ăn.
-    if (sig.kind === 'vao' && !keoLockRef.current.has(lockKey)) {
-      const lv = parseLine(lineRaw)?.lineVal ?? 0;
-      if ((!halfSide || halfSide === sig.side) && lv > wonLine) {
-        keoLockRef.current.set(lockKey, { side: sig.side, price: sig.price, lineStr: sig.line, lineVal: lv, atScore: scored });
-        if (!halfSide) halfSideRef.current.set(lockKey, sig.side);
-      }
-    }
-    const winMark = wins > 0
-      ? <span className="text-[15px] md:text-[16px] font-extrabold text-[#4ade80]">{'✓'.repeat(Math.min(wins, 5))}</span>
-      : null;
-    const lock = keoLockRef.current.get(lockKey);
-    if (lock) {
-      const tai = lock.side === 'tai';
-      let status: string; let sColor: string;
-      if (!tai && scored > lock.lineVal) { status = '✗ THUA'; sColor = '#fb7185'; }
-      else if (tai) { status = `cần +${Math.max(1, Math.ceil(lock.lineVal - scored))} bàn`; sColor = '#9aa4b2'; }
-      else { status = scored > lock.atScore ? '⚠ rủi ro (có bàn)' : '✓ đang giữ'; sColor = scored > lock.atScore ? '#d4a72c' : '#4ade80'; }
+    // REALTIME thuần: mỗi poll hiện verdict hiện tại (có bàn/đổi số là verdict tự đổi). KHÔNG khóa, không lưu.
+    if (sig.kind === 'vao') {
+      const tai = sig.side === 'tai';
       return (
         <div className={container} title={tip} style={{ color: tai ? '#4ade80' : '#fb7185' }}>
-          {winMark}
-          <span>{approx}⚡ {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(lock.price).toFixed(2)}</span></span>
-          <span className="text-[13px] md:text-[14px] font-bold" style={{ color: sColor }}>{status}</span>
-          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(line {lock.lineStr})</span>
-        </div>
-      );
-    }
-    // Đã ăn ≥1 kèo trong hiệp nhưng chưa có kèo nhồi mới → hiện dấu tích + đang dò.
-    if (wins > 0) {
-      return (
-        <div className={container} title={tip} style={{ color: '#4ade80' }}>
-          {winMark}
-          <span className="text-[13px] md:text-[14px] font-semibold">đã ăn {wins} · dò kèo nhồi…</span>
+          <span>{approx}⚡ VÀO {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(sig.price).toFixed(2)}</span></span>
+          <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}% · line {sig.line})</span>
         </div>
       );
     }
