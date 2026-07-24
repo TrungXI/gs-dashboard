@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import type React from 'react';
 import type { Match } from '../types/match';
 import { resultFor } from '../lib/stats';
+import { notiOnce } from '../lib/notiDedup';
 import { todayDayOfWeek, todayStats, bestAndWorstDay, DAY_LABELS_FULL, type DayStats } from '../lib/dayStats';
 import { TypeBadge, ResultTag } from './badges';
 import { LoadingState } from './Spinner';
@@ -271,6 +272,7 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
     const allowed = kind === 'goal' ? osNotiGoalRef.current : osNotiHTRef.current;
     if (!allowed) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (eventId != null && !notiOnce(`${kind}:${eventId}:${body.split('\n')[0]}`)) return; // chống noti trùng (nhiều nguồn/race)
     const n = new Notification(title, { body, silent: false });
     if (eventId != null) {
       n.onclick = () => {

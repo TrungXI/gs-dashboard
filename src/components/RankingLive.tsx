@@ -7,6 +7,7 @@ import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
 import { pct } from './H2HMatrix';
 import MatchDetailDrawer from './MatchDetailDrawer';
 import { Spinner } from './Spinner';
+import { notiOnce } from '../lib/notiDedup';
 
 // Kết quả fetch /api/gs-h2h-pair cho 1 trận. 'loading' | 'error' | dữ liệu H2H.
 type PairState =
@@ -245,6 +246,7 @@ export default function RankingLive() {
     const allowed = kind === 'goal' ? osNotiGoalRef.current : osNotiHTRef.current;
     if (!allowed) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (eventId != null && !notiOnce(`${kind}:${eventId}:${body.split('\n')[0]}`)) return; // chống noti trùng (nhiều nguồn/race)
     const n = new Notification(title, { body, silent: false });
     if (eventId != null) {
       n.onclick = () => {
