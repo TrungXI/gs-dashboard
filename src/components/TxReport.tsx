@@ -72,15 +72,6 @@ function KqCell({ result, pnl }: { result: TxReportRow['result']; pnl: number | 
   return <span style={{ color: '#9ca3af' }}>⏳</span>;
 }
 
-function NhoiBadge({ kind, prevLine }: { kind: 'primary' | 'nhoi'; prevLine: number | null }) {
-  if (kind !== 'nhoi') return <span className="text-[#555]">—</span>;
-  return (
-    <span className="rounded bg-[#38bdf8]/15 border border-[#38bdf8]/40 px-1.5 py-0.5 text-[10px] font-semibold text-[#38bdf8]">
-      🔁 nhồi (&gt;{prevLine ?? '—'})
-    </span>
-  );
-}
-
 export default function TxReport() {
   const [selected, setSelected] = useState<string>('all'); // '' = latest (server default)
   const [data, setData] = useState<TxReportResponse | null>(null);
@@ -162,9 +153,6 @@ export default function TxReport() {
                     <th className="px-3 py-2 font-semibold">W/L/P</th>
                     <th className="px-3 py-2 font-semibold">WinRate</th>
                     <th className="px-3 py-2 font-semibold">PnL</th>
-                    <th className="px-3 py-2 font-semibold">+Nhồi</th>
-                    <th className="px-3 py-2 font-semibold">WinRate (nhồi)</th>
-                    <th className="px-3 py-2 font-semibold">PnL (nhồi)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -174,11 +162,8 @@ export default function TxReport() {
                       className={`border-b border-[#222] ${s.calcVersion === selected ? 'bg-[#38bdf8]/10' : ''}`}
                     >
                       <td className="px-3 py-2 font-semibold text-white">{s.calcVersion}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{s.primaryOnly.bets}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{wlp(s.primaryOnly)}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{winRatePct(s.primaryOnly.winRate)}</td>
-                      <td className="px-3 py-2 font-semibold" style={{ color: pnlColor(s.primaryOnly.pnl) }}>{pnlStr(s.primaryOnly.pnl)}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{s.nhoiOnly.bets}</td>
+                      <td className="px-3 py-2 text-[#bbb]">{s.withNhoi.bets}</td>
+                      <td className="px-3 py-2 text-[#bbb]">{wlp(s.withNhoi)}</td>
                       <td className="px-3 py-2 text-[#bbb]">{winRatePct(s.withNhoi.winRate)}</td>
                       <td className="px-3 py-2 font-semibold" style={{ color: pnlColor(s.withNhoi.pnl) }}>{pnlStr(s.withNhoi.pnl)}</td>
                     </tr>
@@ -188,23 +173,17 @@ export default function TxReport() {
             </div>
           </div>
 
-          {/* ── Tổng (version đang chọn): primary vs +nhồi ── */}
+          {/* ── Tổng (version đang chọn): tính chung tất cả kèo ── */}
           {selAgg && (
-            <div className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-3">
-              {([
-                ['Primary', selAgg.primaryOnly],
-                ['Có nhồi', selAgg.withNhoi],
-              ] as [string, TxAggLine][]).map(([label, a]) => (
-                <div key={label} className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3">
-                  <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#777]">{label}</div>
-                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] tabular-nums">
-                    <span className="text-[#888]">Kèo <span className="font-bold text-white">{a.bets}</span></span>
-                    <span className="text-[#888]">W/L/P <span className="font-bold text-white">{wlp(a)}</span></span>
-                    <span className="text-[#888]">WinRate <span className="font-bold text-white">{winRatePct(a.winRate)}</span></span>
-                    <span className="text-[#888]">PnL <span className="font-bold" style={{ color: pnlColor(a.pnl) }}>{pnlStr(a.pnl)}</span></span>
-                  </div>
+            <div className="mb-6">
+              <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3">
+                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] tabular-nums">
+                  <span className="text-[#888]">Kèo <span className="font-bold text-white">{selAgg.withNhoi.bets}</span></span>
+                  <span className="text-[#888]">W/L/P <span className="font-bold text-white">{wlp(selAgg.withNhoi)}</span></span>
+                  <span className="text-[#888]">WinRate <span className="font-bold text-white">{winRatePct(selAgg.withNhoi.winRate)}</span></span>
+                  <span className="text-[#888]">PnL <span className="font-bold" style={{ color: pnlColor(selAgg.withNhoi.pnl) }}>{pnlStr(selAgg.withNhoi.pnl)}</span></span>
                 </div>
-              ))}
+              </div>
             </div>
           )}
 
@@ -232,12 +211,11 @@ export default function TxReport() {
                       <th className="px-3 py-2 font-semibold">P</th>
                       <th className="px-3 py-2 font-semibold">Tổng cuối</th>
                       <th className="px-3 py-2 font-semibold">KQ</th>
-                      <th className="px-3 py-2 font-semibold">Nhồi</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} className={`border-b border-[#222] ${r.kind === 'nhoi' ? 'bg-[#38bdf8]/[.04]' : ''}`}>
+                      <tr key={r.id} className="border-b border-[#222]">
                         <td className="px-3 py-2 text-[#bbb]">{vnTime(r.entryAt)}</td>
                         <td className="px-3 py-2">
                           <span style={{ color: '#4ade80' }}>{r.homeTeam}</span>
@@ -250,7 +228,6 @@ export default function TxReport() {
                         <td className="px-3 py-2 text-[#bbb]">{Math.round(r.pModel * 100)}%</td>
                         <td className="px-3 py-2 text-[#bbb]">{r.finalTotal ?? '—'}</td>
                         <td className="px-3 py-2 font-semibold"><KqCell result={r.result} pnl={r.pnl} /></td>
-                        <td className="px-3 py-2"><NhoiBadge kind={r.kind} prevLine={r.prevLine} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -262,7 +239,7 @@ export default function TxReport() {
                 {rows.map((r) => (
                   <div
                     key={r.id}
-                    className={`rounded-lg border p-3 ${r.kind === 'nhoi' ? 'border-[#38bdf8]/40 bg-[#38bdf8]/[.06] ml-3' : 'border-[#2a2a2a] bg-[#141414]'}`}
+                    className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 text-[13px] font-semibold truncate">
@@ -281,7 +258,6 @@ export default function TxReport() {
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] tabular-nums">
                       <span className="text-[#888]">Tổng cuối <span className="text-[#bbb]">{r.finalTotal ?? '—'}</span></span>
                       <span className="font-semibold"><KqCell result={r.result} pnl={r.pnl} /></span>
-                      {r.kind === 'nhoi' && <NhoiBadge kind={r.kind} prevLine={r.prevLine} />}
                     </div>
                   </div>
                 ))}
