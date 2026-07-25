@@ -12,9 +12,9 @@ interface TxReportRow {
   line: number; lineRaw: string | null; price: number; pModel: number; edge: number | null;
   kind: 'primary' | 'nhoi'; prevLine: number | null;
   scoredAtEntry: number; finalTotal: number | null;
-  result: 'win' | 'lose' | 'push' | null; pnl: number | null;
+  result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null; pnl: number | null;
 }
-interface TxAggLine { bets: number; win: number; lose: number; push: number; winRate: number | null; pnl: number; }
+interface TxAggLine { bets: number; win: number; halfWin: number; lose: number; halfLose: number; push: number; winRate: number | null; pnl: number; }
 interface TxVersionAgg {
   calcVersion: string;
   primaryOnly: TxAggLine;   // kind='primary' only
@@ -40,6 +40,12 @@ function vnTime(iso: string): string {
 }
 
 const winRatePct = (wr: number | null): string => (wr == null ? '—' : `${Math.round(wr * 100)}%`);
+// W/L/P kèm nửa-ăn/nửa-thua (chỉ hiện ½ khi >0): "3+1½ / 2 / 0"
+const wlp = (a: { win: number; halfWin: number; lose: number; halfLose: number; push: number }): string => {
+  const w = a.halfWin ? `${a.win}+${a.halfWin}½` : `${a.win}`;
+  const l = a.halfLose ? `${a.lose}+${a.halfLose}½` : `${a.lose}`;
+  return `${w} / ${l} / ${a.push}`;
+};
 const pnlStr = (v: number): string => (v > 0 ? `+${v.toFixed(2)}` : v.toFixed(2));
 const pnlColor = (v: number): string => (v > 0 ? '#4ade80' : v < 0 ? '#fb7185' : '#8a8a8a');
 
@@ -54,10 +60,14 @@ function KeoLabel({ market, side }: { market: 'h1' | 'ft'; side: 'tai' | 'xiu' }
   );
 }
 
-// ── KQ cell (✅/❌/➖/⏳ + pnl) ────────────────────────────────────────────────
+// ── KQ cell (✅/½✅/❌/½❌/➖/⏳ + pnl thật) ───────────────────────────────────
 function KqCell({ result, pnl }: { result: TxReportRow['result']; pnl: number | null }) {
-  if (result === 'win') return <span style={{ color: '#4ade80' }}>✅ +{(pnl ?? 0).toFixed(2)}</span>;
-  if (result === 'lose') return <span style={{ color: '#fb7185' }}>❌ −1</span>;
+  const p = pnl ?? 0;
+  const sg = (v: number) => (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)); // pnl thật (Malay âm: thua < 1u)
+  if (result === 'win') return <span style={{ color: '#4ade80' }}>✅ {sg(p)}</span>;
+  if (result === 'half-win') return <span style={{ color: '#86efac' }}>½✅ {sg(p)}</span>;
+  if (result === 'lose') return <span style={{ color: '#fb7185' }}>❌ {sg(p)}</span>;
+  if (result === 'half-lose') return <span style={{ color: '#fda4af' }}>½❌ {sg(p)}</span>;
   if (result === 'push') return <span style={{ color: '#8a8a8a' }}>➖ 0</span>;
   return <span style={{ color: '#9ca3af' }}>⏳</span>;
 }
@@ -165,7 +175,7 @@ export default function TxReport() {
                     >
                       <td className="px-3 py-2 font-semibold text-white">{s.calcVersion}</td>
                       <td className="px-3 py-2 text-[#bbb]">{s.primaryOnly.bets}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{s.primaryOnly.win}/{s.primaryOnly.lose}/{s.primaryOnly.push}</td>
+                      <td className="px-3 py-2 text-[#bbb]">{wlp(s.primaryOnly)}</td>
                       <td className="px-3 py-2 text-[#bbb]">{winRatePct(s.primaryOnly.winRate)}</td>
                       <td className="px-3 py-2 font-semibold" style={{ color: pnlColor(s.primaryOnly.pnl) }}>{pnlStr(s.primaryOnly.pnl)}</td>
                       <td className="px-3 py-2 text-[#bbb]">{s.nhoiOnly.bets}</td>
@@ -189,7 +199,7 @@ export default function TxReport() {
                   <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-[#777]">{label}</div>
                   <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] tabular-nums">
                     <span className="text-[#888]">Kèo <span className="font-bold text-white">{a.bets}</span></span>
-                    <span className="text-[#888]">W/L/P <span className="font-bold text-white">{a.win}/{a.lose}/{a.push}</span></span>
+                    <span className="text-[#888]">W/L/P <span className="font-bold text-white">{wlp(a)}</span></span>
                     <span className="text-[#888]">WinRate <span className="font-bold text-white">{winRatePct(a.winRate)}</span></span>
                     <span className="text-[#888]">PnL <span className="font-bold" style={{ color: pnlColor(a.pnl) }}>{pnlStr(a.pnl)}</span></span>
                   </div>
