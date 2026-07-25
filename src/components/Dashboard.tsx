@@ -240,7 +240,7 @@ export default function Dashboard({
   const navItems: [View, string, string][] = [
     ['data', '📋', 'GS Dữ liệu'],
     ['gs-live', '🔴', 'GS Live'],
-    ['report', '🏆', 'Xếp hạng'],
+    ['report', '🎯', 'Tài Xỉu Live'],
     ['match-analysis', '📈', 'Phân Tích Kèo'],
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)

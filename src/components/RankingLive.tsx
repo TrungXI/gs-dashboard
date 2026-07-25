@@ -160,8 +160,9 @@ function computeSignal(args: {
   const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
 
   if (edgeProb >= buffer && priceEnterable) {
-    // TÀI đỡ rủi ro: chỉ VÀO khi line ≤ TAI_LINE_MAX (TUYỆT ĐỐI, về version cũ). Line cao (1.75…) → chờ line tụt về.
-    if (side === 'tai' && parsed.lineVal > TAI_LINE_MAX) {
+    // TÀI đỡ rủi ro: chỉ VÀO khi CÒN CẦN ≤ TAI_LINE_MAX bàn (needed = line − tỉ số HIỆN TẠI).
+    // Vd H2 1-0 line 1.5 → cần 0.5 → VÀO ngay (KHÔNG dùng line tuyệt đối, bug chờ oan ở H2).
+    if (side === 'tai' && parsed.lineVal - args.scored > TAI_LINE_MAX) {
       return { kind: 'cho', side, waitPrice: 0, waitLine: TAI_LINE_MAX, pct: p, lowConf: args.lowConf };
     }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
@@ -738,7 +739,7 @@ export default function RankingLive() {
         // Chờ line Tài tụt về ngưỡng an toàn (đỡ rủi ro).
         return (
           <div className={container} title={tip} style={{ color: '#9ca3af' }}>
-            <span>{approx}⏳ Chờ {tai ? 'Tài' : 'Xỉu'} — đợi line về ≤<span className="text-[15px] md:text-[16px] font-bold text-[#cbd5e1]">{sig.waitLine}</span> (đỡ rủi ro)</span>
+            <span>{approx}⏳ Chờ {tai ? 'Tài' : 'Xỉu'} — đợi còn cần ≤<span className="text-[15px] md:text-[16px] font-bold text-[#cbd5e1]">{sig.waitLine}</span> bàn (đỡ rủi ro)</span>
             <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}%)</span>
           </div>
         );
