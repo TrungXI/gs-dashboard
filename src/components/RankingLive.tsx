@@ -752,15 +752,26 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     // REALTIME thuần: mỗi poll hiện verdict hiện tại (có bàn/đổi số là verdict tự đổi). KHÔNG khóa, không lưu.
     if (sig.kind === 'vao') {
       const tai = sig.side === 'tai';
-      // CHẾ ĐỘ WINRATE CAO (v3): chỉ Tài; HT needed≤0.75 + chỉ ĐẦU TRẬN phút≤15 (data 78%); FT needed≤0.5.
-      const neededWr = (parseLine(lineRaw)?.lineVal ?? 0) - scored;
-      // Tài chỉ needed {0.5, 0.75}: HT cả 2, FT chỉ 0.5. + HT phút≤15.
-      const isHalf = Math.abs(neededWr - 0.5) < 1e-9;
-      const isQuarterHi = Math.abs(neededWr - 0.75) < 1e-9;
-      const neededOk = activeMarket === 'h1' ? (isHalf || isQuarterHi) : isHalf;
-      const htLate = activeMarket === 'h1' && m.minuteElapsed != null && m.minuteElapsed > 15;
-      if (!tai || !neededOk || htLate) {
-        return ph('— WR-cao: HT≤15p · needed {0.5,0.75}');
+      const lineVal = parseLine(lineRaw)?.lineVal ?? 0;
+      const neededWr = lineVal - scored;
+      const min = m.minuteElapsed;
+      let allowed = false;
+      if (tai) {
+        // TÀI {0.5,0.75}: HT cả 2, FT cả 2. Timing 0.75·HT≤15/FT≥16 · 0.5≥31.
+        const isHalf = Math.abs(neededWr - 0.5) < 1e-9;
+        const isQuarterHi = Math.abs(neededWr - 0.75) < 1e-9;
+        allowed = (isHalf || isQuarterHi) && min != null && (
+          (isQuarterHi && (activeMarket === 'h1' ? min <= 15 : min >= 16)) ||
+          (isHalf && min >= 31)
+        );
+      } else {
+        // XỈU: chỉ (S) ít-bàn + đầu hiệp ≤15p + giá ≥0.85 + line ≤2.5(H1)/4.5(FT).
+        const isS = m.homeTeam.includes('(S)');
+        const lineCap = activeMarket === 'h1' ? 2.5 : 4.5;
+        allowed = isS && min != null && min <= 15 && Number(sig.price) >= 0.85 && lineVal <= lineCap;
+      }
+      if (!allowed) {
+        return ph('— v3.1: Tài{0.5,0.75}·Xỉu(S)đầu≥0.85');
       }
       // DCA Xỉu: đã gãy ≥2 line Under trong hiệp này → dừng, không gợi ý Xỉu lần 3.
       if (!tai) {
