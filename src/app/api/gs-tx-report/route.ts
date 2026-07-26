@@ -32,6 +32,8 @@ export interface TxReportRow {
   kind: 'primary' | 'nhoi';
   prevLine: number | null;
   scoredAtEntry: number;
+  scoreHomeAtEntry: number | null;
+  scoreAwayAtEntry: number | null;
   finalTotal: number | null;
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: number | null;
@@ -60,7 +62,10 @@ export interface TxReportResponse {
   error?: string;
   versions: string[]; // all distinct calc_version, latest-first
   selectedVersion: string | 'all';
-  rows: TxReportRow[]; // detail, entry_at DESC, capped by limit
+  rows: TxReportRow[]; // detail, entry_at DESC, 1 trang (pageSize)
+  page: number; // 0-based
+  pageSize: number;
+  totalRows: number; // tổng số kèo (theo version filter) → tính số trang
   summaryByVersion: TxVersionAgg[]; // GROUP BY calc_version — always ALL versions
 }
 
@@ -71,6 +76,9 @@ const EMPTY_RESPONSE: TxReportResponse = {
   versions: [],
   selectedVersion: 'all',
   rows: [],
+  page: 0,
+  pageSize: 20,
+  totalRows: 0,
   summaryByVersion: [],
 };
 
@@ -135,6 +143,8 @@ interface TxDbRow {
   kind: 'primary' | 'nhoi';
   prev_line: string | number | null;
   scored_at_entry: number | string;
+  score_home_at_entry: number | string | null;
+  score_away_at_entry: number | string | null;
   final_total: number | string | null;
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: string | number | null;
@@ -158,6 +168,8 @@ function toRow(r: TxDbRow): TxReportRow {
     kind: r.kind,
     prevLine: r.prev_line == null ? null : Number(r.prev_line),
     scoredAtEntry: Number(r.scored_at_entry),
+    scoreHomeAtEntry: r.score_home_at_entry == null ? null : Number(r.score_home_at_entry),
+    scoreAwayAtEntry: r.score_away_at_entry == null ? null : Number(r.score_away_at_entry),
     finalTotal: r.final_total == null ? null : Number(r.final_total),
     result: r.result,
     pnl: r.pnl == null ? null : Number(r.pnl),
@@ -173,7 +185,9 @@ export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const versionParam = searchParams.get('version'); // specific | 'all' | null (=latest)
-    const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 200, 1), 1000);
+    const pageSize = Math.min(Math.max(Number(searchParams.get('limit')) || 20, 1), 100); // 20/trang
+    const page = Math.max(Number(searchParams.get('page')) || 0, 0);
+    const offset = page * pageSize;
 
     // 1) Distinct versions, latest (most-recent entry_at) first.
     const versionsRes = await pool.query<{ calc_version: string }>(
@@ -191,31 +205,41 @@ export async function GET(req: Request) {
     else if (versionParam && versions.includes(versionParam)) selectedVersion = versionParam;
     else selectedVersion = latest ?? 'all';
 
-    // 2) Detail rows — respect the version filter, ORDER BY entry_at DESC, capped by limit.
+    // 2) Detail rows — 1 TRANG (pageSize) theo version filter, ORDER BY entry_at DESC, OFFSET page.
+    //    + đếm tổng số kèo (theo filter) để tính số trang.
     let rowsRes;
+    let totalRes;
     if (selectedVersion === 'all') {
       rowsRes = await pool.query<TxDbRow>(
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
+                score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl
            FROM gs_tx_paper
            ORDER BY entry_at DESC
-           LIMIT $1`,
-        [limit],
+           LIMIT $1 OFFSET $2`,
+        [pageSize, offset],
       );
+      totalRes = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM gs_tx_paper`);
     } else {
       rowsRes = await pool.query<TxDbRow>(
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
+                score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC
-           LIMIT $2`,
-        [selectedVersion, limit],
+           LIMIT $2 OFFSET $3`,
+        [selectedVersion, pageSize, offset],
+      );
+      totalRes = await pool.query<{ n: string }>(
+        `SELECT COUNT(*)::text AS n FROM gs_tx_paper WHERE calc_version = $1`,
+        [selectedVersion],
       );
     }
     const rows = rowsRes.rows.map(toRow);
+    const totalRows = Number(totalRes.rows[0]?.n ?? 0);
 
     // 3) Aggregates — GROUP BY (calc_version, kind), ALWAYS all versions (drives compare table).
     //    Only graded legs (result IS NOT NULL) count toward win/lose/push/pnl.
@@ -263,6 +287,9 @@ export async function GET(req: Request) {
       versions,
       selectedVersion,
       rows,
+      page,
+      pageSize,
+      totalRows,
       summaryByVersion,
     } satisfies TxReportResponse);
   } catch (e) {

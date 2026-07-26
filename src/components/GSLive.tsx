@@ -48,8 +48,8 @@ export interface GsLiveMatch {
   suspended: boolean;
   hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
-  ouLines: { line: string | null; over: string | null; under: string | null }[];
-  ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
+  ouLines: { line: string | null; over: string | null; under: string | null; suspended?: boolean }[];
+  ouH1Lines: { line: string | null; over: string | null; under: string | null; suspended?: boolean }[];
   yellowHome: number;
   yellowAway: number;
   redHome: number;

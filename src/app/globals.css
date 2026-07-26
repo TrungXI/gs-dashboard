@@ -26,6 +26,51 @@ body {
   animation: toast-slide-in 0.22s ease-out;
 }
 
+/* ── Kèo Tài/Xỉu chưa settle (⏳): làm nổi bật ────────────────────────────── */
+/* @property cho phép animate góc conic mượt (Chrome / Safari 16.4+). */
+@property --tx-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes tx-spin { to { --tx-angle: 360deg; } }
+@keyframes tx-row-tint {
+  0%, 100% { background: rgba(56, 189, 248, 0.07); }
+  50%      { background: rgba(168, 85, 247, 0.11); }
+}
+
+/* Mobile card: viền tia chớp CHẠY vòng quanh (conic arc quay + mask chỉ chừa viền). */
+.tx-pending { position: relative; isolation: isolate; }
+.tx-pending::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;                       /* độ dày viền */
+  background: conic-gradient(from var(--tx-angle),
+    transparent 0deg 205deg,
+    #38bdf8 270deg,
+    #c084fc 320deg,
+    #f5d0fe 345deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: tx-spin 1.8s linear infinite;
+  pointer-events: none;
+}
+
+/* Desktop table row: tr không host được viền chạy → glow nhấp nháy cyan↔tím + accent trái. */
+.tx-pending-row > td { animation: tx-row-tint 1.8s ease-in-out infinite; }
+.tx-pending-row > td:first-child { box-shadow: inset 3px 0 0 0 #38bdf8; }
+
+/* Ai bật "giảm chuyển động" → tắt animation, giữ viền tĩnh cho vẫn phân biệt. */
+@media (prefers-reduced-motion: reduce) {
+  .tx-pending::before { animation: none; background: none; box-shadow: inset 0 0 0 1.5px #38bdf8aa; }
+  .tx-pending-row > td { animation: none; background: rgba(56, 189, 248, 0.08); }
+}
+
 /* Light theme — odds boxes */
 [data-theme="light"] .odds-home-box {
   background: #d1fae5;

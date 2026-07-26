@@ -11,7 +11,7 @@ interface TxReportRow {
   market: 'h1' | 'ft'; side: 'tai' | 'xiu';
   line: number; lineRaw: string | null; price: number; pModel: number; edge: number | null;
   kind: 'primary' | 'nhoi'; prevLine: number | null;
-  scoredAtEntry: number; finalTotal: number | null;
+  scoredAtEntry: number; scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null; finalTotal: number | null;
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null; pnl: number | null;
 }
 interface TxAggLine { bets: number; win: number; halfWin: number; lose: number; halfLose: number; push: number; winRate: number | null; pnl: number; }
@@ -25,7 +25,10 @@ interface TxReportResponse {
   ok: boolean;
   versions: string[];              // all distinct calc_version, latest-first
   selectedVersion: string | 'all';
-  rows: TxReportRow[];             // detail, entry_at DESC, capped by limit
+  rows: TxReportRow[];             // detail, entry_at DESC, 1 trang
+  page: number;                    // 0-based
+  pageSize: number;
+  totalRows: number;               // tổng kèo (theo filter) → số trang
   summaryByVersion: TxVersionAgg[]; // GROUP BY calc_version — always ALL versions
 }
 
@@ -46,6 +49,9 @@ const wlp = (a: { win: number; halfWin: number; lose: number; halfLose: number; 
   const l = a.halfLose ? `${a.lose}+${a.halfLose}½` : `${a.lose}`;
   return `${w} / ${l} / ${a.push}`;
 };
+// Tỉ số home–away lúc vào kèo. Kèo cũ (trước khi bot lưu cột này) → "- -".
+const entryScore = (r: { scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null }): string =>
+  r.scoreHomeAtEntry == null || r.scoreAwayAtEntry == null ? '- -' : `${r.scoreHomeAtEntry}-${r.scoreAwayAtEntry}`;
 const pnlStr = (v: number): string => (v > 0 ? `+${v.toFixed(2)}` : v.toFixed(2));
 const pnlColor = (v: number): string => (v > 0 ? '#4ade80' : v < 0 ? '#fb7185' : '#8a8a8a');
 
@@ -72,23 +78,40 @@ function KqCell({ result, pnl }: { result: TxReportRow['result']; pnl: number | 
   return <span style={{ color: '#9ca3af' }}>⏳</span>;
 }
 
+// Nhịp tự động refresh. 'auto' = mặc định, poll đều 5s lấy list mới nhất.
+type RefreshMode = 'off' | '5' | '10' | '15' | 'auto';
+const REFRESH_MODES: RefreshMode[] = ['off', '5', '10', '15', 'auto'];
+const AUTO_MS = 5000; // 'auto' = 5s cố định
+const refreshLabel = (m: RefreshMode): string =>
+  m === 'off' ? '⏸ Tắt' : m === 'auto' ? '⟳ Tự động (5s)' : `⟳ ${m}s`;
+
+// Chỉ lấy 20 kèo/trang (performance). version '' → server default = latest.
+const buildQuery = (version: string, pageArg: number): string => {
+  const p = new URLSearchParams();
+  if (version) p.set('version', version);
+  p.set('page', String(pageArg));
+  return `/api/gs-tx-report?${p.toString()}`;
+};
+
 export default function TxReport() {
   const [selected, setSelected] = useState<string>('all'); // '' = latest (server default)
+  const [page, setPage] = useState(0); // 0-based, trang bảng chi tiết
   const [data, setData] = useState<TxReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [refreshMode, setRefreshMode] = useState<RefreshMode>('auto');
 
-  const load = useCallback(async (version: string) => {
+  const load = useCallback(async (version: string, pageArg: number) => {
     setLoading(true);
     setError(null);
     try {
-      const q = version ? `?version=${encodeURIComponent(version)}` : '';
-      const res = await fetch(`/api/gs-tx-report${q}`, { cache: 'no-store' });
+      const res = await fetch(buildQuery(version, pageArg), { cache: 'no-store' });
       const json = (await res.json()) as TxReportResponse & { error?: string };
       if (!json.ok) throw new Error(json.error || 'Lỗi tải báo cáo');
       setData(json);
-      // Sync selector with the version the server actually resolved (latest → concrete).
+      // Sync selector với version server thực resolve (latest → concrete) + trang server trả về.
       setSelected(json.selectedVersion);
+      setPage(json.page);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setData(null);
@@ -97,18 +120,65 @@ export default function TxReport() {
     }
   }, []);
 
-  // Initial load = latest (empty version). Selector changes refetch.
-  useEffect(() => { load(''); }, [load]);
+  // Initial load = latest (empty version), trang 0.
+  useEffect(() => { load('', 0); }, [load]);
+
+  // Khôi phục nhịp refresh đã lưu (đọc trong effect → tránh hydration mismatch).
+  useEffect(() => {
+    const saved = localStorage.getItem('tx-refresh-mode');
+    if (saved && (REFRESH_MODES as string[]).includes(saved)) setRefreshMode(saved as RefreshMode);
+  }, []);
+  const onRefreshMode = (v: RefreshMode) => {
+    setRefreshMode(v);
+    localStorage.setItem('tx-refresh-mode', v);
+  };
+
+  // Auto-refresh — silent (không bật spinner, lỗi tạm giữ nguyên bảng cũ).
+  // Dùng setTimeout tự lên lịch: mode 'auto' tính delay từ chính data vừa fetch (còn ⏳ → nhanh).
+  useEffect(() => {
+    if (refreshMode === 'off') return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const delay = refreshMode === 'auto' ? AUTO_MS : Number(refreshMode) * 1000;
+    const tick = async () => {
+      try {
+        const res = await fetch(buildQuery(selected, page), { cache: 'no-store' });
+        const json = (await res.json()) as TxReportResponse & { error?: string };
+        if (!cancelled && json.ok) setData(json);
+      } catch {
+        /* giữ data cũ */
+      }
+      if (cancelled) return;
+      timer = setTimeout(tick, delay);
+    };
+    timer = setTimeout(tick, delay);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [refreshMode, selected, page]);
 
   const onSelect = (v: string) => {
     setSelected(v);
-    load(v);
+    setPage(0);
+    load(v, 0); // đổi version → về trang đầu
   };
 
   const versions = data?.versions ?? [];
   const summary = data?.summaryByVersion ?? [];
   const rows = data?.rows ?? [];
   const selAgg = summary.find((s) => s.calcVersion === selected);
+
+  // Phân trang bảng chi tiết (20/trang).
+  const pageSize = data?.pageSize ?? 20;
+  const totalRows = data?.totalRows ?? 0;
+  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+  const goPage = (p: number) => {
+    const np = Math.min(Math.max(p, 0), totalPages - 1);
+    if (np === page) return;
+    setPage(np);
+    load(selected, np);
+  };
 
   return (
     <div className="mx-auto w-full max-w-6xl">
@@ -123,6 +193,16 @@ export default function TxReport() {
           <option value="all" className="bg-[#111] text-white">Tất cả</option>
           {versions.map((v) => (
             <option key={v} value={v} className="bg-[#111] text-white">{v}</option>
+          ))}
+        </select>
+        <select
+          value={refreshMode}
+          onChange={(e) => onRefreshMode(e.target.value as RefreshMode)}
+          title="Nhịp tự cập nhật list. Tự động = 5s (mặc định). Tắt để đỡ băng thông."
+          className="rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
+        >
+          {REFRESH_MODES.map((m) => (
+            <option key={m} value={m} className="bg-[#111] text-white">{refreshLabel(m)}</option>
           ))}
         </select>
         {loading && <Spinner size={14} />}
@@ -190,6 +270,7 @@ export default function TxReport() {
           {/* ── Chi tiết kèo ── */}
           <div className="mb-2 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">
             Chi tiết {selected === 'all' ? '(tất cả version)' : selected}
+            <span className="ml-1 font-normal text-[#888]">· {totalRows} kèo · 20/trang</span>
           </div>
 
           {rows.length === 0 ? (
@@ -209,13 +290,14 @@ export default function TxReport() {
                       <th className="px-3 py-2 font-semibold">Line</th>
                       <th className="px-3 py-2 font-semibold">Giá</th>
                       <th className="px-3 py-2 font-semibold">P</th>
+                      <th className="px-3 py-2 font-semibold">Tỉ số vào</th>
                       <th className="px-3 py-2 font-semibold">Tổng cuối</th>
                       <th className="px-3 py-2 font-semibold">KQ</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} className="border-b border-[#222]">
+                      <tr key={r.id} className={`border-b border-[#222] ${r.result == null ? 'tx-pending-row' : ''}`}>
                         <td className="px-3 py-2 text-[#bbb]">{vnTime(r.entryAt)}</td>
                         <td className="px-3 py-2">
                           <span style={{ color: '#4ade80' }}>{r.homeTeam}</span>
@@ -226,6 +308,7 @@ export default function TxReport() {
                         <td className="px-3 py-2 text-[#bbb]">{r.lineRaw ?? r.line}</td>
                         <td className="px-3 py-2 text-[#bbb]">{r.price.toFixed(2)}</td>
                         <td className="px-3 py-2 text-[#bbb]">{Math.round(r.pModel * 100)}%</td>
+                        <td className="px-3 py-2 text-[#bbb] tabular-nums">{entryScore(r)}</td>
                         <td className="px-3 py-2 text-[#bbb]">{r.finalTotal ?? '—'}</td>
                         <td className="px-3 py-2 font-semibold"><KqCell result={r.result} pnl={r.pnl} /></td>
                       </tr>
@@ -239,7 +322,7 @@ export default function TxReport() {
                 {rows.map((r) => (
                   <div
                     key={r.id}
-                    className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3"
+                    className={`rounded-lg border border-[#2a2a2a] bg-[#141414] p-3 ${r.result == null ? 'tx-pending' : ''}`}
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0 text-[13px] font-semibold truncate">
@@ -254,6 +337,7 @@ export default function TxReport() {
                       <span className="text-[#888]">line <span className="text-[#bbb]">{r.lineRaw ?? r.line}</span></span>
                       <span className="text-[#888]">giá <span className="text-[#bbb]">{r.price.toFixed(2)}</span></span>
                       <span className="text-[#888]">P <span className="text-[#bbb]">{Math.round(r.pModel * 100)}%</span></span>
+                      <span className="text-[#888]">vào <span className="text-[#bbb]">{entryScore(r)}</span></span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] tabular-nums">
                       <span className="text-[#888]">Tổng cuối <span className="text-[#bbb]">{r.finalTotal ?? '—'}</span></span>
@@ -262,6 +346,22 @@ export default function TxReport() {
                   </div>
                 ))}
               </div>
+
+              {totalPages > 1 && (
+                <div className="mt-3 flex items-center justify-center gap-2 text-[12px]">
+                  <button
+                    onClick={() => goPage(page - 1)}
+                    disabled={page <= 0}
+                    className="rounded-lg border border-[#2a2a2a] bg-white/[.05] px-3 py-1.5 text-white hover:bg-white/[.1] disabled:cursor-not-allowed disabled:opacity-40"
+                  >← Trước</button>
+                  <span className="text-[#bbb] tabular-nums">Trang {page + 1} / {totalPages}</span>
+                  <button
+                    onClick={() => goPage(page + 1)}
+                    disabled={page >= totalPages - 1}
+                    className="rounded-lg border border-[#2a2a2a] bg-white/[.05] px-3 py-1.5 text-white hover:bg-white/[.1] disabled:cursor-not-allowed disabled:opacity-40"
+                  >Sau →</button>
+                </div>
+              )}
             </>
           )}
         </>

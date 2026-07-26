@@ -23,8 +23,8 @@ const LEAGUE_20P = 2125;
 // ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
 const P_MIN_VAO = 0.70;       // P≥70% cả 2 cửa mới VÀO (về version d40266c — bỏ siết Tài bất đối xứng)
-const PRICE_MIN_VAO = 0.70;   // giá Malay cửa vào phải >0.7 (dương payout tốt) HOẶC âm; khoảng (0,0.7] = dương nhỏ payout tệ → không suggest vào odd đó
-const TAI_LINE_MAX = 1.25;    // CHỈ VÀO TÀI khi line ≤ 1.25 (TUYỆT ĐỐI, về version cũ); line cao hơn (1.75…) → chờ line tụt về
+const PRICE_MIN_VAO = 0.70;   // nới lại 0.8→0.7 (bù volume); giá Malay cửa vào >0.7 HOẶC âm; (0,0.7] payout tệ → không vào
+const TAI_LINE_MAX = 0.75;    // VÀO TÀI khi needed ≤ 0.75 (chuẩn data); bù volume bằng giá 0.7 + Xỉu cả 2 hiệp; vẫn loại needed=1.0
 const RECENT_N = 10;          // CHỈ thống kê 10 trận đối đầu GẦN NHẤT (totals xếp mới→cũ → slice(0,10))
 const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị trường ≥6% mới VÀO (mức ra kèo thoải mái như bản gốc)
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
@@ -165,6 +165,10 @@ function computeSignal(args: {
     if (side === 'tai' && parsed.lineVal - args.scored > TAI_LINE_MAX) {
       return { kind: 'cho', side, waitPrice: 0, waitLine: TAI_LINE_MAX, pct: p, lowConf: args.lowConf };
     }
+    // Loại needed = 1.0 (đúng 1 trái nguyên) → KHÔNG vào Tài (chỉ nhận {0,0.25,0.5,0.75,1.25}).
+    if (side === 'tai' && Math.abs(parsed.lineVal - args.scored - 1.0) < 1e-9) {
+      return { kind: 'none', lowConf: args.lowConf };
+    }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
   }
   if (edgeProb < 0) {
@@ -179,6 +183,11 @@ function computeSignal(args: {
 
 const EMPTY_H2H = new Map<string, PairResult>();
 
+// Xỉu chỉ vào 1 lần/hiệp: nhớ line Xỉu ĐẦU TIÊN đã hiện "VÀO" theo `${eventId}:${market}`.
+// Khi line Xỉu đổi (bóng vào → line chạy) → KHÔNG gợi ý Xỉu nữa cho hiệp đó (không nhồi Xỉu).
+// Xoá khi trận hết live để không phình bộ nhớ. Tài không dùng map này (Tài nhồi theo bàn thắng).
+const xiuSeen = new Map<string, number[]>();
+
 function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string | null; color: string } {
   if (!m.isLive) {
     const waiting = nowMs < new Date(m.startTime).getTime();
@@ -190,13 +199,24 @@ function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string
   return { big: 'H1', small: `${min}'`, color: '#fbbf24' };
 }
 
-export default function RankingLive() {
+export default function RankingLive({ initialMatch = null }: { initialMatch?: number | null }) {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   // Cache lồng: limit (20/50/100) → (cặp đấu → kết quả). Cả 3 mức prefetch sẵn.
   const [h2hByLimit, setH2hByLimit] = useState<Map<number, Map<string, PairResult>>>(new Map());
   const [selected, setSelected] = useState<GsLiveMatch | null>(null);
+  // Deep-link từ Telegram (?view=tx&match=<eventId>) → tự mở drawer đối kháng của trận đó,
+  // ngay khi list live có trận khớp (chỉ 1 lần). Trận chưa/hết live → bỏ qua êm.
+  const deepLinkDone = useRef(false);
+  useEffect(() => {
+    if (deepLinkDone.current || initialMatch == null) return;
+    const m = matches.find((x) => x.eventId === initialMatch);
+    if (m) {
+      setSelected(m);
+      deepLinkDone.current = true;
+    }
+  }, [initialMatch, matches]);
   // Số trận đối đầu gần nhất để tính % — CỐ ĐỊNH 50 (đã bỏ filter 20/50/100).
   const h2hLimit = 50;
   // View gộp: mỗi trận hiện CẢ 2 hàng — hàng trên = Tài/Xỉu odds live theo hiệp
@@ -662,7 +682,14 @@ export default function RankingLive() {
     const phBox = 'mt-1 flex items-center justify-center text-[11px] font-normal text-[#4b5563]';
     const ph = (text: string) => <div className={phBox}>{text}</div>;
     // Không live / chưa vào hiệp (HT/Chờ/KT) → chưa có kèo để gợi ý.
-    if (!m.isLive || activeMarket === null) return ph('⏸ chưa vào kèo');
+    if (!m.isLive || activeMarket === null) {
+      xiuSeen.delete(`${m.eventId}:h1`); // trận hết live → reset bộ đếm gãy Xỉu
+      xiuSeen.delete(`${m.eventId}:ft`);
+      return ph('⏸ chưa vào kèo');
+    }
+    // Nhà cái KHOÁ kèo Tài/Xỉu (suspend) hoặc đóng cược → KHÔNG suggest (suggest mà không vào được = vô nghĩa).
+    const ouSel = activeMarket === 'h1' ? m.ouH1Lines?.[0] : m.ouLines?.[0];
+    if (m.bettingOpen === false || ouSel?.suspended) return ph('🔒 nhà cái khoá kèo');
     const st = pairByEvent.get(m.eventId);
     if (!st || st.status !== 'ready') return ph('⏳ đang tải đối đầu…');
 
@@ -725,8 +752,27 @@ export default function RankingLive() {
     // REALTIME thuần: mỗi poll hiện verdict hiện tại (có bàn/đổi số là verdict tự đổi). KHÔNG khóa, không lưu.
     if (sig.kind === 'vao') {
       const tai = sig.side === 'tai';
+      // CHẾ ĐỘ WINRATE CAO (v3): chỉ Tài; HT needed≤0.75 + chỉ ĐẦU TRẬN phút≤15 (data 78%); FT needed≤0.5.
+      const neededWr = (parseLine(lineRaw)?.lineVal ?? 0) - scored;
+      // Tài chỉ needed {0.5, 0.75}: HT cả 2, FT chỉ 0.5. + HT phút≤15.
+      const isHalf = Math.abs(neededWr - 0.5) < 1e-9;
+      const isQuarterHi = Math.abs(neededWr - 0.75) < 1e-9;
+      const neededOk = activeMarket === 'h1' ? (isHalf || isQuarterHi) : isHalf;
+      const htLate = activeMarket === 'h1' && m.minuteElapsed != null && m.minuteElapsed > 15;
+      if (!tai || !neededOk || htLate) {
+        return ph('— WR-cao: HT≤15p · needed {0.5,0.75}');
+      }
+      // DCA Xỉu: đã gãy ≥2 line Under trong hiệp này → dừng, không gợi ý Xỉu lần 3.
+      if (!tai) {
+        const key = `${m.eventId}:${activeMarket}`;
+        const seenLines = xiuSeen.get(key) ?? [];
+        const lv = parseLine(lineRaw)?.lineVal;
+        // Xỉu chỉ vào 1 lần/hiệp: đã hiện 1 line Xỉu rồi mà line đổi (bóng vào, line chạy) → KHÔNG vào thêm.
+        if (seenLines.length > 0 && !seenLines.includes(lv ?? NaN)) return ph('🛑 đã vào Xỉu hiệp này — không vào thêm');
+        if (seenLines.length === 0 && lv != null) xiuSeen.set(key, [lv]);
+      }
       return (
-        <div className={container} title={tip} style={{ color: tai ? '#4ade80' : '#fb7185' }}>
+        <div className={`${container} tx-pending rounded-lg px-2.5 py-1`} title={tip} style={{ color: tai ? '#4ade80' : '#fb7185' }}>
           <span>{approx}⚡ VÀO {tai ? 'TÀI' : 'XỈU'} · giá <span className="text-[17px] md:text-[19px] font-extrabold">{Number(sig.price).toFixed(2)}</span></span>
           <span className="text-[13px] md:text-[14px] font-normal text-[#9aa4b2]">(P~{Math.round(sig.pct * 100)}% · line {sig.line})</span>
         </div>

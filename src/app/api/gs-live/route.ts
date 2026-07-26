@@ -92,8 +92,8 @@ export interface GsLiveMatch {
   hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
   // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
-  ouLines: { line: string | null; over: string | null; under: string | null }[];
-  ouH1Lines: { line: string | null; over: string | null; under: string | null }[];
+  ouLines: { line: string | null; over: string | null; under: string | null; suspended: boolean }[];
+  ouH1Lines: { line: string | null; over: string | null; under: string | null; suspended: boolean }[];
   // Cards & corners from score object: '7'=yellow home, '8'=yellow away, '2'=red home, '3'=red away
   yellowHome: number;
   yellowAway: number;
@@ -260,8 +260,8 @@ function buildMatch(
     malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,
     hcLines: hcRaw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
     hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
-    ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
-    ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away })),
+    ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away, suspended: r.suspended })),
+    ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away, suspended: r.suspended })),
     yellowHome,
     yellowAway,
     redHome,

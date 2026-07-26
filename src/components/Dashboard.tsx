@@ -87,7 +87,7 @@ export default function Dashboard({
     deepLinkConsumed.current = true;
 
     const targetView: View | null =
-      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : null;
+      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : vParam === 'tx' ? 'report' : null;
     if (targetView) setView(targetView);
 
     const eventId = mParam ? Number(mParam) : NaN;
@@ -419,7 +419,7 @@ export default function Dashboard({
             )}
           </>
         ) : view === 'report' ? (
-          <RankingLive />
+          <RankingLive initialMatch={deepLinkMatch} />
         ) : view === 'match-analysis' ? (
           <MatchAnalysis />
         ) : view === 'bet-stats' ? (
