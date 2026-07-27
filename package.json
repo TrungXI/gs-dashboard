@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "tx:test": "node --test 'tx-lab/test/*.test.mjs'",
+    "tx:run": "node tx-lab/run.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",

@@ -1034,3 +1034,61 @@ export async function fetchH2HPair(eventId: number): Promise<{ ok: boolean; erro
 
   return { ok: true, home, away, league: league === '16p' ? '16p' : '20p', ft, h1, matches, h1Totals, ftTotals };
 }
+
+// ── Late-goal (≥40') featured pairs ─────────────────────────────────────────
+//
+// Per unordered team pair (≥10 meetings), the % of meetings that had a goal at
+// minute ≥ 40 in a given half. Top-10 pairs by that % (tiebreak n desc) for each
+// half are the "featured" pairs shown on live matches. Heavy aggregate over the
+// whole match_odds_log → cache at the route level.
+
+export interface LateGoalPair {
+  t1: string;
+  t2: string;
+  pct: number; // % trận có bàn ở phút ≥40 trong hiệp
+  pct30: number; // % trận có bàn ở phút ≥30 trong hiệp
+  n: number;
+  high7?: number; // số trận lịch sử của cặp có ≥7 bàn (tổng)
+}
+
+export interface LateGoalFeatured {
+  h1: LateGoalPair[];
+  h2: LateGoalPair[];
+}
+
+export async function fetchLateGoalFeatured(): Promise<LateGoalFeatured> {
+  const db = getPool();
+  const sql = `
+    with pm as (
+      select event_id, max(home_team) ht, max(away_team) at,
+        bool_or(snapshot_type like 'goal%' and is_h2=false and minute>=40) lh1,
+        bool_or(snapshot_type like 'goal%' and is_h2=true  and minute>=40) lh2,
+        bool_or(snapshot_type like 'goal%' and is_h2=false and minute>=30) lh1_30,
+        bool_or(snapshot_type like 'goal%' and is_h2=true  and minute>=30) lh2_30,
+        max(coalesce(score_home,0)+coalesce(score_away,0)) ft_total
+      from match_odds_log group by event_id
+    ),
+    pairs as (
+      select least(ht,at) t1, greatest(ht,at) t2, count(*) n,
+        round(100.0*sum(lh1::int)/count(*))::int h1_pct,
+        round(100.0*sum(lh2::int)/count(*))::int h2_pct,
+        round(100.0*sum(lh1_30::int)/count(*))::int h1_pct30,
+        round(100.0*sum(lh2_30::int)/count(*))::int h2_pct30,
+        sum((ft_total >= 7)::int)::int high7
+      from pm group by 1,2 having count(*) >= 1
+    )
+    select t1, t2, n, h1_pct, h2_pct, h1_pct30, h2_pct30, high7 from pairs
+  `;
+  const { rows } = await db.query(sql);
+  const pairs = rows as { t1: string; t2: string; n: number; h1_pct: number; h2_pct: number; h1_pct30: number; h2_pct30: number; high7: number }[];
+
+  // TRẢ TẤT CẢ cặp (không còn top-10) → mọi trận đều có stat H1/H2 + n + high7.
+  const h1 = [...pairs]
+    .sort((a, b) => b.h1_pct - a.h1_pct || b.n - a.n)
+    .map((r) => ({ t1: r.t1, t2: r.t2, pct: r.h1_pct, pct30: r.h1_pct30, n: r.n, high7: r.high7 }));
+  const h2 = [...pairs]
+    .sort((a, b) => b.h2_pct - a.h2_pct || b.n - a.n)
+    .map((r) => ({ t1: r.t1, t2: r.t2, pct: r.h2_pct, pct30: r.h2_pct30, n: r.n, high7: r.high7 }));
+
+  return { h1, h2 };
+}

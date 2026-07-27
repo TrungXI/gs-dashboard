@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { PairResult } from '../app/api/gs-h2h-splits/route';
-import type { H2HPair, H2HPairStat } from '../lib/gsMatchesDb';
+import type { H2HPair, H2HPairStat, H2HPairMatch } from '../lib/gsMatchesDb';
 import { type GsLiveMatch, type Toast, ToastContainer } from './GSLive';
 import { pct } from './H2HMatrix';
 import MatchDetailDrawer from './MatchDetailDrawer';
@@ -13,7 +13,7 @@ import { notiOnce } from '../lib/notiDedup';
 type PairState =
   | { status: 'loading' }
   | { status: 'error' }
-  | { status: 'ready'; ft: H2HPairStat | null; h1: H2HPairStat | null; h1Totals: number[]; ftTotals: number[] };
+  | { status: 'ready'; ft: H2HPairStat | null; h1: H2HPairStat | null; h1Totals: number[]; ftTotals: number[]; matches: H2HPairMatch[] };
 
 const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
@@ -108,6 +108,8 @@ function computeSignal(args: {
   lineRaw: string | null | undefined;   // line đã quy về hệ leg (H2: đã trừ H1 final)
   overRaw: string | null | undefined;  // giá Malay cửa Tài
   underRaw: string | null | undefined; // giá Malay cửa Xỉu
+  isS?: boolean;             // giải (S) ít bàn → ép Xỉu (v6.0)
+  isV?: boolean;             // giải (V) nhiều bàn → ép Tài (v6.0)
 }): TxSignal {
   const parsed = parseLine(args.lineRaw);
   if (!parsed) return null;            // line không parse được → ẩn
@@ -122,8 +124,8 @@ function computeSignal(args: {
   if (!Number.isFinite(pTai)) return null; // pool rỗng → NaN → ẩn
   const pXiu = 1 - pTai;
 
-  // Cửa nghiêng theo MODEL + giá live tương ứng.
-  const leanTai = pTai >= pXiu;
+  // Cửa nghiêng LEAGUE-DRIVEN (v6.0): (V)→ép Tài, (S)→ép Xỉu, untagged→model. Gate P_MIN_VAO vẫn chặn side yếu.
+  const leanTai = args.isV ? true : args.isS ? false : (pTai >= pXiu);
   const pModel = leanTai ? pTai : pXiu;
   const priceRaw = leanTai ? args.overRaw : args.underRaw;
   const priceNum = priceRaw == null || priceRaw === '' ? NaN : Number(priceRaw);
@@ -152,8 +154,8 @@ function computeSignal(args: {
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
   const edgeProb = p - pMarket; // biên so với thị trường đã de-vig (buffer 6% / H2 10%)
 
-  // Lưỡng lự: cửa nghiêng chưa đạt P≥70% → KHÔNG suggest vào cửa nào (P70 cả 2 cửa, về version cũ).
-  if (p < P_MIN_VAO) {
+  // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng → KHÔNG suggest. Tài giữ 70%, Xỉu hạ 60% (thử tăng volume Xỉu).
+  if (p < (leanTai ? P_MIN_VAO : 0.60)) {
     return { kind: 'none', lowConf: args.lowConf };
   }
   // Giá cửa vào phải đáng tiền: Malay > 0.7 HOẶC âm. Khoảng (0, 0.7] = dương nhỏ payout tệ → không VÀO odd đó.
@@ -240,6 +242,28 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   useEffect(() => {
     const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) setPairRetryTick((t) => t + 1); }, 3000);
     return () => clearInterval(id);
+  }, []);
+
+  // Late-goal (≥40') featured pairs — curated top-10 per half, fetched once on
+  // mount (cached route). Lookup maps keyed by normalized pair "A|B" (sorted).
+  const [lateGoalH1, setLateGoalH1] = useState<Map<string, { pct: number; pct30: number; n: number }>>(new Map());
+  const [lateGoalH2, setLateGoalH2] = useState<Map<string, { pct: number; pct30: number; n: number }>>(new Map());
+  // 7+ bàn: số trận lịch sử của cặp có ≥7 bàn (tổng). key "A|B" → count.
+  const [high7Map, setHigh7Map] = useState<Map<string, number>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/gs-late-goal-featured')
+      .then((r) => r.json())
+      .then((json: { h1?: { t1: string; t2: string; pct: number; pct30?: number; n: number; high7?: number }[]; h2?: { t1: string; t2: string; pct: number; pct30?: number; n: number }[] }) => {
+        if (!alive) return;
+        const toMap = (arr?: { t1: string; t2: string; pct: number; pct30?: number; n: number }[]) =>
+          new Map((arr ?? []).map((p) => [[p.t1, p.t2].sort().join('|'), { pct: p.pct, pct30: p.pct30 ?? 0, n: p.n }]));
+        setLateGoalH1(toMap(json.h1));
+        setLateGoalH2(toMap(json.h2));
+        setHigh7Map(new Map((json.h1 ?? []).map((p) => [[p.t1, p.t2].sort().join('|'), p.high7 ?? 0])));
+      })
+      .catch(() => { /* giữ map rỗng khi lỗi — chỉ ẩn stat, không vỡ trang */ });
+    return () => { alive = false; };
   }, []);
 
   // H1 final scores tracked across H1→H2 transition
@@ -466,7 +490,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           setPairByEvent((prev) => {
             const next = new Map(prev);
             next.set(id, json.ok
-              ? { status: 'ready', ft: json.ft ?? null, h1: json.h1 ?? null, h1Totals: json.h1Totals ?? [], ftTotals: json.ftTotals ?? [] }
+              ? { status: 'ready', ft: json.ft ?? null, h1: json.h1 ?? null, h1Totals: json.h1Totals ?? [], ftTotals: json.ftTotals ?? [], matches: json.matches ?? [] }
               : { status: 'error' });
             return next;
           });
@@ -480,8 +504,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveEventIdsKey, pairRetryTick]);
 
-  const group16 = sorted.filter((m) => m.leagueId === LEAGUE_16P);
-  const group20 = sorted.filter((m) => m.leagueId === LEAGUE_20P);
+  // Render theo THỨ TỰ FEED gốc (liveMatches = như nhà cái trả về), KHÔNG sort eventId
+  // (sorted chỉ dùng cho fetch-key ổn định). → thứ tự hiển thị khớp nhà cái.
+  const group16 = liveMatches.filter((m) => m.leagueId === LEAGUE_16P);
+  const group20 = liveMatches.filter((m) => m.leagueId === LEAGUE_20P);
 
   const leagueName16 = group16[0]?.leagueName ?? '16 Phút';
   const leagueName20 = group20[0]?.leagueName ?? '20 Phút';
@@ -502,20 +528,23 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     const scored = scoredIds.has(m.eventId);
     const h1Final = h1Finals.get(m.eventId);
     const phase = phaseParts(m, nowMs);
-    // Hiệp đang diễn ra → tô nền cam box tương ứng (phân biệt đang H1 hay H2).
-    const activeHalf = phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'h2' : null;
-    // Kiểu 'h2h' chỉ có box FT + H1 → map hiệp đang đá sang market active:
-    // đang H1 → box H1; đang H2 → box FT (H2 không có box riêng, FT là market đang chạy).
-    const activeMarket = phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'ft' : null;
+    // Hiệp đang diễn ra → box tương ứng. HT (period 4, nghỉ giữa hiệp) → coi như đã sang H2/FT
+    // (H1 đã xong, không hiện box H1 nữa mà hiện H2/FT chuẩn bị hiệp 2).
+    const activeHalf = isHT ? 'h2' : phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'h2' : null;
+    const activeMarket = isHT ? 'ft' : phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'ft' : null;
     // H2H theo hiệp: LUÔN hiện cả 2 box (H2 + H1) ở vị trí cố định, bất kể phase —
     // không collapse còn 1 box khi sang H2 (tránh layout nhảy/lệch). Ở H2, box H1
     // vẫn hiện % đối đầu H1 (sp.h1); cột odds/Tài-Xỉu H1 tự về "—" vì market đã đóng.
     const sp = h2hMap.get(`${m.homeTeam}|${m.awayTeam}`);
     const meetings = sp?.meetings ?? 0;
+    // Late-goal (≥40') featured stat — chỉ hiện nếu cặp nằm trong top-10 (H1/H2).
+    const lgKey = [m.homeTeam, m.awayTeam].sort().join('|');
+    const lgH1 = lateGoalH1.get(lgKey);
+    const lgH2 = lateGoalH2.get(lgKey);
     const halves = sp && meetings > 0
       ? [{ key: 'h2', label: 'Tỉ lệ Thắng Hiệp 2', s: sp.h2 }, { key: 'h1', label: 'Tỉ lệ Thắng H1', s: sp.h1 }]
       : [];
-    const boxClass = `rounded-lg border p-3 w-full min-w-0 h-full transition-all cursor-pointer hover:border-[#444] ${
+    const boxClass = `rounded-lg border p-3 w-full min-w-0 h-full transition-all ${
       scored
         ? 'border-[#22c55e]/60 !bg-[#16a34a]/15'
         : isHT
@@ -526,22 +555,27 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     return (
       <div
         data-event-id={m.eventId}
-        role="button"
-        onClick={() => setSelected(m)}
         className={`${boxClass} flex flex-col gap-2`}
       >
           {/* Dòng 1: tên đội + tỉ số (trái) · phase (phải) */}
           <div className="flex items-center justify-between gap-2 md:gap-3">
             <div className="min-w-0 flex-1 flex items-center gap-2 md:gap-3">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1 text-[13px] md:text-[14px] font-semibold text-[#4ade80] leading-tight">
-                  <span className="truncate">{m.homeTeam}</span>
+                <div className="flex items-center gap-1.5 text-[13px] md:text-[14px] font-semibold leading-tight">
+                  <span className="truncate text-[#4ade80]">{m.homeTeam}</span>
                   <RedCardBadge n={m.redHome} />
-                </div>
-                <div className="text-[10px] text-[#666] my-0.5 leading-tight">Hoà</div>
-                <div className="flex items-center gap-1 text-[13px] md:text-[14px] font-semibold text-[#fb7185] leading-tight">
-                  <span className="truncate">{m.awayTeam}</span>
+                  <span className="shrink-0 font-normal text-[#888]">vs</span>
+                  <span className="truncate text-[#fb7185]">{m.awayTeam}</span>
                   <RedCardBadge n={m.redAway} />
+                  {/* 7+ bàn: số trận lịch sử của cặp có ≥7 bàn — chỉ hiện khi >0. */}
+                  {(high7Map.get(lgKey) ?? 0) > 0 && (
+                    <span
+                      className="shrink-0 rounded bg-[#f97316]/20 px-1.5 py-0.5 text-[10px] md:text-[11px] font-bold tabular-nums text-[#fdba74]"
+                      title="Số trận lịch sử đối đầu có ≥7 bàn thắng"
+                    >
+                      7+ n={high7Map.get(lgKey)}
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="shrink-0">
@@ -560,19 +594,61 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               {phase.small && (
                 <div className="text-[12px] md:text-[13px] font-semibold text-[#aaa] mt-1">{phase.small}</div>
               )}
+              {/* Nút mở drawer chi tiết đối đầu — thay cho click cả card. */}
+              <button
+                type="button"
+                onClick={() => setSelected(m)}
+                title="Xem chi tiết đối đầu"
+                aria-label="Xem chi tiết đối đầu"
+                className="mt-1.5 inline-flex items-center justify-center rounded-full border border-[#38bdf8]/50 bg-[#38bdf8]/15 p-1 text-[#7dd3fc] shadow-sm transition-all hover:scale-110 hover:bg-[#38bdf8]/30 active:scale-95"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 md:h-3.5 md:w-3.5">
+                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                </svg>
+              </button>
             </div>
           </div>
-          {/* Dòng 2 (trên): 2 box Tài/Xỉu odds LIVE theo hiệp (H2/H1) + %đối đầu. */}
-          <div className="flex gap-2.5">
+          {/* Bố cục 2 cột: TRÁI = Bàn muộn (trên) + Tỉ lệ thắng (dưới, giãn cao) · PHẢI = Chỉ số TB (giãn cao).
+              items-stretch để 2 cột cùng chiều cao (cột phải cao nhất → box tỉ-lệ trái stretch theo). */}
+          <div className="flex items-stretch gap-2 md:gap-2.5">
+            {/* CỘT TRÁI: Bàn muộn + Tỉ lệ thắng */}
+            <div className="flex min-w-0 flex-1 flex-col gap-2 md:gap-2.5">
+              {/* Bàn muộn ≥30′ + ≥40′ — CHỈ hiện hiệp ĐANG đá (giảm info), full-width, highlight xanh. */}
+              {(() => {
+                const showH2 = m.isH2 || isHT;
+                const lg = showH2 ? lgH2 : lgH1;
+                if (!lg) return null;
+                // % nổi bật theo mức: cao→xanh, vừa→vàng, thấp→đỏ (đèn giao thông).
+                const colorFor = (p: number) => (p >= 45 ? '#4ade80' : p >= 35 ? '#fbbf24' : '#f87171');
+                return (
+                  <div className="flex w-full items-stretch rounded-md border border-[#38bdf8]/50 bg-[#38bdf8]/15 text-[#bae6fd]">
+                    {/* Cột TRÁI: cụm ≥30′/≥40′ gọn, căn giữa — nhãn phải · % trái (grid 2×2) */}
+                    <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-1.5">
+                      <span className="text-[9px] font-semibold uppercase tracking-wider text-[#7dd3fc] opacity-80">Tỉ lệ ghi thêm bàn</span>
+                      <div className="grid grid-cols-[auto_auto] items-baseline gap-x-2.5 gap-y-1 tabular-nums">
+                        <span className="justify-self-end text-[11px] md:text-[12px] font-semibold opacity-60">≥30′</span>
+                        <span className="justify-self-start text-[20px] md:text-[23px] font-extrabold leading-none" style={{ color: colorFor(lg.pct30) }}>{lg.pct30}%</span>
+                        <span className="justify-self-end text-[11px] md:text-[12px] font-semibold opacity-60">≥40′</span>
+                        <span className="justify-self-start text-[20px] md:text-[23px] font-extrabold leading-none" style={{ color: colorFor(lg.pct) }}>{lg.pct}%</span>
+                      </div>
+                    </div>
+                    {/* Cột PHẢI: n (căn giữa, vạch ngăn, độ rộng cố định) */}
+                    <div className="flex w-[54px] md:w-[60px] shrink-0 items-center justify-center border-l border-[#38bdf8]/30 text-center">
+                      <span className="text-[12px] md:text-[13px] font-medium tabular-nums opacity-70">n={lg.n}</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              {/* TỈ LỆ THẮNG: 1 box (hiệp đang đá) + %đối đầu — giãn cao (flex-1) để khớp cột phải. */}
               {halves.length === 0 ? (
-                <span className="flex items-center text-[11px] text-[#555]">ĐĐ —</span>
+                <span className="flex flex-1 items-center text-[11px] text-[#555]">ĐĐ —</span>
               ) : (
-                halves.map((h) => {
+                halves.filter((h) => h.key === activeHalf || activeHalf === null).map((h) => {
                   const active = h.key === activeHalf;
                   return (
                     <div
                       key={h.key}
-                      className={`flex flex-1 min-w-0 flex-col items-center rounded-md border px-2 py-1.5 md:px-3 ${
+                      className={`flex flex-1 min-w-0 flex-col items-center justify-center rounded-md border px-2 py-1.5 md:px-3 ${
                         active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/15' : 'border-[#2a2a2a] bg-[#1c1c1c]'
                       }`}
                     >
@@ -590,11 +666,18 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
                   );
                 })
               )}
+            </div>
+            {/* CỘT PHẢI: Chỉ số TB (FT/H1) — giãn cao đầy cột. */}
+            <div className="flex min-w-0 flex-1">
+              <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
+            </div>
           </div>
-          {/* Dòng 3 (dưới): 2 box số liệu % Tài/Xỉu LỊCH SỬ đối đầu (FT/H1). */}
-          <PairH2HRow eventId={m.eventId} activeMarket={activeMarket} ftLine={m.ouLines?.[0]?.line} h1Line={m.ouH1Lines?.[0]?.line} />
-          {/* Dòng gợi ý Tài/Xỉu deterministic — tính inline mỗi 2s (§5). */}
-          <TxSuggestionRow m={m} activeMarket={activeMarket} />
+          {/* Dòng gợi ý Tài/Xỉu deterministic — TẠM ẨN UI (2026-07-27) theo yêu cầu.
+              Kèo VẪN bắn Telegram bình thường qua bot VPS tx-paper-bot.mjs (độc lập FE).
+              Bật lại = bỏ comment dòng dưới. */}
+          {false && <TxSuggestionRow m={m} activeMarket={activeMarket} />}
+          {/* 10 trận đối đầu gần nhất — H1 đang đá → score H1; H2/HT → score FT. */}
+          <H2HMiniList eventId={m.eventId} showH2={m.isH2 || isHT} />
         </div>
       );
   }
@@ -604,7 +687,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   function PairStatBox({ label, title, stat, active, line }: { label: string; title?: string; stat: H2HPairStat | null; active?: boolean; line?: string | null }) {
     return (
       <div
-        className={`flex flex-1 min-w-0 flex-col items-center rounded-md border px-2 py-1.5 md:px-3 ${
+        className={`flex flex-1 min-w-0 flex-col items-center justify-center rounded-md border px-2 py-1.5 md:px-3 ${
           active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/15' : 'border-[#2a2a2a] bg-[#1c1c1c]'
         }`}
       >
@@ -651,26 +734,70 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     );
   }
 
+  // 10 trận đối đầu gần nhất — mang từ drawer ra list: 2 tên đội + H1 + FT score.
+  // 2 cột × 5 trận (mobile + web). Đọc trực tiếp pairByEvent (đã fetch per-card).
+  function H2HMiniList({ eventId, showH2 }: { eventId: number; showH2: boolean }) {
+    const st = pairByEvent.get(eventId);
+    if (!st || st.status !== 'ready' || !st.matches?.length) return null;
+    const rows = st.matches.slice(0, 10);
+    const stripTag = (s: string) => s.replace(/\s*\([VS]\)\s*$/, '');
+    const scoreColor = showH2 ? '#e5e7eb' : '#fbbf24'; // H2/HT → FT (trắng) · H1 → H1 (vàng)
+    const Col = ({ items }: { items: H2HPairMatch[] }) => (
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        {items.map((mt, i) => (
+          <div key={i} className="flex items-center justify-between gap-1.5 rounded bg-[#1a1a1a] px-1.5 py-0.5 text-[10px] md:text-[11px] leading-tight">
+            <span className="min-w-0 flex-1 truncate">
+              <span className="text-[#4ade80]">{stripTag(mt.home)}</span>
+              <span className="text-[#666]"> v </span>
+              <span className="text-[#fb7185]">{stripTag(mt.away)}</span>
+            </span>
+            <span className="shrink-0 tabular-nums font-extrabold text-[14px] md:text-[16px] leading-none" style={{ color: scoreColor }}>
+              {showH2 ? mt.ftScore : mt.htScore}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+    return (
+      <div className="mt-1.5 border-t border-[#222] pt-1.5">
+        <div className="mb-1 flex items-center gap-1.5 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">
+          <span>10 trận gần nhất</span>
+          <span className="text-[#444]">·</span>
+          <span style={{ color: scoreColor }}>{showH2 ? 'score H2' : 'score H1'}</span>
+        </div>
+        <div className="flex gap-1.5 md:gap-2">
+          <Col items={rows.slice(0, 5)} />
+          <Col items={rows.slice(5, 10)} />
+        </div>
+      </div>
+    );
+  }
+
   function PairH2HRow({ eventId, activeMarket, ftLine, h1Line }: { eventId: number; activeMarket: 'ft' | 'h1' | null; ftLine?: string | null; h1Line?: string | null }) {
     const st = pairByEvent.get(eventId);
     if (!st || st.status === 'loading') {
       return (
-        <div className="flex min-h-[64px] items-center justify-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#17a2b8]">
+        <div className="flex min-h-[64px] w-full flex-1 items-center justify-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#17a2b8]">
           <Spinner size={13} /> Đang tải đối đầu…
         </div>
       );
     }
     if (st.status === 'error') {
       return (
-        <div className="flex min-h-[64px] items-center justify-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#777]">
+        <div className="flex min-h-[64px] w-full flex-1 items-center justify-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#777]">
           Không tải được đối đầu
         </div>
       );
     }
+    // CHỈ hiện box của market ĐANG đá (giảm info): H1 → box H1; H2 → box FT. Null → cả 2.
     return (
-      <div className="flex gap-2.5">
-        <PairStatBox label="FT" title="Chỉ số TB Tài Xỉu FT" stat={st.ft} active={activeMarket === 'ft'} line={ftLine} />
-        <PairStatBox label="H1" title="Chỉ số TB Tài Xỉu H1" stat={st.h1} active={activeMarket === 'h1'} line={h1Line} />
+      <div className="flex w-full flex-1 gap-2.5">
+        {activeMarket !== 'h1' && (
+          <PairStatBox label="FT" title="Chỉ số TB Tài Xỉu FT" stat={st.ft} active={activeMarket === 'ft'} line={ftLine} />
+        )}
+        {activeMarket !== 'ft' && (
+          <PairStatBox label="H1" title="Chỉ số TB Tài Xỉu H1" stat={st.h1} active={activeMarket === 'h1'} line={h1Line} />
+        )}
       </div>
     );
   }
@@ -746,33 +873,26 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
       underRaw = m.ouLines?.[0]?.under;
     }
 
-    const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw });
+    // League tag drives direction (v6.0): (V)→Tài, (S)→Xỉu, untagged→model.
+    const isS = m.homeTeam.includes('(S)');
+    const isV = m.homeTeam.includes('(V)');
+    const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw, isS, isV });
     if (!sig) return ph('— chưa có line kèo'); // thiếu line/giá → placeholder (KHÔNG show VÀO khi thiếu số liệu)
 
     // REALTIME thuần: mỗi poll hiện verdict hiện tại (có bàn/đổi số là verdict tự đổi). KHÔNG khóa, không lưu.
     if (sig.kind === 'vao') {
       const tai = sig.side === 'tai';
-      const lineVal = parseLine(lineRaw)?.lineVal ?? 0;
-      const neededWr = lineVal - scored;
-      const min = m.minuteElapsed;
-      let allowed = false;
+      // TX v7 pocket gate (mirror tx-paper-bot.mjs allowed block — lọc theo phân tích 397 kèo):
+      //   TÀI: chỉ h1 · line ≤0.75 · phút ≤25 (pocket +EV bền duy nhất). XỈU: giữ, loại ổ h1 line=0.75 (0/10, −7u).
+      const sigLineNum = Number(sig.line);
+      let allowed: boolean;
       if (tai) {
-        // TÀI {0.5,0.75}: HT cả 2, FT cả 2. Timing 0.75·HT≤15/FT≥16 · 0.5≥31.
-        const isHalf = Math.abs(neededWr - 0.5) < 1e-9;
-        const isQuarterHi = Math.abs(neededWr - 0.75) < 1e-9;
-        allowed = (isHalf || isQuarterHi) && min != null && (
-          (isQuarterHi && (activeMarket === 'h1' ? min <= 15 : min >= 16)) ||
-          (isHalf && min >= 31)
-        );
+        const min = m.minuteElapsed;
+        allowed = activeMarket === 'h1' && sigLineNum <= 0.75 + 1e-9 && min != null && min <= 25;
       } else {
-        // XỈU: chỉ (S) ít-bàn + đầu hiệp ≤15p + giá ≥0.85 + line ≤2.5(H1)/4.5(FT).
-        const isS = m.homeTeam.includes('(S)');
-        const lineCap = activeMarket === 'h1' ? 2.5 : 4.5;
-        allowed = isS && min != null && min <= 15 && Number(sig.price) >= 0.85 && lineVal <= lineCap;
+        allowed = !(activeMarket === 'h1' && Math.abs(sigLineNum - 0.75) < 1e-9);
       }
-      if (!allowed) {
-        return ph('— v3.1: Tài{0.5,0.75}·Xỉu(S)đầu≥0.85');
-      }
+      if (!allowed) return ph('— chưa đủ điều kiện vào (v7)');
       // DCA Xỉu: đã gãy ≥2 line Under trong hiệp này → dừng, không gợi ý Xỉu lần 3.
       if (!tai) {
         const key = `${m.eventId}:${activeMarket}`;

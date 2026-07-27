@@ -20,6 +20,7 @@ interface TxVersionAgg {
   primaryOnly: TxAggLine;   // kind='primary' only
   withNhoi: TxAggLine;      // primary + nhoi combined
   nhoiOnly: TxAggLine;      // kind='nhoi' only
+  openBets: number;         // kèo chưa settle (result IS NULL) — đang vô kèo
 }
 interface TxReportResponse {
   ok: boolean;
@@ -239,9 +240,24 @@ export default function TxReport() {
                   {summary.map((s) => (
                     <tr
                       key={s.calcVersion}
-                      className={`border-b border-[#222] ${s.calcVersion === selected ? 'bg-[#38bdf8]/10' : ''}`}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => onSelect(s.calcVersion)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); }
+                      }}
+                      className={`cursor-pointer border-b border-[#222] hover:bg-white/[.04] ${s.calcVersion === selected ? 'bg-[#38bdf8]/10' : ''}`}
                     >
-                      <td className="px-3 py-2 font-semibold text-white">{s.calcVersion}</td>
+                      <td className="px-3 py-2 font-semibold text-white">
+                        <span className="inline-flex items-center gap-1.5">
+                          {s.calcVersion}
+                          {s.openBets > 0 && (
+                            <span className="inline-flex items-center gap-1 text-[11px] font-normal text-[#4ade80]" title={`${s.openBets} kèo chưa settle`}>
+                              <span className="tx-open-dot" />đang vô kèo
+                            </span>
+                          )}
+                        </span>
+                      </td>
                       <td className="px-3 py-2 text-[#bbb]">{s.withNhoi.bets}</td>
                       <td className="px-3 py-2 text-[#bbb]">{wlp(s.withNhoi)}</td>
                       <td className="px-3 py-2 text-[#bbb]">{winRatePct(s.withNhoi.winRate)}</td>
