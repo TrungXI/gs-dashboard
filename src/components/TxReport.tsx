@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
+import TxTimelineChart from './TxTimelineChart';
+import TxDetailDrawer from './TxDetailDrawer';
 
 // ── Response shape (mirror /api/gs-tx-report — SPEC §3.2) ───────────────────
 interface TxReportRow {
@@ -20,7 +22,7 @@ interface TxVersionAgg {
   primaryOnly: TxAggLine;   // kind='primary' only
   withNhoi: TxAggLine;      // primary + nhoi combined
   nhoiOnly: TxAggLine;      // kind='nhoi' only
-  openBets: number;         // kèo chưa settle (result IS NULL) — đang vô kèo
+  openBets: number;         // kèo pending vào <15' gần đây — đang thật sự vô kèo (mồ côi cũ không tính)
 }
 interface TxReportResponse {
   ok: boolean;
@@ -35,14 +37,6 @@ interface TxReportResponse {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-// entryAt ISO → giờ VN (UTC+7) "HH:mm" (pattern +7h → getUTC*, như matchUtils.ts).
-function vnTime(iso: string): string {
-  const d = new Date(new Date(iso).getTime() + 7 * 60 * 60 * 1000);
-  const hh = String(d.getUTCHours()).padStart(2, '0');
-  const min = String(d.getUTCMinutes()).padStart(2, '0');
-  return `${hh}:${min}`;
-}
-
 const winRatePct = (wr: number | null): string => (wr == null ? '—' : `${Math.round(wr * 100)}%`);
 // W/L/P kèm nửa-ăn/nửa-thua (chỉ hiện ½ khi >0): "3+1½ / 2 / 0"
 const wlp = (a: { win: number; halfWin: number; lose: number; halfLose: number; push: number }): string => {
@@ -50,34 +44,8 @@ const wlp = (a: { win: number; halfWin: number; lose: number; halfLose: number; 
   const l = a.halfLose ? `${a.lose}+${a.halfLose}½` : `${a.lose}`;
   return `${w} / ${l} / ${a.push}`;
 };
-// Tỉ số home–away lúc vào kèo. Kèo cũ (trước khi bot lưu cột này) → "- -".
-const entryScore = (r: { scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null }): string =>
-  r.scoreHomeAtEntry == null || r.scoreAwayAtEntry == null ? '- -' : `${r.scoreHomeAtEntry}-${r.scoreAwayAtEntry}`;
 const pnlStr = (v: number): string => (v > 0 ? `+${v.toFixed(2)}` : v.toFixed(2));
 const pnlColor = (v: number): string => (v > 0 ? '#4ade80' : v < 0 ? '#fb7185' : '#8a8a8a');
-
-// ── Kèo label (colored Tài/Xỉu) ──────────────────────────────────────────────
-function KeoLabel({ market, side }: { market: 'h1' | 'ft'; side: 'tai' | 'xiu' }) {
-  const tai = side === 'tai';
-  return (
-    <span className="font-semibold">
-      <span className="text-[#777]">{market === 'h1' ? 'H1' : 'FT'} </span>
-      <span style={{ color: tai ? '#4ade80' : '#fb7185' }}>{tai ? 'Tài' : 'Xỉu'}</span>
-    </span>
-  );
-}
-
-// ── KQ cell (✅/½✅/❌/½❌/➖/⏳ + pnl thật) ───────────────────────────────────
-function KqCell({ result, pnl }: { result: TxReportRow['result']; pnl: number | null }) {
-  const p = pnl ?? 0;
-  const sg = (v: number) => (v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)); // pnl thật (Malay âm: thua < 1u)
-  if (result === 'win') return <span style={{ color: '#4ade80' }}>✅ {sg(p)}</span>;
-  if (result === 'half-win') return <span style={{ color: '#86efac' }}>½✅ {sg(p)}</span>;
-  if (result === 'lose') return <span style={{ color: '#fb7185' }}>❌ {sg(p)}</span>;
-  if (result === 'half-lose') return <span style={{ color: '#fda4af' }}>½❌ {sg(p)}</span>;
-  if (result === 'push') return <span style={{ color: '#8a8a8a' }}>➖ 0</span>;
-  return <span style={{ color: '#9ca3af' }}>⏳</span>;
-}
 
 // Nhịp tự động refresh. 'auto' = mặc định, poll đều 5s lấy list mới nhất.
 type RefreshMode = 'off' | '5' | '10' | '15' | 'auto';
@@ -101,6 +69,7 @@ export default function TxReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshMode, setRefreshMode] = useState<RefreshMode>('auto');
+  const [detailVersion, setDetailVersion] = useState<string | null>(null); // version đang mở drawer chi tiết
 
   const load = useCallback(async (version: string, pageArg: number) => {
     setLoading(true);
@@ -167,24 +136,11 @@ export default function TxReport() {
 
   const versions = data?.versions ?? [];
   const summary = data?.summaryByVersion ?? [];
-  const rows = data?.rows ?? [];
-  const selAgg = summary.find((s) => s.calcVersion === selected);
-
-  // Phân trang bảng chi tiết (20/trang).
-  const pageSize = data?.pageSize ?? 20;
-  const totalRows = data?.totalRows ?? 0;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const goPage = (p: number) => {
-    const np = Math.min(Math.max(p, 0), totalPages - 1);
-    if (np === page) return;
-    setPage(np);
-    load(selected, np);
-  };
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden">
       {/* Header + version selector */}
-      <div className="mb-5 flex items-center gap-3 flex-wrap">
+      <div className="mb-5 flex shrink-0 items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-white">💰 Báo cáo Tài/Xỉu (paper)</h1>
         <select
           value={selected}
@@ -215,173 +171,76 @@ export default function TxReport() {
         </div>
       )}
 
-      {!error && !loading && rows.length === 0 && summary.length === 0 ? (
+      {!error && !loading && summary.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
           <div className="mb-3 text-4xl">⏳</div>
           <div className="text-[14px] text-[#888]">Chưa có kèo nào</div>
         </div>
       ) : (
         <>
-          {/* ── So sánh version (luôn tất cả version) ── */}
-          <div className="mb-6">
-            <div className="mb-2 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</div>
-            <div className="overflow-x-auto rounded-lg border border-[#2a2a2a] bg-[#141414]">
-              <table className="w-full text-left text-[12px] md:text-[13px] tabular-nums">
-                <thead>
-                  <tr className="border-b border-[#2a2a2a] text-[#888]">
-                    <th className="px-3 py-2 font-semibold">Version</th>
-                    <th className="px-3 py-2 font-semibold">Kèo</th>
-                    <th className="px-3 py-2 font-semibold">W/L/P</th>
-                    <th className="px-3 py-2 font-semibold">WinRate</th>
-                    <th className="px-3 py-2 font-semibold">PnL</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {summary.map((s) => (
-                    <tr
+          {/* ── List version + biểu đồ — khoá chiều cao viewport, CHỈ list cuộn ── */}
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[320px_1fr] lg:grid-rows-1 lg:items-stretch">
+            {/* List version — mobile: dưới chart, lấp phần còn lại & cuộn; desktop: cột trái full-height & cuộn */}
+            <div className="order-2 flex min-h-0 min-w-0 flex-col lg:order-none lg:col-start-1 lg:row-start-1">
+              <div className="mb-2 shrink-0 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</div>
+              <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
+                {[...summary].sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl).map((s) => {
+                  const active = s.calcVersion === selected;
+                  return (
+                    <div
                       key={s.calcVersion}
                       role="button"
                       tabIndex={0}
                       onClick={() => onSelect(s.calcVersion)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); }
-                      }}
-                      className={`cursor-pointer border-b border-[#222] hover:bg-white/[.04] ${s.calcVersion === selected ? 'bg-[#38bdf8]/10' : ''}`}
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); } }}
+                      title="Bấm để xem chart của version này"
+                      className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition ${active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/10' : 'border-[#2a2a2a] bg-[#141414] hover:bg-white/[.05]'}`}
                     >
-                      <td className="px-3 py-2 font-semibold text-white">
-                        <span className="inline-flex items-center gap-1.5">
-                          {s.calcVersion}
-                          {s.openBets > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-normal text-[#4ade80]" title={`${s.openBets} kèo chưa settle`}>
-                              <span className="tx-open-dot" />đang vô kèo
-                            </span>
-                          )}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-[#bbb]">{s.withNhoi.bets}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{wlp(s.withNhoi)}</td>
-                      <td className="px-3 py-2 text-[#bbb]">{winRatePct(s.withNhoi.winRate)}</td>
-                      <td className="px-3 py-2 font-semibold" style={{ color: pnlColor(s.withNhoi.pnl) }}>{pnlStr(s.withNhoi.pnl)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* ── Tổng (version đang chọn): tính chung tất cả kèo ── */}
-          {selAgg && (
-            <div className="mb-6">
-              <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3">
-                <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[13px] tabular-nums">
-                  <span className="text-[#888]">Kèo <span className="font-bold text-white">{selAgg.withNhoi.bets}</span></span>
-                  <span className="text-[#888]">W/L/P <span className="font-bold text-white">{wlp(selAgg.withNhoi)}</span></span>
-                  <span className="text-[#888]">WinRate <span className="font-bold text-white">{winRatePct(selAgg.withNhoi.winRate)}</span></span>
-                  <span className="text-[#888]">PnL <span className="font-bold" style={{ color: pnlColor(selAgg.withNhoi.pnl) }}>{pnlStr(selAgg.withNhoi.pnl)}</span></span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Chi tiết kèo ── */}
-          <div className="mb-2 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">
-            Chi tiết {selected === 'all' ? '(tất cả version)' : selected}
-            <span className="ml-1 font-normal text-[#888]">· {totalRows} kèo · 20/trang</span>
-          </div>
-
-          {rows.length === 0 ? (
-            <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-6 text-center text-[13px] text-[#888]">
-              Chưa có kèo nào
-            </div>
-          ) : (
-            <>
-              {/* Desktop table */}
-              <div className="hidden overflow-x-auto rounded-lg border border-[#2a2a2a] bg-[#141414] md:block">
-                <table className="w-full text-left text-[13px] tabular-nums">
-                  <thead>
-                    <tr className="border-b border-[#2a2a2a] text-[#888]">
-                      <th className="px-3 py-2 font-semibold">Giờ VN</th>
-                      <th className="px-3 py-2 font-semibold">Trận</th>
-                      <th className="px-3 py-2 font-semibold">Kèo</th>
-                      <th className="px-3 py-2 font-semibold">Line</th>
-                      <th className="px-3 py-2 font-semibold">Giá</th>
-                      <th className="px-3 py-2 font-semibold">P</th>
-                      <th className="px-3 py-2 font-semibold">Tỉ số vào</th>
-                      <th className="px-3 py-2 font-semibold">Tổng cuối</th>
-                      <th className="px-3 py-2 font-semibold">KQ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((r) => (
-                      <tr key={r.id} className={`border-b border-[#222] ${r.result == null ? 'tx-pending-row' : ''}`}>
-                        <td className="px-3 py-2 text-[#bbb]">{vnTime(r.entryAt)}</td>
-                        <td className="px-3 py-2">
-                          <span style={{ color: '#4ade80' }}>{r.homeTeam}</span>
-                          <span className="text-[#555]"> vs </span>
-                          <span style={{ color: '#fb7185' }}>{r.awayTeam}</span>
-                        </td>
-                        <td className="px-3 py-2"><KeoLabel market={r.market} side={r.side} /></td>
-                        <td className="px-3 py-2 text-[#bbb]">{r.lineRaw ?? r.line}</td>
-                        <td className="px-3 py-2 text-[#bbb]">{r.price.toFixed(2)}</td>
-                        <td className="px-3 py-2 text-[#bbb]">{Math.round(r.pModel * 100)}%</td>
-                        <td className="px-3 py-2 text-[#bbb] tabular-nums">{entryScore(r)}</td>
-                        <td className="px-3 py-2 text-[#bbb]">{r.finalTotal ?? '—'}</td>
-                        <td className="px-3 py-2 font-semibold"><KqCell result={r.result} pnl={r.pnl} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Mobile/tablet card list */}
-              <div className="flex flex-col gap-2 md:hidden">
-                {rows.map((r) => (
-                  <div
-                    key={r.id}
-                    className={`rounded-lg border border-[#2a2a2a] bg-[#141414] p-3 ${r.result == null ? 'tx-pending' : ''}`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 text-[13px] font-semibold truncate">
-                        <span style={{ color: '#4ade80' }}>{r.homeTeam}</span>
-                        <span className="text-[#555]"> vs </span>
-                        <span style={{ color: '#fb7185' }}>{r.awayTeam}</span>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-[13px] font-semibold text-white">{s.calcVersion}</span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="text-[13px] font-semibold tabular-nums" style={{ color: pnlColor(s.withNhoi.pnl) }}>
+                            {pnlStr(s.withNhoi.pnl)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onSelect(s.calcVersion); setDetailVersion(s.calcVersion); }}
+                            title="Xem chi tiết kèo (drawer)"
+                            aria-label="Xem chi tiết kèo"
+                            className="rounded-md border border-[#2a2a2a] bg-white/[.04] px-1.5 py-0.5 text-[12px] leading-none text-[#9ca3af] hover:bg-white/[.12] hover:text-white"
+                          >
+                            📋
+                          </button>
+                        </div>
                       </div>
-                      <span className="shrink-0 text-[11px] text-[#888] tabular-nums">{vnTime(r.entryAt)}</span>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
+                        <span>{s.withNhoi.bets} kèo</span>
+                        <span className="text-[#444]">·</span>
+                        <span>WR {winRatePct(s.withNhoi.winRate)}</span>
+                        <span className="text-[#444]">·</span>
+                        <span>{wlp(s.withNhoi)}</span>
+                        {s.openBets > 0 && (
+                          <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${s.openBets} kèo vừa vào <15'`}>
+                            <span className="tx-open-dot" />vô kèo
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[12px] tabular-nums">
-                      <KeoLabel market={r.market} side={r.side} />
-                      <span className="text-[#888]">line <span className="text-[#bbb]">{r.lineRaw ?? r.line}</span></span>
-                      <span className="text-[#888]">giá <span className="text-[#bbb]">{r.price.toFixed(2)}</span></span>
-                      <span className="text-[#888]">P <span className="text-[#bbb]">{Math.round(r.pModel * 100)}%</span></span>
-                      <span className="text-[#888]">vào <span className="text-[#bbb]">{entryScore(r)}</span></span>
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] tabular-nums">
-                      <span className="text-[#888]">Tổng cuối <span className="text-[#bbb]">{r.finalTotal ?? '—'}</span></span>
-                      <span className="font-semibold"><KqCell result={r.result} pnl={r.pnl} /></span>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
+            </div>
 
-              {totalPages > 1 && (
-                <div className="mt-3 flex items-center justify-center gap-2 text-[12px]">
-                  <button
-                    onClick={() => goPage(page - 1)}
-                    disabled={page <= 0}
-                    className="rounded-lg border border-[#2a2a2a] bg-white/[.05] px-3 py-1.5 text-white hover:bg-white/[.1] disabled:cursor-not-allowed disabled:opacity-40"
-                  >← Trước</button>
-                  <span className="text-[#bbb] tabular-nums">Trang {page + 1} / {totalPages}</span>
-                  <button
-                    onClick={() => goPage(page + 1)}
-                    disabled={page >= totalPages - 1}
-                    className="rounded-lg border border-[#2a2a2a] bg-white/[.05] px-3 py-1.5 text-white hover:bg-white/[.1] disabled:cursor-not-allowed disabled:opacity-40"
-                  >Sau →</button>
-                </div>
-              )}
-            </>
-          )}
+            {/* Biểu đồ — mobile: trên cùng; desktop: cột phải */}
+            <div className="order-1 min-h-0 min-w-0 overflow-hidden lg:order-none lg:col-start-2 lg:row-start-1">
+              <TxTimelineChart version={selected} />
+            </div>
+          </div>
         </>
       )}
+
+      {/* Drawer chi tiết kèo — mở khi bấm version, có nút "Tải thêm" */}
+      {detailVersion && <TxDetailDrawer version={detailVersion} onClose={() => setDetailVersion(null)} />}
     </div>
   );
 }
