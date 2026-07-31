@@ -231,8 +231,8 @@ export default function TxReport() {
               </div>
             </div>
 
-            {/* Biểu đồ — mobile: trên cùng; desktop: cột phải */}
-            <div className="order-1 min-h-0 min-w-0 overflow-hidden lg:order-none lg:col-start-2 lg:row-start-1">
+            {/* Biểu đồ — mobile: trên cùng cao 320px; desktop: cột phải full chiều cao */}
+            <div className="order-1 h-[380px] min-h-0 min-w-0 overflow-hidden lg:order-none lg:col-start-2 lg:row-start-1 lg:h-auto">
               <TxTimelineChart version={selected} />
             </div>
           </div>
