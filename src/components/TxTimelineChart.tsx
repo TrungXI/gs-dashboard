@@ -53,7 +53,7 @@ const PAD_B = 26;
 
 // version: bám theo ô chọn ở bảng "So sánh version". 'all'/trống → server dùng version active (latest).
 export default function TxTimelineChart({ version = 'all' }: { version?: string }) {
-  const [days, setDays] = useState(1);
+  const [days, setDays] = useState(7); // default filter 7 ngày
   const [endDate, setEndDate] = useState(todayVn());
   const [data, setData] = useState<TxTimelineResponse | null>(null);
   const [loading, setLoading] = useState(true);
