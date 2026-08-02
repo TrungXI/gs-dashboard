@@ -13,6 +13,7 @@ interface Mon {
   pm2: Proc[];
   db: { ok: boolean; lastOddsAgeSec?: number | null; odds10m?: number; pendingBets?: number; botVersions?: number; level?: Level; error?: string };
   collection: { liveGS: number | null; ageSec: number | null; staleSec: number; broken: boolean; level: Level };
+  backup: { ok: boolean; local?: number | null; supabase?: number | null; match?: boolean; ageHours?: number; level?: Level };
   logs: string[];
   issues: { level: Level; msg: string }[];
 }
@@ -154,6 +155,36 @@ export default function SystemMonitor() {
           </div>
         ) : <div className="text-[13px] text-[#f87171]">DB lỗi: {m.db.error}</div>}
       </div>
+
+      {/* Backup Supabase */}
+      {(() => {
+        const b = m.backup;
+        if (!b.ok) {
+          return (
+            <div className="rounded-xl border p-3" style={{ borderColor: LC.warn + '66', background: LBG.warn }}>
+              <div className="flex items-center justify-between">
+                <span className="text-[14px] font-semibold text-white">📦 Backup Supabase</span>
+                <span className="text-[14px] font-bold" style={{ color: LC.warn }}>🟡 Chưa có log</span>
+              </div>
+              <div className="mt-1 text-[12px] text-white/70">Chưa chạy backup lần nào (cron 3h sáng hằng đêm)</div>
+            </div>
+          );
+        }
+        const lvl: Level = b.level ?? 'ok';
+        const status = !b.match ? '🔴 LỆCH số liệu' : (b.ageHours ?? 0) > 26 ? '🟡 Quá hạn' : '🟢 OK';
+        return (
+          <div className="rounded-xl border p-3" style={{ borderColor: LC[lvl] + '66', background: LBG[lvl] }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[14px] font-semibold text-white">📦 Backup Supabase</span>
+              <span className="text-[14px] font-bold" style={{ color: LC[lvl] }}>{status}</span>
+            </div>
+            <div className="mt-1 text-[12px] text-white/80 tabular-nums">
+              Lần cuối: <b>{b.ageHours}h trước</b> · match_odds_log local <b>{b.local}</b> {b.match ? '=' : '≠'} supabase <b>{b.supabase}</b>
+            </div>
+            {!b.match && <div className="mt-1 text-[12px] font-medium" style={{ color: LC.crit }}>→ Số liệu lệch — xem log supabase-backup.log</div>}
+          </div>
+        );
+      })()}
 
       {/* pm2 process table */}
       <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] p-3">

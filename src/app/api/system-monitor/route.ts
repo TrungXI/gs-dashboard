@@ -127,6 +127,22 @@ async function collectionInfo(dbAgeSec: number | null) {
   return { liveGS, ageSec: dbAgeSec, staleSec: STALE_SEC, broken, level: (broken ? 'crit' : 'ok') as Level };
 }
 
+// Trạng thái backup Supabase — đọc log cron (không query remote mỗi 4s).
+const BACKUP_LOG = '/opt/gs-collector/tx-paper/supabase-backup.log';
+function backupInfo() {
+  let mtimeMs = 0;
+  try { mtimeMs = fs.statSync(BACKUP_LOG).mtimeMs; } catch { return { ok: false as const }; }
+  const done = readProc(BACKUP_LOG).split('\n').filter((l) => l.includes('DONE'));
+  const last = done[done.length - 1] || '';
+  const m = last.match(/local=(\d+)\s+supabase=(\d+)/);
+  const local = m ? Number(m[1]) : null;
+  const supabase = m ? Number(m[2]) : null;
+  const match = local != null && local === supabase;
+  const ageHours = +((Date.now() - mtimeMs) / 3.6e6).toFixed(1);
+  const level: Level = (!match || ageHours > 26) ? 'warn' : 'ok';
+  return { ok: true as const, local, supabase, match, ageHours, level };
+}
+
 export async function GET() {
   const cpu = cpuInfo();
   const mem = memInfo();
@@ -136,6 +152,7 @@ export async function GET() {
   const logs = errorLogs();
   const db = await dbInfo();
   const collection = await collectionInfo(db.ok ? (db.lastOddsAgeSec ?? null) : null);
+  const backup = backupInfo();
 
   // ── Tự phân tích (audit) ───────────────────────────────────────────────
   const issues: { level: Level; msg: string }[] = [];
@@ -148,6 +165,7 @@ export async function GET() {
   const flapping = pm2.filter((p) => p.status === 'online' && p.restarts >= 15);
   if (flapping.length) issues.push({ level: 'warn', msg: `Restart nhiều: ${flapping.map((p) => `${p.name}(${p.restarts})`).join(', ')}` });
   if (collection.broken) issues.push({ level: 'crit', msg: `NGỪNG THU THẬP: ${collection.liveGS} trận GS live nhưng match_odds_log ${Math.round((collection.ageSec ?? 0) / 60)} phút chưa ghi → kiểm tra collector / /settoken` });
+  if (backup.ok && backup.level === 'warn') issues.push({ level: 'warn', msg: !backup.match ? `Backup Supabase LỆCH: local ${backup.local} ≠ supabase ${backup.supabase}` : `Backup Supabase quá hạn (${backup.ageHours}h chưa chạy)` });
   if (!issues.length) issues.push({ level: 'ok', msg: 'Hệ thống ổn định — không phát hiện vấn đề.' });
 
   const overall: Level = issues.some((i) => i.level === 'crit') ? 'crit'
@@ -155,6 +173,6 @@ export async function GET() {
 
   return NextResponse.json({
     ok: true, ts: Date.now(), overall,
-    cpu, mem, disk, uptime, pm2, db, collection, logs, issues,
+    cpu, mem, disk, uptime, pm2, db, collection, backup, logs, issues,
   });
 }
