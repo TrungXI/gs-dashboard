@@ -247,7 +247,6 @@ export default function TxTimelineChart({ version = 'all' }: { version?: string 
               {pnlStr(focus.cumulative)}u
             </span>
           </span>
-          {hb == null && <span className="text-[#555]">· rê chuột/chạm để xem từng mốc</span>}
         </div>
       )}
 

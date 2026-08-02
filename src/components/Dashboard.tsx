@@ -7,6 +7,7 @@ import SearchDropdown from './SearchDropdown';
 import DataTable from './DataTable';
 import { LoadingState, Spinner } from './Spinner';
 import GSLive from './GSLive';
+import SystemMonitor from './SystemMonitor';
 import MatchAnalysis from './MatchAnalysis';
 import BetStatsView from './BetStatsView';
 import BetStatsTable from './BetStatsTable';
@@ -15,7 +16,7 @@ import TeamFormReport from './TeamFormReport';
 import RankingLive from './RankingLive';
 import TxReport from './TxReport';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'monitor';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -239,14 +240,15 @@ export default function Dashboard({
 
   const navItems: [View, string, string][] = [
     ['data', '📋', 'GS Dữ liệu'],
-    ['gs-live', '🔴', 'GS Live'],
+    // ['gs-live', '🔴', 'GS Live'], // hidden from nav
     ['report', '🎯', 'Tài Xỉu Live'],
-    ['match-analysis', '📈', 'Phân Tích Kèo'],
+    // ['match-analysis', '📈', 'Phân Tích Kèo'], // hidden from nav
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)
     // ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],   // hidden per OPS task (matrix)
-    ['team-form', '🔄', 'Quy luật phong độ'],
+    // ['team-form', '🔄', 'Quy luật phong độ'], // hidden from nav
     ['tx-report', '💰', 'Báo cáo TX'],
+    ['monitor', '🖥️', 'Monitor'],
   ];
 
   const sidebarRange = dates.length > 0
@@ -433,6 +435,8 @@ export default function Dashboard({
           <H2HMatrix onOpenPair={openPairInBetTable} />
         ) : view === 'team-form' ? (
           <TeamFormReport />
+        ) : view === 'monitor' ? (
+          <SystemMonitor />
         ) : view === 'tx-report' ? (
           <TxReport />
         ) : (

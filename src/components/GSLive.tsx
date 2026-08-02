@@ -360,8 +360,8 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
 
     if (!autoRefresh) return () => { alive = false; };
     poll();
-    // 4G: trên Vercel (prod) poll 5s; local dev giữ 2s để test nhanh.
-    const POLL_MS = typeof window !== 'undefined' && !/localhost|127\.0\.0\.1/.test(window.location.hostname) ? 5000 : 2000;
+    // Poll 10s/lần (giảm tải call /api/gs-live).
+    const POLL_MS = 10_000;
     const id = setInterval(poll, POLL_MS);
     const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
     document.addEventListener('visibilitychange', onVis);

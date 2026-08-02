@@ -47,12 +47,7 @@ const wlp = (a: { win: number; halfWin: number; lose: number; halfLose: number; 
 const pnlStr = (v: number): string => (v > 0 ? `+${v.toFixed(2)}` : v.toFixed(2));
 const pnlColor = (v: number): string => (v > 0 ? '#4ade80' : v < 0 ? '#fb7185' : '#8a8a8a');
 
-// Nhịp tự động refresh. 'auto' = mặc định, poll đều 5s lấy list mới nhất.
-type RefreshMode = 'off' | '5' | '10' | '15' | 'auto';
-const REFRESH_MODES: RefreshMode[] = ['off', '5', '10', '15', 'auto'];
-const AUTO_MS = 5000; // 'auto' = 5s cố định
-const refreshLabel = (m: RefreshMode): string =>
-  m === 'off' ? '⏸ Tắt' : m === 'auto' ? '⟳ Tự động (5s)' : `⟳ ${m}s`;
+const AUTO_MS = 5000; // tự động refresh 5s cố định (không cho tắt/đổi)
 
 // Chỉ lấy 20 kèo/trang (performance). version '' → server default = latest.
 const buildQuery = (version: string, pageArg: number): string => {
@@ -68,7 +63,6 @@ export default function TxReport() {
   const [data, setData] = useState<TxReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshMode, setRefreshMode] = useState<RefreshMode>('auto');
   const [detailVersion, setDetailVersion] = useState<string | null>(null); // version đang mở drawer chi tiết
 
   const load = useCallback(async (version: string, pageArg: number) => {
@@ -90,26 +84,16 @@ export default function TxReport() {
     }
   }, []);
 
-  // Initial load = latest (empty version), trang 0.
-  useEffect(() => { load('', 0); }, [load]);
-
-  // Khôi phục nhịp refresh đã lưu (đọc trong effect → tránh hydration mismatch).
+  // Initial load — khôi phục version đã xem trước đó (localStorage) → F5 không mất context.
   useEffect(() => {
-    const saved = localStorage.getItem('tx-refresh-mode');
-    if (saved && (REFRESH_MODES as string[]).includes(saved)) setRefreshMode(saved as RefreshMode);
-  }, []);
-  const onRefreshMode = (v: RefreshMode) => {
-    setRefreshMode(v);
-    localStorage.setItem('tx-refresh-mode', v);
-  };
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('tx-selected-version') : null;
+    load(saved || '', 0);
+  }, [load]);
 
-  // Auto-refresh — silent (không bật spinner, lỗi tạm giữ nguyên bảng cũ).
-  // Dùng setTimeout tự lên lịch: mode 'auto' tính delay từ chính data vừa fetch (còn ⏳ → nhanh).
+  // Auto-refresh — LUÔN 5s, silent (không bật spinner, lỗi tạm giữ nguyên bảng cũ).
   useEffect(() => {
-    if (refreshMode === 'off') return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
-    const delay = refreshMode === 'auto' ? AUTO_MS : Number(refreshMode) * 1000;
     const tick = async () => {
       try {
         const res = await fetch(buildQuery(selected, page), { cache: 'no-store' });
@@ -119,22 +103,22 @@ export default function TxReport() {
         /* giữ data cũ */
       }
       if (cancelled) return;
-      timer = setTimeout(tick, delay);
+      timer = setTimeout(tick, AUTO_MS);
     };
-    timer = setTimeout(tick, delay);
+    timer = setTimeout(tick, AUTO_MS);
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [refreshMode, selected, page]);
+  }, [selected, page]);
 
   const onSelect = (v: string) => {
     setSelected(v);
     setPage(0);
+    try { localStorage.setItem('tx-selected-version', v); } catch { /* noop */ } // nhớ bot đang xem qua F5
     load(v, 0); // đổi version → về trang đầu
   };
 
-  const versions = data?.versions ?? [];
   const summary = data?.summaryByVersion ?? [];
 
   return (
@@ -142,26 +126,7 @@ export default function TxReport() {
       {/* Header + version selector */}
       <div className="mb-5 flex shrink-0 items-center gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-white">💰 Báo cáo Tài/Xỉu (paper)</h1>
-        <select
-          value={selected}
-          onChange={(e) => onSelect(e.target.value)}
-          className="rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-        >
-          <option value="all" className="bg-[#111] text-white">Tất cả</option>
-          {versions.map((v) => (
-            <option key={v} value={v} className="bg-[#111] text-white">{v}</option>
-          ))}
-        </select>
-        <select
-          value={refreshMode}
-          onChange={(e) => onRefreshMode(e.target.value as RefreshMode)}
-          title="Nhịp tự cập nhật list. Tự động = 5s (mặc định). Tắt để đỡ băng thông."
-          className="rounded-lg bg-white/[.07] px-3 py-2 text-xs text-white outline-none"
-        >
-          {REFRESH_MODES.map((m) => (
-            <option key={m} value={m} className="bg-[#111] text-white">{refreshLabel(m)}</option>
-          ))}
-        </select>
+        <span className="text-[11px] text-[#666]">⟳ tự cập nhật 5s</span>
         {loading && <Spinner size={14} />}
       </div>
 
@@ -179,7 +144,7 @@ export default function TxReport() {
       ) : (
         <>
           {/* ── List version + biểu đồ — khoá chiều cao viewport, CHỈ list cuộn ── */}
-          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-4 lg:grid-cols-[320px_1fr] lg:grid-rows-1 lg:items-stretch">
+          <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-4 lg:grid-cols-[320px_1fr] lg:grid-rows-1 lg:items-stretch">
             {/* List version — mobile: dưới chart, lấp phần còn lại & cuộn; desktop: cột trái full-height & cuộn */}
             <div className="order-2 flex min-h-0 min-w-0 flex-col lg:order-none lg:col-start-1 lg:row-start-1">
               <div className="mb-2 shrink-0 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</div>
@@ -194,7 +159,7 @@ export default function TxReport() {
                       onClick={() => onSelect(s.calcVersion)}
                       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); } }}
                       title="Bấm để xem chart của version này"
-                      className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition ${active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/10' : 'border-[#2a2a2a] bg-[#141414] hover:bg-white/[.05]'}`}
+                      className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition ${s.openBets > 0 ? 'tx-pending ' : ''}${active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/10' : 'border-[#2a2a2a] bg-[#141414] hover:bg-white/[.05]'}`}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <span className="min-w-0 truncate text-[13px] font-semibold text-white">{s.calcVersion}</span>
@@ -207,9 +172,9 @@ export default function TxReport() {
                             onClick={(e) => { e.stopPropagation(); onSelect(s.calcVersion); setDetailVersion(s.calcVersion); }}
                             title="Xem chi tiết kèo (drawer)"
                             aria-label="Xem chi tiết kèo"
-                            className="rounded-md border border-[#2a2a2a] bg-white/[.04] px-1.5 py-0.5 text-[12px] leading-none text-[#9ca3af] hover:bg-white/[.12] hover:text-white"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#38bdf8]/45 bg-[#38bdf8]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#7dd3fc] shadow-sm transition hover:bg-[#38bdf8]/30 hover:text-white active:scale-95"
                           >
-                            📋
+                            📋 Chi tiết
                           </button>
                         </div>
                       </div>
@@ -232,7 +197,7 @@ export default function TxReport() {
             </div>
 
             {/* Biểu đồ — mobile: trên cùng cao 320px; desktop: cột phải full chiều cao */}
-            <div className="order-1 h-[380px] min-h-0 min-w-0 overflow-hidden lg:order-none lg:col-start-2 lg:row-start-1 lg:h-auto">
+            <div className="order-1 h-full min-h-0 min-w-0 overflow-hidden lg:order-none lg:col-start-2 lg:row-start-1 lg:h-auto">
               <TxTimelineChart version={selected} />
             </div>
           </div>

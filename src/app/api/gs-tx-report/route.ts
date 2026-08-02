@@ -55,7 +55,7 @@ export interface TxVersionAgg {
   primaryOnly: TxAggLine; // kind='primary' only
   withNhoi: TxAggLine; // primary + nhoi combined
   nhoiOnly: TxAggLine; // kind='nhoi' only
-  openBets: number; // kèo chưa settle (result IS NULL) — mọi kind
+  openBets: number; // kèo pending vào <15' gần đây (đang thật sự vô kèo) — mọi kind; kèo mồ côi cũ KHÔNG tính
 }
 
 export interface TxReportResponse {
@@ -253,7 +253,7 @@ export async function GET(req: Request) {
               COUNT(*) FILTER (WHERE result = 'lose')::int      AS lose,
               COUNT(*) FILTER (WHERE result = 'half-lose')::int AS half_lose,
               COUNT(*) FILTER (WHERE result = 'push')::int      AS push,
-              COUNT(*) FILTER (WHERE result IS NULL)::int       AS open_bets,
+              COUNT(*) FILTER (WHERE result IS NULL AND entry_at > now() - interval '15 minutes')::int AS open_bets,
               COALESCE(SUM(pnl) FILTER (WHERE result IS NOT NULL), 0) AS pnl
          FROM gs_tx_paper
          GROUP BY calc_version, kind`,
@@ -275,7 +275,7 @@ export async function GET(req: Request) {
       addInto(agg.withNhoi, line);
       if (r.kind === 'primary') addInto(agg.primaryOnly, line);
       else addInto(agg.nhoiOnly, line);
-      agg.openBets += num(r.open_bets); // gộp kèo chưa settle của mọi kind
+      agg.openBets += num(r.open_bets); // gộp kèo pending <15' của mọi kind
     }
     // Keep the version ordering (latest-first) and finalize win rates.
     const summaryByVersion: TxVersionAgg[] = versions.map((v) => {

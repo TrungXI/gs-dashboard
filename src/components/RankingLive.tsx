@@ -30,7 +30,22 @@ const BUFFER_EV = 0.06;       // biên: P_model phải hơn xác suất thị tr
 const BUFFER_EV_H2 = 0.10;    // H2 leg suy ra (FT−H1) kém tin → biên rộng hơn
 const LAPLACE_A = 1;          // làm mịn Laplace: 0/10 → ~8%, 10/10 → ~92% (không 0/100% tuyệt đối)
 
+// ── Drift / tempo / league-prior (self-improving, §3.2 SPEC) — additive edge nudges ──
+const DRIFT_WINDOW = 2;          // ouLine mốc `window` snapshot trước làm ref
+const DRIFT_UP_THRESH = 0.5;     // drift ≥ +0.5 → thị trường đẩy Tài
+const DRIFT_DOWN_THRESH = 0.5;   // drift ≤ −0.5 → thị trường đẩy Xỉu
+const DRIFT_EDGE_BONUS = 0.03;   // nudge biên khi drift đồng hướng cửa nghiêng
+const TEMPO_REF = 6;             // corners + 0.5*cards trung tính (G2 default)
+const TEMPO_K = 0.03;            // hệ số nudge biên per tempo unit
+const LEAGUE_PRIOR_MIN_N = 30;   // min n bucket để blend prior
+const PRIOR_BLEND_CAP = 30;      // cap prior weight để H2H không bị đè
+
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
+
+// Bucket tổng bàn H1 để join league prior (0..6, 7 = "7+"). Khớp LEAST(h1,7) ở route.
+function h1Bucket(scored: number): number {
+  return Math.min(scored, 7);
+}
 
 // Parse line "2.5" | "3" | "2.5-3" (quarter). Trả null nếu rỗng/không parse được.
 function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; loLine: number; hiLine: number } | null {
@@ -110,6 +125,11 @@ function computeSignal(args: {
   underRaw: string | null | undefined; // giá Malay cửa Xỉu
   isS?: boolean;             // giải (S) ít bàn → ép Xỉu (v6.0)
   isV?: boolean;             // giải (V) nhiều bàn → ép Tài (v6.0)
+  // ── MỚI (§3.2) — vắng hết ⇒ output byte-identical với hành vi cũ ──
+  lineDriftHistory?: { line: number; scored: number; ts: number }[]; // cùng market đang xét
+  cornersTotal?: number;     // cornersHome + cornersAway (H1 tempo)
+  cardsWeighted?: number;    // yellow*1 + red*3, tổng 2 đội
+  leaguePrior?: { pTai: number; n: number } | null; // từ /api/gs-league-priors, leak-free
 }): TxSignal {
   const parsed = parseLine(args.lineRaw);
   if (!parsed) return null;            // line không parse được → ẩn
@@ -122,11 +142,20 @@ function computeSignal(args: {
     ? (pTaiEmpirical(parsed.loLine, args.scored, args.totals).p + pTaiEmpirical(parsed.hiLine, args.scored, args.totals).p) / 2
     : pTaiEmpirical(parsed.lineVal, args.scored, args.totals).p;
   if (!Number.isFinite(pTai)) return null; // pool rỗng → NaN → ẩn
-  const pXiu = 1 - pTai;
+
+  // League prior blend (§3.2 #1): thay vì hardcode (V)/(S) cho pModel, blend P(Tài) empirical
+  // với prior calibrated theo cỡ mẫu. Vắng prior / n<min → pTaiForModel = pTai (không đổi gì).
+  let pTaiForModel = pTai;
+  if (args.leaguePrior && args.leaguePrior.n >= LEAGUE_PRIOR_MIN_N) {
+    const nPool = args.totals.length;
+    const capW = Math.min(args.leaguePrior.n, PRIOR_BLEND_CAP);
+    pTaiForModel = (pTai * nPool + args.leaguePrior.pTai * capW) / (nPool + capW);
+  }
+  const pXiuForModel = 1 - pTaiForModel;
 
   // Cửa nghiêng LEAGUE-DRIVEN (v6.0): (V)→ép Tài, (S)→ép Xỉu, untagged→model. Gate P_MIN_VAO vẫn chặn side yếu.
-  const leanTai = args.isV ? true : args.isS ? false : (pTai >= pXiu);
-  const pModel = leanTai ? pTai : pXiu;
+  const leanTai = args.isV ? true : args.isS ? false : (pTaiForModel >= pXiuForModel);
+  const pModel = leanTai ? pTaiForModel : pXiuForModel;
   const priceRaw = leanTai ? args.overRaw : args.underRaw;
   const priceNum = priceRaw == null || priceRaw === '' ? NaN : Number(priceRaw);
   if (!Number.isFinite(priceNum)) return null; // giá cửa nghiêng không parse được → market đóng → ẩn
@@ -154,6 +183,30 @@ function computeSignal(args: {
   const buffer = args.lowConf ? BUFFER_EV_H2 : BUFFER_EV;
   const edgeProb = p - pMarket; // biên so với thị trường đã de-vig (buffer 6% / H2 10%)
 
+  // ── Drift + tempo nudge (§3.2 #2/#3) — confirmation, KHÔNG đổi side, chỉ cộng/trừ edgeProb ──
+  let nudge = 0;
+  // Drift: F1 lineDrift port. drift đồng hướng side → dễ VÀO hơn; ngược hướng → thận trọng.
+  const driftHist = (args.lineDriftHistory ?? []).filter((h) => Number.isFinite(h.line));
+  if (driftHist.length >= 1) {
+    const refIdx = Math.max(0, driftHist.length - DRIFT_WINDOW);
+    const drift = parsed.lineVal - driftHist[refIdx].line;
+    let driftSide: 'tai' | 'xiu' | null = null;
+    if (drift >= DRIFT_UP_THRESH) driftSide = 'tai';
+    else if (drift <= -DRIFT_DOWN_THRESH) driftSide = 'xiu';
+    if (driftSide !== null) {
+      nudge += driftSide === side ? DRIFT_EDGE_BONUS : -DRIFT_EDGE_BONUS;
+    }
+  }
+  // Tempo: corners + cards (mirror G2, tempo cao → nghiêng Tài). Chỉ khi caller truyền (H1 market).
+  if (args.cornersTotal != null && args.cardsWeighted != null) {
+    const tempo = args.cornersTotal + 0.5 * args.cardsWeighted;
+    const tempoNudge = TEMPO_K * (tempo - TEMPO_REF);
+    nudge += side === 'tai' ? tempoNudge : -tempoNudge;
+  }
+  // Clamp tổng nudge trong [-0.06, +0.06] để không lấn gate empirical.
+  nudge = Math.max(-0.06, Math.min(0.06, nudge));
+  const edgeProbAdjusted = edgeProb + nudge;
+
   // Lưỡng lự: cửa nghiêng chưa đạt ngưỡng → KHÔNG suggest. Tài giữ 70%, Xỉu hạ 60% (thử tăng volume Xỉu).
   if (p < (leanTai ? P_MIN_VAO : 0.60)) {
     return { kind: 'none', lowConf: args.lowConf };
@@ -161,7 +214,7 @@ function computeSignal(args: {
   // Giá cửa vào phải đáng tiền: Malay > 0.7 HOẶC âm. Khoảng (0, 0.7] = dương nhỏ payout tệ → không VÀO odd đó.
   const priceEnterable = priceNum > PRICE_MIN_VAO || priceNum < 0;
 
-  if (edgeProb >= buffer && priceEnterable) {
+  if (edgeProbAdjusted >= buffer && priceEnterable) {
     // TÀI đỡ rủi ro: chỉ VÀO khi CÒN CẦN ≤ TAI_LINE_MAX bàn (needed = line − tỉ số HIỆN TẠI).
     // Vd H2 1-0 line 1.5 → cần 0.5 → VÀO ngay (KHÔNG dùng line tuyệt đối, bug chờ oan ở H2).
     if (side === 'tai' && parsed.lineVal - args.scored > TAI_LINE_MAX) {
@@ -173,7 +226,7 @@ function computeSignal(args: {
     }
     return { kind: 'vao', side, price: String(priceRaw), pct: p, line: String(parsed.lineVal % 1 === 0 ? parsed.lineVal : args.lineRaw), lowConf: args.lowConf };
   }
-  if (edgeProb < 0) {
+  if (edgeProbAdjusted < 0) {
     return { kind: 'none', lowConf: args.lowConf }; // ta còn thấp hơn thị trường → chưa có kèo rõ
   }
   // Chờ giá: mốc theo EV (malayToProb = p − buffer). Nếu cửa dương mà mốc EV vẫn ở band xấu
@@ -266,10 +319,34 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     return () => { alive = false; };
   }, []);
 
+  // League priors (calibrated P(Tài) per leagueTag/h1Bucket/market) — mount + mỗi 10'.
+  // Fail → giữ map cũ (không phá UI). 1 request full bảng nhỏ, KHÔNG fetch per-match. (§3.4)
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const res = await fetch('/api/gs-league-priors', { cache: 'no-store' });
+        const json = (await res.json()) as { ok: boolean; priors?: { leagueTag: string; h1Bucket: number; market: string; n: number; pTai: number }[] };
+        if (!alive || !json.ok || !json.priors) return;
+        const m = new Map<string, { pTai: number; n: number }>();
+        for (const p of json.priors) m.set(`${p.leagueTag}:${p.h1Bucket}:${p.market}`, { pTai: p.pTai, n: p.n });
+        leaguePriorsRef.current = m;
+      } catch { /* giữ map cũ */ }
+    };
+    load();
+    const id = setInterval(load, 600_000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+
   // H1 final scores tracked across H1→H2 transition
   const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
   const [h1Finals, setH1Finals] = useState<Map<number, { home: number; away: number }>>(new Map());
   const prevRef = useRef<Map<number, GsLiveMatch>>(new Map());
+
+  // Lịch sử ouLine per event (cross-poll, intra-session). Cap 40. Reset khi trận hết live. (§3.1)
+  const lineDriftRef = useRef<Map<number, { line: number; scored: number; ts: number; market: 'ft' | 'h1' }[]>>(new Map());
+  // League priors từ /api/gs-league-priors, refresh 10'. Key = `${leagueTag}:${h1Bucket}:${market}`. (§3.4)
+  const leaguePriorsRef = useRef<Map<string, { pTai: number; n: number }>>(new Map());
 
   // ── Toasts + OS notifications (mirror of GS Live) ──────────────────────────
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -398,6 +475,28 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           if (h1Changed) setH1Finals(new Map(h1FinalRef.current));
           prevRef.current = new Map(next.map((m) => [m.eventId, m]));
           setMatches(next);
+
+          // Cập nhật lineDriftRef: push khi line FT/H1 đổi (dedup theo giá trị liền trước, cap 40).
+          // Trận hết live → xoá entry để không phình bộ nhớ (mirror xiuSeen reset).
+          for (const nm of next) {
+            if (!nm.isLive) {
+              lineDriftRef.current.delete(nm.eventId);
+              continue;
+            }
+            const pushSnap = (market: 'ft' | 'h1', rawLine: string | null | undefined) => {
+              const parsed = parseLine(rawLine);
+              if (!parsed) return;
+              const lineVal = parsed.lineVal;
+              const arr = lineDriftRef.current.get(nm.eventId) ?? [];
+              // Dedup theo snapshot CÙNG market gần nhất (ft/h1 xen kẽ nên at(-1) có thể khác market).
+              const lastSame = [...arr].reverse().find((h) => h.market === market);
+              if (lastSame && lastSame.line === lineVal) return;
+              arr.push({ line: lineVal, scored: nm.h1Home + nm.h1Away, ts: Date.now(), market });
+              lineDriftRef.current.set(nm.eventId, arr.slice(-40));
+            };
+            pushSnap('ft', nm.ouLines?.[0]?.line);
+            pushSnap('h1', nm.ouH1Lines?.[0]?.line);
+          }
         }
       } catch (e) {
         if (alive) setError(String(e));
@@ -405,8 +504,8 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     }
 
     poll();
-    // 4G: trên Vercel (prod) poll 5s; local dev giữ 2s để test nhanh.
-    const POLL_MS = typeof window !== 'undefined' && !/localhost|127\.0\.0\.1/.test(window.location.hostname) ? 5000 : 2000;
+    // Poll 10s/lần (giảm tải call /api/gs-live).
+    const POLL_MS = 10_000;
     const id = setInterval(poll, POLL_MS);
     const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
     document.addEventListener('visibilitychange', onVis);
@@ -876,7 +975,19 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     // League tag drives direction (v6.0): (V)→Tài, (S)→Xỉu, untagged→model.
     const isS = m.homeTeam.includes('(S)');
     const isV = m.homeTeam.includes('(V)');
-    const sig = computeSignal({ totals, lowConf, scored, lineRaw, overRaw, underRaw, isS, isV });
+    // leagueTag khớp route (§4): `${matchType}${:S|:V|''}`. Bucket theo tổng bàn H1 hiện tại.
+    const variant = isS ? ':S' : isV ? ':V' : '';
+    const priorKey = `${m.matchType}${variant}:${h1Bucket(m.h1Home + m.h1Away)}:${activeMarket}`;
+    const sig = computeSignal({
+      totals, lowConf, scored, lineRaw, overRaw, underRaw, isS, isV,
+      lineDriftHistory: (lineDriftRef.current.get(m.eventId) ?? [])
+        .filter((h) => h.market === activeMarket)
+        .map(({ line, scored: s, ts }) => ({ line, scored: s, ts })),
+      // Tempo chỉ áp H1 (§3.2 #3): corners/cards ở GS Ảo là tally H1-heavy.
+      cornersTotal: activeMarket === 'h1' ? m.cornersHome + m.cornersAway : undefined,
+      cardsWeighted: activeMarket === 'h1' ? m.yellowHome + m.yellowAway + 3 * (m.redHome + m.redAway) : undefined,
+      leaguePrior: leaguePriorsRef.current.get(priorKey) ?? null,
+    });
     if (!sig) return ph('— chưa có line kèo'); // thiếu line/giá → placeholder (KHÔNG show VÀO khi thiếu số liệu)
 
     // REALTIME thuần: mỗi poll hiện verdict hiện tại (có bàn/đổi số là verdict tự đổi). KHÔNG khóa, không lưu.
