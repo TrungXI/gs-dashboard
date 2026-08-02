@@ -115,7 +115,7 @@ async function dbInfo() {
 
 // Trạng thái THU THẬP DATA — logic giống gs-data-watchdog: đỏ CHỈ khi có trận GS live
 // mà match_odds_log ngừng ghi. Đếm trận live đọc từ feed local (:8899, đã cache — rẻ).
-const STALE_SEC = 420;
+const STALE_SEC = 1800; // 30 phút (odds ghi theo mốc snapshot, thưa — tránh báo nhầm)
 async function collectionInfo(dbAgeSec: number | null) {
   let liveGS: number | null = null;
   try {
