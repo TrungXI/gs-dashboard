@@ -71,7 +71,7 @@ export const TX_RULES: Record<string, TxRule> = {
       'Cả hai đội đều KHÔNG nằm trong nhóm đội bị tránh.',
     ],
   },
-  'V.Bot 12 R4': {
+  'V.Bot 12 R4-B': {
     emoji: '🏆',
     headline: 'Đánh XỈU 20p như bản gốc, nhưng chỉ NÉ 3 đội xấu — bản tối ưu mới nhất.',
     side: 'Luôn đánh XỈU (Under)',
