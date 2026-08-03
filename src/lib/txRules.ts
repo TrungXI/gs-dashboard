@@ -69,6 +69,24 @@ export const TX_RULES: Record<string, TxRule> = {
       'Cả hai đội đều KHÔNG nằm trong nhóm đội bị tránh.',
     ],
   },
+  'V.Bot 12 R4': {
+    emoji: '🏆',
+    headline: 'Đánh XỈU 20p như bản gốc, nhưng chỉ NÉ 3 đội xấu — bản tối ưu mới nhất.',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'Ngay khi nhà cái mở kèo, lúc còn hiệp 1.',
+    strategy: [
+      'Cùng ý tưởng: line loại trận 20 phút thường hơi cao → đánh XỈU.',
+      'Dựa trên dữ liệu 940 trận: chỉ có 3 đội đánh Xỉu hay THUA → NÉ đúng 3 đội đó: Indonesia, Saudi Arabia, Triều Tiên (North Korea).',
+      'Các đội còn lại (India, Thái Lan, Iran, Trung Quốc, Qatar, New Zealand, Nhật, Việt Nam…) đều đánh Xỉu tốt → giữ đánh hết.',
+      'Khác R2 cũ (né nhầm Nhật + Hàn — hai đội này thật ra vẫn ăn Xỉu).',
+    ],
+    data: [READ_ODDS, 'Line + giá cửa Xỉu, kèm tên 2 đội để lọc.', GRADE],
+    entry: [
+      'Trận loại 20 phút · còn hiệp 1 · nhà cái đã mở kèo.',
+      'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
+    ],
+    note: 'Bản này backtest cho kết quả tốt nhất: thắng ~60%, lời đều cả kỳ. Đang chạy THỬ (chưa đặt tiền) để đối chiếu với các bản khác.',
+  },
   'V.Bot 1': {
     emoji: '📈',
     headline: 'Đợi hết hiệp 1, đoán hiệp 2 ghi thêm mấy bàn rồi so với line.',
