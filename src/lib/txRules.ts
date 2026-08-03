@@ -1,207 +1,204 @@
-// txRules.ts — Rule/chiến lược của TỪNG bot (calc_version) để hiển thị trong Báo cáo T/X.
-// Nội dung tóm tắt TRUNG THỰC từ source bot trên VPS (/opt/gs-collector/tx-paper/*.mjs).
-// Khi đổi rule bot → cập nhật ở đây cho khớp.
+// txRules.ts — Rule/chiến lược của TỪNG bot (calc_version), viết THUẦN TIẾNG VIỆT cho người
+// không rành kỹ thuật: nói rõ bot NHÌN GÌ, SO SÁNH GÌ, KHI NÀO VÔ KÈO. Không dùng tên bảng/jargon.
 
 export interface TxRule {
   emoji: string;
   headline: string; // 1 dòng: bot làm gì
   side: string; // cửa đánh
   when: string; // thời điểm vào kèo
-  strategy: string[]; // chiến lược
-  data: string[]; // lấy data gì
+  strategy: string[]; // ý tưởng + SO SÁNH GÌ để quyết định
+  data: string[]; // bot nhìn vào cái gì
   entry: string[]; // điều kiện VÔ KÈO
   note?: string;
 }
 
-// Data chung cho mọi bot (feed + chấm kèo) — tránh lặp.
-const FEED = 'Feed gs-live nội bộ (VPS :8899) — mirror sb21 getEvent (endpoint PUBLIC, không cần token để đọc), poll ~1.5s.';
-const GRADE = 'Chấm kèo theo TỔNG BÀN cuối trận, payout kiểu Malay; tự settle khi trận rời live.';
-const PRIOR = 'Prior H1→H2 dựng LIVE từ toàn bộ match_odds_log lịch sử trong gs_db (leak-free), tối thiểu N mỗi bucket.';
+// Mô tả chung, viết dễ hiểu.
+const READ_ODDS = 'Đọc trực tiếp từ nhà cái: line Tài/Xỉu + giá cửa + tỉ số đang đá (cập nhật ~1,5 giây/lần).';
+const GRADE = 'Chấm thắng/thua dựa trên TỔNG SỐ BÀN cuối trận.';
+const HISTORY = 'Xem lại rất nhiều trận tương tự trong quá khứ để ước tính hiệp 2 thường ghi thêm mấy bàn.';
 
 export const TX_RULES: Record<string, TxRule> = {
   'V.Bot 12 Real': {
     emoji: '💰',
-    headline: 'Pre-match XỈU line mở kèo (20p) — ĐẶT TIỀN THẬT.',
-    side: 'Xỉu (Under) · biến thể 20p (V)',
-    when: 'Ngay khi nhà cái MỞ KÈO ở Hiệp 1 (line mở kèo đầu tiên).',
+    headline: 'Đánh XỈU ngay khi nhà cái mở kèo (loại trận 20 phút) — ĐẶT TIỀN THẬT.',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'Ngay khi nhà cái vừa mở kèo cho cược, lúc trận còn ở hiệp 1.',
     strategy: [
-      'Backtest: kèo 20p, market đặt line hơi CAO so với số bàn thực (avg line 3.69 vs 3.56 bàn) → cửa XỈU +EV.',
-      'R1 = đánh TẤT CẢ đội (không né đội nào). 1 lệnh/trận.',
-      'Đặt lệnh THẬT qua sb21 placeBets (agentId 69). Retry khi book khoá/odds nhảy, KHÔNG bao giờ đặt 2 lệnh/trận (check server trước).',
+      'Ý tưởng: ở loại trận 20 phút, nhà cái thường ra line HƠI CAO so với số bàn thực tế.',
+      'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
+      '→ Line bị đặt cao hơn thực tế → cửa XỈU có lợi thế. Nên bot luôn đánh XỈU.',
+      'Đánh mọi trận, không bỏ đội nào. Mỗi trận chỉ vào đúng 1 lệnh.',
     ],
     data: [
-      FEED,
-      'Lấy line + giá XỈU của ouLines[0] (line mở kèo toàn trận), kèm selectionId + offerId để đặt lệnh.',
-      'Token đặt lệnh = GS_TOKEN trong .env (chính là token anh /settoken).',
+      READ_ODDS,
+      'Chỉ cần line + giá cửa Xỉu mà nhà cái vừa mở ở trận loại 20 phút.',
       GRADE,
     ],
     entry: [
-      'Trận đang live · matchType = 20p · còn Hiệp 1 (chưa sang H2).',
-      'Nhà cái MỞ KÈO thật: bettingOpen = true, line không suspended, có line + giá Xỉu hợp lệ.',
-      'Vào bất kể tỉ số (0-0/1-0/2-1…) và bất kể phút, miễn còn H1 + book mở.',
-      'Chưa đặt lệnh trận này (local + server) → đặt 1 lệnh rồi chốt.',
+      'Trận đang đá, đúng loại 20 phút, và còn trong hiệp 1.',
+      'Nhà cái đã MỞ KÈO thật (cho cược), có line + giá Xỉu rõ ràng.',
+      'Vào bất kể đang tỉ số mấy, bất kể phút — miễn còn hiệp 1 và kèo đang mở.',
     ],
-    note: 'Tiền mỗi lệnh = /setmoney trong group Real Money. Token lỗi/hết hạn → bot báo group để /settoken lại.',
+    note: 'Đây là bot đặt TIỀN THẬT. Số tiền mỗi lệnh chỉnh bằng lệnh /setmoney trong group. Nếu token hết hạn, bot sẽ nhắn báo để /settoken lại.',
   },
   'V.Bot 12 R1': {
     emoji: '🧪',
-    headline: 'Pre-match XỈU line mở kèo (20p) — bản GIẤY (không tiền thật).',
-    side: 'Xỉu (Under) · biến thể 20p (V)',
-    when: 'Ngay khi nhà cái mở kèo ở Hiệp 1.',
+    headline: 'Y hệt bản tiền thật nhưng chạy THỬ (không đặt tiền) — để đối chiếu.',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'Ngay khi nhà cái mở kèo, lúc còn hiệp 1.',
     strategy: [
-      'Y HỆT V.Bot 12 Real nhưng KHÔNG đặt tiền thật (paper) — dùng để đối chiếu.',
-      'R1 = đánh tất cả đội, không né. 1 lệnh/trận.',
+      'Cùng cách đánh với bản tiền thật: line nhà cái ở loại trận 20 phút thường hơi cao → đánh XỈU.',
+      'Đánh mọi đội, mỗi trận 1 lệnh. Khác biệt duy nhất: KHÔNG đặt tiền, chỉ ghi nhận để so sánh kết quả.',
     ],
-    data: [FEED, 'Line + giá Xỉu ouLines[0] (line mở kèo).', GRADE],
-    entry: [
-      'Trận live · 20p · còn H1 · nhà cái mở kèo (bettingOpen, line không suspended).',
-      'Vào bất kể tỉ số/phút miễn còn H1 + book mở.',
-    ],
+    data: [READ_ODDS, 'Line + giá cửa Xỉu nhà cái vừa mở.', GRADE],
+    entry: ['Trận loại 20 phút · còn hiệp 1 · nhà cái đã mở kèo.'],
   },
   'V.Bot 12': {
     emoji: '🤖',
-    headline: 'Pre-match XỈU line mở kèo (20p) — R2 (né 3 đội ghi bàn nhiều).',
-    side: 'Xỉu (Under) · biến thể 20p (V)',
-    when: 'Ngay khi nhà cái mở kèo ở Hiệp 1.',
+    headline: 'Đánh XỈU như bản gốc nhưng TRÁNH vài đội hay ghi nhiều bàn.',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'Ngay khi nhà cái mở kèo, lúc còn hiệp 1.',
     strategy: [
-      'Như R1 nhưng NÉ 3 đội ghi bàn nhiều nhất (Indonesia/Korea/Japan) vì market hay underprice → nghiêng Tài.',
-      'Backtest R2: n=522, win 60.7%, PnL +55.6u, ROI +10.6%.',
+      'Cùng ý tưởng: line loại trận 20 phút hơi cao → đánh XỈU.',
+      'Khác biệt: BỎ QUA các đội hay ghi nhiều bàn (Indonesia, Hàn Quốc, Nhật) — vì mấy đội này dễ làm kèo nghiêng về Tài, đánh Xỉu dễ thua.',
+      'Còn lại đánh XỈU bình thường, mỗi trận 1 lệnh.',
     ],
-    data: [FEED, 'Line + giá Xỉu ouLines[0].', GRADE],
+    data: [READ_ODDS, 'Line + giá cửa Xỉu, kèm tên 2 đội để lọc.', GRADE],
     entry: [
-      'Trận live · 20p · còn H1 · book mở.',
-      'Đội nhà HOẶC đội khách KHÔNG nằm trong danh sách né → mới vào.',
+      'Trận loại 20 phút · còn hiệp 1 · nhà cái đã mở kèo.',
+      'Cả hai đội đều KHÔNG nằm trong nhóm đội bị tránh.',
     ],
   },
   'V.Bot 1': {
     emoji: '📈',
-    headline: 'G1 h1ContinuationOU — nối đà H1 sang H2.',
-    side: 'Tài hoặc Xỉu (theo model)',
-    when: 'Đúng lúc kickoff Hiệp 2 (betting_open), 1 lần/trận.',
+    headline: 'Đợi hết hiệp 1, đoán hiệp 2 ghi thêm mấy bàn rồi so với line.',
+    side: 'Tài hoặc Xỉu (tuỳ hướng lệch)',
+    when: 'Đúng lúc bắt đầu hiệp 2 (nhà cái mở kèo lại). Mỗi trận 1 lệnh.',
     strategy: [
-      'E = h1Total + bàn kỳ vọng H2 theo bucket (expFinal).',
-      'E − line ≥ 0.35 → Tài; line − E ≥ 0.35 → Xỉu; còn lại PASS.',
+      'Nhìn số bàn đã ghi ở hiệp 1, rồi cộng thêm số bàn hiệp 2 thường ghi (theo lịch sử) → ra TỔNG dự kiến cả trận.',
+      'So sánh tổng dự kiến với line nhà cái:',
+      '• Dự kiến cao hơn line rõ rệt → đánh TÀI.  • Dự kiến thấp hơn line rõ rệt → đánh XỈU.  • Chênh ít → bỏ qua.',
     ],
-    data: [FEED, PRIOR, 'h1Total = tỉ số cuối H1; line = OU toàn trận (ft).', GRADE],
-    entry: ['Vào kèo H2 vừa mở · có đủ prior bucket · |E − line| ≥ 0.35.'],
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Vào đầu hiệp 2, khi mức chênh giữa dự kiến và line đủ lớn.'],
   },
   'V.Bot 2': {
     emoji: '📊',
-    headline: 'G3 kickoffH2LineValue — so P thực với giá de-vig.',
-    side: 'Tài hoặc Xỉu (theo model)',
-    when: 'Đúng lúc kickoff Hiệp 2 (betting_open), 1 lần/trận.',
+    headline: 'Đầu hiệp 2, so xác suất bot tính với xác suất mà GIÁ nhà cái ngụ ý.',
+    side: 'Tài hoặc Xỉu (cửa nào "giá hời")',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
     strategy: [
-      'pTai = P(final > line | bucket H1) tính empirical.',
-      'implied = P(Tài) de-vig từ giá thị trường.',
-      'pTai − implied ≥ 0.06 → Tài; implied − pTai ≥ 0.06 → Xỉu; còn lại PASS.',
+      'Bot tự tính khả năng thắng cửa Tài (dựa trên lịch sử trận tương tự).',
+      'Rồi tính khả năng mà GIÁ nhà cái đang ngụ ý.',
+      'Cửa nào bot thấy "giá hời hơn thực tế" (khả năng thắng cao hơn giá phản ánh) thì đánh cửa đó.',
     ],
-    data: [FEED, PRIOR, 'Giá over/under để de-vig; line OU toàn trận.', GRADE],
-    entry: ['Vào kèo H2 vừa mở · lệch P vs giá ≥ 0.06.'],
+    data: [READ_ODDS, HISTORY, 'Dùng giá cửa Tài/Xỉu để suy ra nhà cái đang nghĩ khả năng thắng bao nhiêu.', GRADE],
+    entry: ['Vào đầu hiệp 2, khi độ lệch giữa tính toán của bot và giá nhà cái đủ lớn.'],
   },
   'V.Bot 5': {
     emoji: '⬇️',
-    headline: 'G1 Xỉu-only (edge 0.35) + price-gate.',
-    side: 'Xỉu (Under) only',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
+    headline: 'Như V.Bot 1 nhưng CHỈ đánh Xỉu, và né kèo giá bèo.',
+    side: 'Chỉ đánh XỈU (Under)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
     strategy: [
-      'Chỉ nhận tín hiệu XỈU của G1: line − E ≥ 0.35.',
-      'Price-gate: chỉ vào khi giá Malay Xỉu > 0.70 hoặc âm (né kèo bị juice).',
+      'Cùng cách đoán tổng bàn cả trận như V.Bot 1, nhưng chỉ vào khi kết quả nghiêng về XỈU.',
+      'Thêm điều kiện: chỉ đánh khi giá cửa Xỉu không quá thấp (tránh kèo bị "cắt giá").',
     ],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Kèo H2 mở · G1 báo Xỉu (edge ≥ 0.35) · giá Xỉu qua price-gate.'],
-    note: 'Vào ÍT kèo vì gate chặt (không phải chạy chậm) — càng chọn lọc, càng ít nhưng chất.',
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Đầu hiệp 2 · dự kiến nghiêng Xỉu đủ rõ · giá cửa Xỉu chấp nhận được.'],
+    note: 'Bot này VÀO ÍT KÈO vì đòi điều kiện chặt — không phải chạy chậm hay bị treo.',
   },
   'V.Bot 7': {
     emoji: '🎯',
-    headline: 'G1 Xỉu conviction cao (edge 0.50) — ít kèo nhất.',
-    side: 'Xỉu (Under) only',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
+    headline: 'Như V.Bot 5 nhưng KHẮT KHE NHẤT — chỉ vào kèo cực chắc.',
+    side: 'Chỉ đánh XỈU (Under)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
     strategy: [
-      'Như V.Bot 5 nhưng NGƯỠNG edge cao nhất = 0.50 → chỉ vào kèo cực chắc.',
-      'Price-gate giá Xỉu > 0.70 hoặc âm.',
+      'Giống V.Bot 5 nhưng yêu cầu độ chênh giữa dự kiến và line phải RẤT LỚN mới vào.',
+      'Càng chắc mới đánh → số kèo ÍT NHẤT trong tất cả bot.',
     ],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Kèo H2 mở · G1 báo Xỉu với edge ≥ 0.50 · qua price-gate.'],
-    note: 'Vào ÍT kèo NHẤT hệ thống (conviction 0.50) — đây là lý do "chạy chậm", không phải lỗi.',
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Đầu hiệp 2 · chỉ vào khi cực kỳ chắc (độ chênh rất lớn).'],
+    note: 'Đây là bot vào ít kèo nhất hệ thống — đó là lý do trông "chạy chậm", không phải lỗi.',
   },
   'V.Bot 8': {
     emoji: '🔒',
-    headline: 'G1 + G2 Consensus Xỉu — cả hai model phải đồng thuận.',
-    side: 'Xỉu (Under) only',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
+    headline: 'Chỉ đánh Xỉu khi CẢ HAI cách tính đều đồng ý.',
+    side: 'Chỉ đánh XỈU (Under)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
     strategy: [
-      'Chỉ vào khi CẢ HAI: G1 (line − E ≥ 0.35) VÀ G2 (line − adjE ≥ 0.4) đều báo Xỉu.',
-      'Conviction cao nhất, ít bets nhất, chất lượng cao.',
+      'Bot dùng 2 cách tính khác nhau để đoán trận này Xỉu hay không.',
+      'Chỉ vào khi CẢ HAI cách đều nói "Xỉu" → chắc ăn mới đánh, nên vào rất ít kèo nhưng chất lượng cao.',
     ],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Kèo H2 mở · G1 AND G2 cùng báo Xỉu.'],
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Đầu hiệp 2 · cả 2 cách tính cùng báo Xỉu.'],
   },
   'V.Bot 9': {
     emoji: '⚙️',
-    headline: 'V.Bot 5 tinh chỉnh: edge 0.45 + bỏ line 2.25–2.5 + price-gate.',
-    side: 'Xỉu (Under) only',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
+    headline: 'Bản V.Bot 5 chỉnh chặt hơn: né mức line hay thua.',
+    side: 'Chỉ đánh XỈU (Under)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
     strategy: [
-      'G1 Xỉu-only, edge nâng 0.35 → 0.45.',
-      'BỎ dải line 2.25–2.5 (ổ lỗ toàn hệ). Chỉ giữ [1.75, 2.0] ∪ [>2.5].',
-      'Price-gate giá Xỉu > 0.70 hoặc âm.',
+      'Giống V.Bot 5 nhưng đòi độ chênh lớn hơn mới vào.',
+      'Tránh các mức line hay thua (khoảng 2.25–2.5).',
+      'Vẫn giữ điều kiện giá cửa Xỉu không quá bèo.',
     ],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Kèo H2 mở · G1 Xỉu edge ≥ 0.45 · line ngoài dải 2.25–2.5 · qua price-gate.'],
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Đầu hiệp 2 · nghiêng Xỉu đủ mạnh · line ngoài vùng 2.25–2.5 · giá ổn.'],
   },
   'V.Bot 10': {
     emoji: '🇻',
-    headline: 'V.Bot 9 nhưng CHỈ đánh biến thể (V).',
-    side: 'Xỉu (Under) only · chỉ (V)',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
-    strategy: ['Y hệt V.Bot 9, thêm lọc: chỉ nhận trận biến thể (V) — nơi Under lệch mạnh (~58%).'],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Như V.Bot 9 · và trận phải là biến thể (V).'],
+    headline: 'Như V.Bot 9 nhưng CHỈ đánh nhóm trận loại (V).',
+    side: 'Chỉ đánh XỈU (Under) · chỉ trận (V)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
+    strategy: ['Y hệt V.Bot 9, thêm lọc: chỉ chơi nhóm trận loại (V) — nhóm mà cửa Xỉu lệch mạnh hơn.'],
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Như V.Bot 9 · và phải là trận loại (V).'],
   },
   'V.Bot 11': {
     emoji: '🇸',
-    headline: 'V.Bot 9 nhưng CHỈ đánh biến thể (S) — control.',
-    side: 'Xỉu (Under) only · chỉ (S)',
-    when: 'Đúng lúc kickoff Hiệp 2, 1 lần/trận.',
-    strategy: ['Y hệt V.Bot 9, thêm lọc: chỉ nhận trận biến thể (S) — đối chứng edge theo variant.'],
-    data: [FEED, PRIOR, GRADE],
-    entry: ['Như V.Bot 9 · và trận phải là biến thể (S).'],
+    headline: 'Như V.Bot 9 nhưng CHỈ đánh nhóm trận loại (S).',
+    side: 'Chỉ đánh XỈU (Under) · chỉ trận (S)',
+    when: 'Đúng lúc bắt đầu hiệp 2. Mỗi trận 1 lệnh.',
+    strategy: ['Y hệt V.Bot 9, thêm lọc: chỉ chơi nhóm trận loại (S) — để so sánh với nhóm (V).'],
+    data: [READ_ODDS, HISTORY, GRADE],
+    entry: ['Như V.Bot 9 · và phải là trận loại (S).'],
   },
   'Tài Xỉu Live': {
     emoji: '📡',
-    headline: 'Mirror gợi ý Xếp hạng Live (v1) — vào theo tín hiệu live.',
-    side: 'Tài hoặc Xỉu (theo model live)',
-    when: 'Trong trận, khoá 1 kèo chính mỗi hiệp + nhồi thêm khi điểm mở qua line đã ăn.',
+    headline: 'Đánh THEO TRẬN, bám đúng gợi ý ở tab Xếp hạng Live.',
+    side: 'Tài hoặc Xỉu (theo gợi ý live)',
+    when: 'Trong lúc trận đang đá, theo tín hiệu thời gian thực.',
     strategy: [
-      'Sao chép ĐÚNG calc của dòng gợi ý VÀO trên tab Xếp hạng Live (v1-recent10).',
-      'Nhồi (stack) leg cùng cửa, line cao hơn, chỉ khi tỉ số đã mở qua line thắng trước.',
+      'Dùng đúng dòng gợi ý VÀO đang hiện trên tab Xếp hạng Live.',
+      'Khi trận có thêm bàn (tỉ số mở ra), bot có thể đánh chồng thêm 1 lệnh cùng cửa ở line cao hơn.',
     ],
-    data: [FEED, 'Toàn bộ computeSignal như RankingLive (empirical + market blend).', GRADE],
-    entry: ['Theo tín hiệu live của RankingLive · 1 primary/hiệp · nhồi có điều kiện.'],
+    data: [READ_ODDS, 'Dùng đúng cách tính của tab Xếp hạng Live.', GRADE],
+    entry: ['Theo gợi ý live · mỗi hiệp 1 lệnh chính · đánh thêm khi tỉ số mở qua line vừa thắng.'],
   },
   'TX v8.0 · lineDrift': {
     emoji: '🌊',
-    headline: 'Theo lineDrift — thị trường đẩy line về đâu thì đánh theo.',
-    side: 'Tài hoặc Xỉu (theo hướng drift)',
-    when: 'Trong trận, khi line dịch chuyển đủ mạnh.',
+    headline: 'Nhìn nhà cái KÉO LINE về đâu thì đánh theo hướng đó.',
+    side: 'Tài hoặc Xỉu (theo hướng nhà cái kéo)',
+    when: 'Trong lúc trận đang đá, khi line dịch chuyển đủ mạnh.',
     strategy: [
-      'Track dịch chuyển OU line trong trận (mỗi poll).',
-      'Drift ≥ +0.5 → thị trường đẩy Tài → VÀO Tài. Drift ≤ −0.5 → VÀO Xỉu.',
-      'Gate lọc: H2H pool N ≥ 8 · giá cửa > 0.70 hoặc âm · EV buffer ≥ 0.06 · ceiling scoredNow không vượt max H2H.',
+      'Theo dõi line Tài/Xỉu của nhà cái thay đổi trong trận.',
+      'Nhà cái kéo line LÊN (đẩy về Tài) → bot đánh TÀI. Kéo line XUỐNG → bot đánh XỈU.',
+      'Kèm vài bộ lọc (đủ dữ liệu đối đầu, giá không bèo, có lợi thế thật) để bỏ kèo rác.',
     ],
-    data: [FEED, 'Chuỗi thời gian OU line trong trận (in-memory) + H2H lịch sử.', GRADE],
-    entry: ['|drift| ≥ 0.5 · qua đủ 4 gate (N, giá, EV, ceiling).'],
+    data: [READ_ODDS, 'Theo dõi line thay đổi trong suốt trận + lịch sử đối đầu 2 đội.', GRADE],
+    entry: ['Line dịch đủ mạnh · qua các bộ lọc an toàn.'],
   },
 };
 
 const GENERIC: TxRule = {
   emoji: '🤖',
-  headline: 'Bot Tài/Xỉu (paper) — chi tiết rule xem source trên VPS.',
+  headline: 'Bot Tài/Xỉu — chưa có mô tả riêng cho phiên bản này.',
   side: '—',
   when: '—',
-  strategy: ['Chưa có mô tả rule riêng cho version này trong dashboard.'],
-  data: [FEED, GRADE],
-  entry: ['Xem source /opt/gs-collector/tx-paper/ trên VPS.'],
+  strategy: ['Phiên bản này chưa có ghi chú rule trong dashboard.'],
+  data: [READ_ODDS, GRADE],
+  entry: ['—'],
 };
 
 export function getTxRule(calcVersion: string): TxRule {
