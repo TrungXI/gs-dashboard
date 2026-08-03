@@ -359,6 +359,9 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   // Toast in-app: bật/tắt popup. Mặc định BẬT (chỉ tắt khi localStorage = '0').
   const [toastOn, setToastOn] = useState(true);
   const toastOnRef = useRef(true);
+  // Lọc theo loại trận (16p / 20p / tất cả). Ref để effect noti (poll) đọc giá trị mới nhất.
+  const [typeFilter, setTypeFilter] = useState<'all' | '16p' | '20p'>('all');
+  const typeFilterRef = useRef<'all' | '16p' | '20p'>('all');
 
   useEffect(() => {
     const g = localStorage.getItem('gs_os_noti_goal') === '1';
@@ -367,10 +370,17 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     setOsNotiHT(h);   osNotiHTRef.current = h;
     const t = localStorage.getItem('gs_toast_rank') !== '0';
     setToastOn(t); toastOnRef.current = t;
+    const tf = localStorage.getItem('gs_tx_type_filter');
+    if (tf === '16p' || tf === '20p' || tf === 'all') { setTypeFilter(tf); typeFilterRef.current = tf; }
   }, []);
   useEffect(() => { osNotiGoalRef.current = osNotiGoal; }, [osNotiGoal]);
   useEffect(() => { osNotiHTRef.current = osNotiHT; }, [osNotiHT]);
   useEffect(() => { toastOnRef.current = toastOn; }, [toastOn]);
+  useEffect(() => { typeFilterRef.current = typeFilter; }, [typeFilter]);
+
+  // Kèo có qua bộ lọc loại trận hiện tại không (đọc qua ref để effect noti thấy giá trị mới).
+  const passesFilter = (mt: GsLiveMatch['matchType']) =>
+    typeFilterRef.current === 'all' || mt === typeFilterRef.current;
 
   async function requestAndSet(
     key: string,
@@ -444,15 +454,20 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
             const pm = prevRef.current.get(nm.eventId);
             if (!pm) continue;
             const matchTime = `${nm.isH2 ? '2H' : '1H'} ${nm.minuteElapsed ?? 0}'`;
+            const notifyThis = passesFilter(nm.matchType); // trận không qua bộ lọc → không noti/toast
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
-              pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('goal', `⚽ ${nm.homeTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
+              if (notifyThis) {
+                pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
+                notifyOS('goal', `⚽ ${nm.homeTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
+              }
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
-              pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
-              notifyOS('goal', `⚽ ${nm.awayTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
+              if (notifyThis) {
+                pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
+                notifyOS('goal', `⚽ ${nm.awayTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
+              }
             }
           }
           if (newScored.size > 0) {
@@ -467,8 +482,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               if (pm && !pm.isH2) {
                 h1FinalRef.current.set(nm.eventId, { home: pm.h1Home, away: pm.h1Away });
                 h1Changed = true;
-                pushToast('halftime', `🔔 Hết Hiệp 1 — ${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
-                notifyOS('ht', '🔔 Hết Hiệp 1', `${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`, nm.eventId);
+                if (passesFilter(nm.matchType)) { // trận không qua bộ lọc → không noti/toast HT
+                  pushToast('halftime', `🔔 Hết Hiệp 1 — ${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`);
+                  notifyOS('ht', '🔔 Hết Hiệp 1', `${nm.homeTeam} ${pm.h1Home}–${pm.h1Away} ${nm.awayTeam}`, nm.eventId);
+                }
               }
             }
           }
@@ -605,8 +622,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
 
   // Render theo THỨ TỰ FEED gốc (liveMatches = như nhà cái trả về), KHÔNG sort eventId
   // (sorted chỉ dùng cho fetch-key ổn định). → thứ tự hiển thị khớp nhà cái.
-  const group16 = liveMatches.filter((m) => m.leagueId === LEAGUE_16P);
-  const group20 = liveMatches.filter((m) => m.leagueId === LEAGUE_20P);
+  // Lọc theo loại trận (16p/20p/tất cả) trước khi render danh sách.
+  const shownMatches = liveMatches.filter((m) => typeFilter === 'all' || m.matchType === typeFilter);
+  const group16 = shownMatches.filter((m) => m.leagueId === LEAGUE_16P);
+  const group20 = shownMatches.filter((m) => m.leagueId === LEAGUE_20P);
 
   const leagueName16 = group16[0]?.leagueName ?? '16 Phút';
   const leagueName20 = group20[0]?.leagueName ?? '20 Phút';
@@ -1105,6 +1124,26 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         >
           {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
         </button>
+        {/* Lọc loại trận: Tất cả / 16p / 20p — lọc cả danh sách hiển thị lẫn noti/toast. */}
+        <div className="flex items-center gap-1">
+          {([['all', 'Tất cả'], ['16p', '16p'], ['20p', '20p']] as const).map(([val, label]) => {
+            const active = typeFilter === val;
+            return (
+              <button
+                key={val}
+                type="button"
+                onClick={() => {
+                  setTypeFilter(val); typeFilterRef.current = val;
+                  localStorage.setItem('gs_tx_type_filter', val);
+                }}
+                className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${active ? 'border-[#38bdf8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+                title={`Lọc trận ${label}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {error && (
@@ -1113,7 +1152,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         </div>
       )}
 
-      {sorted.length === 0 ? (
+      {group16.length === 0 && group20.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
           <div className="mb-3 text-4xl">⏳</div>
           <div className="text-[14px] text-[#888]">Chưa có trận live. Đang chờ dữ liệu…</div>
