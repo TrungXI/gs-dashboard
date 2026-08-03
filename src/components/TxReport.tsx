@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
 import TxTimelineChart from './TxTimelineChart';
 import TxDetailDrawer from './TxDetailDrawer';
+import TxRuleModal from './TxRuleModal';
 
 // ── Response shape (mirror /api/gs-tx-report — SPEC §3.2) ───────────────────
 interface TxReportRow {
@@ -64,6 +65,7 @@ export default function TxReport() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailVersion, setDetailVersion] = useState<string | null>(null); // version đang mở drawer chi tiết
+  const [ruleVersion, setRuleVersion] = useState<string | null>(null); // version đang mở modal Xem Rule
 
   const load = useCallback(async (version: string, pageArg: number) => {
     setLoading(true);
@@ -178,6 +180,18 @@ export default function TxReport() {
                           </button>
                         </div>
                       </div>
+                      {/* Nút Xem Rule — ngay dưới Chi tiết, mở modal rule của CHÍNH bot này */}
+                      <div className="mt-1.5 flex justify-end">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setRuleVersion(s.calcVersion); }}
+                          title="Xem rule / chiến lược bot này đang chạy"
+                          aria-label="Xem rule bot"
+                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#fbbf24]/45 bg-[#fbbf24]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#fcd34d] shadow-sm transition hover:bg-[#fbbf24]/30 hover:text-white active:scale-95"
+                        >
+                          📖 Xem Rule
+                        </button>
+                      </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
                         <span>{s.withNhoi.bets} kèo</span>
                         <span className="text-[#444]">·</span>
@@ -206,6 +220,9 @@ export default function TxReport() {
 
       {/* Drawer chi tiết kèo — mở khi bấm version, có nút "Tải thêm" */}
       {detailVersion && <TxDetailDrawer version={detailVersion} onClose={() => setDetailVersion(null)} />}
+
+      {/* Modal Xem Rule — rule/chiến lược của bot đang chọn */}
+      {ruleVersion && <TxRuleModal version={ruleVersion} onClose={() => setRuleVersion(null)} />}
     </div>
   );
 }
