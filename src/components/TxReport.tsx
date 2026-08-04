@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
 import TxTimelineChart from './TxTimelineChart';
 import TxDetailDrawer from './TxDetailDrawer';
@@ -152,11 +152,27 @@ export default function TxReport() {
             <div className="order-2 flex min-h-0 min-w-0 flex-col lg:order-none lg:col-start-1 lg:row-start-1">
               <div className="mb-2 shrink-0 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
-                {[...summary].sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl).map((s) => {
+                {(() => {
+                  // Nhóm 1 (pin đầu): 4 con TIỀN THẬT, sort theo PnL. Nhóm 2 (dưới): còn lại, sort theo PnL.
+                  const RM = ['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam'];
+                  const isRM = (v: string) => RM.includes(v);
+                  const sorted = [...summary].sort((a, b) => {
+                    const ra = isRM(a.calcVersion), rb = isRM(b.calcVersion);
+                    if (ra !== rb) return ra ? -1 : 1;           // real money luôn lên trên
+                    return b.withNhoi.pnl - a.withNhoi.pnl;       // cùng nhóm → PnL giảm dần
+                  });
+                  const firstOther = sorted.findIndex((s) => !isRM(s.calcVersion));
+                  return sorted.map((s, idx) => {
+                  const showDivider = idx === firstOther && firstOther > 0;
                   const active = s.calcVersion === selected;
                   return (
+                    <Fragment key={s.calcVersion}>
+                      {showDivider && (
+                        <div className="mb-0.5 mt-2 flex items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-[#666]">
+                          <span className="h-px flex-1 bg-[#2a2a2a]" />Các bot khác<span className="h-px flex-1 bg-[#2a2a2a]" />
+                        </div>
+                      )}
                     <div
-                      key={s.calcVersion}
                       role="button"
                       tabIndex={0}
                       onClick={() => onSelect(s.calcVersion)}
@@ -212,8 +228,10 @@ export default function TxReport() {
                         )}
                       </div>
                     </div>
+                    </Fragment>
                   );
-                })}
+                });
+                })()}
               </div>
             </div>
 

@@ -53,8 +53,18 @@ export const TX_RULES: Record<string, TxRule> = {
   'V.Bot 12 Real': VBOT12_REAL_RULE,
   'V.Bot 12 Kien': {
     ...VBOT12_REAL_RULE,
-    headline: 'Y hệt bản R4-C tiền thật, nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
-    note: 'Bot đặt TIỀN THẬT trên ví Kiên — độc lập với ví gốc (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token bot gốc.',
+    headline: 'Y hệt bản tiền thật, nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Kiên — độc lập với ví gốc (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token bot gốc / group khác.',
+  },
+  'V.Bot 12 Trong': {
+    ...VBOT12_REAL_RULE,
+    headline: 'Y hệt bản tiền thật, nhưng chạy trên VÍ RIÊNG của Trọng (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Trọng — độc lập hoàn toàn (token/stake/số dư/PnL riêng). Lệnh trong group Trọng: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token gốc / Kiên / Nam.',
+  },
+  'V.Bot 12 Nam': {
+    ...VBOT12_REAL_RULE,
+    headline: 'Y hệt bản tiền thật, nhưng chạy trên VÍ RIÊNG của Nam (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Nam — độc lập hoàn toàn (token/stake/số dư/PnL riêng). Lệnh trong group Nam: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token gốc / Kiên / Trọng.',
   },
   'V.Bot 12 R1': {
     emoji: '🧪',
@@ -86,21 +96,40 @@ export const TX_RULES: Record<string, TxRule> = {
   },
   'V.Bot 12 R4-B': {
     emoji: '🏆',
-    headline: 'Đánh XỈU 20p như bản gốc, nhưng chỉ NÉ 3 đội xấu — bản tối ưu mới nhất.',
+    headline: 'Đánh XỈU 20p, NÉ 3 đội xấu — chạy CÙNG logic vào kèo với 2 con tiền thật.',
     side: 'Luôn đánh XỈU (Under)',
-    when: 'Ngay khi nhà cái mở kèo, lúc còn hiệp 1.',
+    when: 'Đợi 30 giây (thời gian thật) từ lúc thấy trận rồi vào khi nhà cái đang mở kèo (không khóa). Quá phút 15 (đồng hồ trong trận) chưa vào được thì BỎ trận.',
     strategy: [
       'Cùng ý tưởng: line loại trận 20 phút thường hơi cao → đánh XỈU.',
       'Dựa trên dữ liệu 940 trận: chỉ có 3 đội đánh Xỉu hay THUA → NÉ đúng 3 đội đó: Indonesia, Saudi Arabia, Triều Tiên (North Korea).',
       'Các đội còn lại (India, Thái Lan, Iran, Trung Quốc, Qatar, New Zealand, Nhật, Việt Nam…) đều đánh Xỉu tốt → giữ đánh hết.',
-      'Khác R2 cũ (né nhầm Nhật + Hàn — hai đội này thật ra vẫn ăn Xỉu).',
+      'Đã đồng bộ logic vào kèo giống hệt 2 con tiền thật (chờ 30s thật + cấm phút 15) để làm mốc đối chiếu chuẩn.',
+    ],
+    data: [READ_ODDS, 'Line + giá cửa Xỉu, kèm tên 2 đội để lọc, và phút trận.', GRADE],
+    entry: [
+      'Trận loại 20 phút · còn hiệp 1 · nhà cái đã mở kèo (không khóa).',
+      'Đủ 30 giây thật từ lúc thấy trận; chưa quá phút 15 (đồng hồ trận).',
+      'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
+    ],
+    note: 'Bản backtest tốt nhất (~60% thắng). Chạy THỬ (chưa đặt tiền) — giờ vào kèo y hệt 2 con tiền thật để so kết quả cho công bằng.',
+  },
+  'V.Bot 12 R4-C': {
+    emoji: '🧪',
+    headline: 'Giống R4-B nhưng chỉ NÉ 2 đội (KHÔNG né Triều Tiên) — bản thử đối chiếu.',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'Sau khi nhà cái mở kèo, đợi kèo MỞ LIÊN TỤC ~1 phút rồi mới vào (lọc kèo nhá rồi khóa). Quá phút 15 (đồng hồ trận) chưa vào được thì bỏ.',
+    strategy: [
+      'Cùng ý tưởng: line loại trận 20 phút thường hơi cao → đánh XỈU.',
+      'Chỉ NÉ 2 đội: Indonesia và Saudi Arabia. BỎ Triều Tiên khỏi danh sách né (đội này thực ra chỉ ~hòa vốn, né nó là bắt nhiễu).',
+      'Khác R4-B (né 3 đội): R4-C thử xem BỎ né Triều Tiên có lời hơn không.',
+      'Các đội còn lại (gồm cả Triều Tiên) đánh Xỉu bình thường, mỗi trận 1 lệnh.',
     ],
     data: [READ_ODDS, 'Line + giá cửa Xỉu, kèm tên 2 đội để lọc.', GRADE],
     entry: [
-      'Trận loại 20 phút · còn hiệp 1 · nhà cái đã mở kèo.',
-      'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
+      'Trận loại 20 phút · còn hiệp 1 · nhà cái mở kèo liên tục ~1 phút.',
+      'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia (Triều Tiên VẪN đánh).',
     ],
-    note: 'Bản này backtest cho kết quả tốt nhất: thắng ~60%, lời đều cả kỳ. Đang chạy THỬ (chưa đặt tiền) để đối chiếu với các bản khác.',
+    note: 'Chạy THỬ (chưa đặt tiền) để đối chiếu R4-B (né 3 đội) vs R4-C (né 2 đội) — xem né Triều Tiên có đáng không.',
   },
   'V.Bot 1': {
     emoji: '📈',
