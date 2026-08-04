@@ -22,9 +22,9 @@ const HISTORY = 'Xem lại rất nhiều trận tương tự trong quá khứ đ
 // Cùng file code, cùng chiến lược, chỉ khác group + ví + stake.
 const VBOT12_REAL_RULE: TxRule = {
   emoji: '💰',
-  headline: 'Đánh XỈU loại trận 20 phút, vào trong khoảng phút 2–15 của hiệp 1, né 3 đội xấu — ĐẶT TIỀN THẬT.',
+  headline: 'Đánh XỈU loại trận 20 phút: chờ 30 giây thật đầu trận rồi vào khi nhà cái mở kèo, né 3 đội xấu — ĐẶT TIỀN THẬT.',
   side: 'Luôn đánh XỈU (Under)',
-  when: 'Trong hiệp 1, khi trận đã đá được từ phút 2 đến phút 15 và nhà cái đang mở kèo (không khóa). Quá phút 15 chưa vào được thì BỎ trận.',
+  when: 'Đợi 30 giây (thời gian thật) kể từ lúc thấy trận, rồi vào ngay khi nhà cái đang mở kèo (không khóa). Nếu tới phút 15 (đồng hồ trong trận) mà vẫn chưa vào được thì BỎ trận.',
   strategy: [
     'Ý tưởng: ở loại trận 20 phút (nhóm V — nhiều bàn), nhà cái thường ra line HƠI CAO so với số bàn thực tế → cửa XỈU có lợi thế.',
     'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
@@ -39,14 +39,14 @@ const VBOT12_REAL_RULE: TxRule = {
   ],
   entry: [
     'Trận đang đá, đúng loại 20 phút, còn trong hiệp 1.',
-    'Phút trận phải nằm trong khoảng 2 → 15: chưa tới phút 2 thì CHỜ; quá phút 15 mà chưa vào được thì BỎ HẲN trận (không đánh nữa, kể cả sau đó mới mở kèo).',
-    'Sau khi nhà cái vừa mở kèo, bot chờ thêm 1 phút rồi mới vào — né lúc giá mới mở hay bị nhảy/khóa lại ngay.',
+    'CHỜ ĐẦU: đủ 30 giây THẬT (thời gian thực) kể từ lúc bot thấy trận — né lúc giá vừa mở còn nhảy. (Tính theo giây thật, KHÔNG theo đồng hồ trận chạy nhanh.)',
+    'CẤM TRỄ: nếu tới phút 15 theo ĐỒNG HỒ TRONG TRẬN mà vẫn chưa vào được → BỎ HẲN trận (không đánh nữa, kể cả sau đó mới mở kèo).',
     'Lúc đặt lệnh: nhà cái phải đang MỞ KÈO thật, có line + giá Xỉu rõ ràng, KHÔNG bị khóa/tạm ngưng (khóa thì thà bỏ lỡ còn hơn vào mà người theo không vào được).',
     'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
-    'Vào bất kể đang tỉ số mấy (0-0, 1-0, 2-1…) — miễn còn hiệp 1 và đang trong cửa sổ phút 2–15.',
+    'Vào bất kể đang tỉ số mấy (0-0, 1-0, 2-1…) — miễn còn hiệp 1, đã qua 30 giây thật và chưa quá phút 15 trận.',
   ],
   note: 'Bot đặt TIỀN THẬT. Lệnh trong group: /setmoney <số> (tiền mỗi lệnh) · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop (bật/tắt đặt lệnh) · /settoken 69-… (cập nhật token khi hết hạn) · /info (xem cấu hình + lệnh).',
-  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · vào phút 2–15 (quá 15 bỏ trận) · chờ 1′ sau khi mở kèo, book không khóa · né Indonesia/Saudi Arabia/Triều Tiên · 1 lệnh/trận, giữ tới hết trận.',
+  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · chờ 30s THẬT đầu trận rồi vào khi book mở (không khóa) · quá phút 15 (đồng hồ trận) chưa vào thì bỏ · né Indonesia/Saudi Arabia/Triều Tiên · 1 lệnh/trận.',
 };
 
 export const TX_RULES: Record<string, TxRule> = {
