@@ -5,6 +5,7 @@ import { Spinner } from './Spinner';
 import TxTimelineChart from './TxTimelineChart';
 import TxDetailDrawer from './TxDetailDrawer';
 import TxRuleModal from './TxRuleModal';
+import { getTxRule } from '../lib/txRules';
 
 // ── Response shape (mirror /api/gs-tx-report — SPEC §3.2) ───────────────────
 interface TxReportRow {
@@ -192,6 +193,12 @@ export default function TxReport() {
                           📖 Xem Rule
                         </button>
                       </div>
+                      {/* Note rule INLINE (ngoài modal) — chỉ hiện cho bot có tóm tắt `short` (2 con tiền thật). */}
+                      {getTxRule(s.calcVersion).short && (
+                        <div className="mt-1 rounded-md border border-[#fbbf24]/25 bg-[#fbbf24]/[.06] px-2 py-1 text-[11px] leading-snug text-[#d4b483]">
+                          {getTxRule(s.calcVersion).short}
+                        </div>
+                      )}
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
                         <span>{s.withNhoi.bets} kèo</span>
                         <span className="text-[#444]">·</span>

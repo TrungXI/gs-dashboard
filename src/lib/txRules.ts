@@ -10,6 +10,7 @@ export interface TxRule {
   data: string[]; // bot nhìn vào cái gì
   entry: string[]; // điều kiện VÔ KÈO
   note?: string;
+  short?: string; // tóm tắt 1 dòng — hiện THẲNG trong danh sách report (ngoài modal Xem Rule)
 }
 
 // Mô tả chung, viết dễ hiểu.
@@ -17,31 +18,43 @@ const READ_ODDS = 'Đọc trực tiếp từ nhà cái: line Tài/Xỉu + giá c
 const GRADE = 'Chấm thắng/thua dựa trên TỔNG SỐ BÀN cuối trận.';
 const HISTORY = 'Xem lại rất nhiều trận tương tự trong quá khứ để ước tính hiệp 2 thường ghi thêm mấy bàn.';
 
+// Rule bot đặt TIỀN THẬT — dùng chung cho 'V.Bot 12 Real' (ví gốc) và 'V.Bot 12 Kien' (ví Kiên).
+// Cùng file code, cùng chiến lược, chỉ khác group + ví + stake.
+const VBOT12_REAL_RULE: TxRule = {
+  emoji: '💰',
+  headline: 'Đánh XỈU loại trận 20 phút, vào trong khoảng phút 2–15 của hiệp 1, né 3 đội xấu — ĐẶT TIỀN THẬT.',
+  side: 'Luôn đánh XỈU (Under)',
+  when: 'Trong hiệp 1, khi trận đã đá được từ phút 2 đến phút 15 và nhà cái đang mở kèo (không khóa). Quá phút 15 chưa vào được thì BỎ trận.',
+  strategy: [
+    'Ý tưởng: ở loại trận 20 phút (nhóm V — nhiều bàn), nhà cái thường ra line HƠI CAO so với số bàn thực tế → cửa XỈU có lợi thế.',
+    'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
+    'NÉ 3 đội đánh Xỉu hay thua: Indonesia, Saudi Arabia và Triều Tiên (North Korea).',
+    'Các đội còn lại (India, Thái Lan, Iran, Trung Quốc, Qatar, New Zealand, Nhật, Hàn, Việt Nam…) đều đánh Xỉu tốt → giữ đánh hết.',
+    'Mỗi trận chỉ vào đúng 1 lệnh, giữ tới hết trận (không cắt lời/lỗ giữa chừng), tiền cố định mỗi lệnh.',
+  ],
+  data: [
+    READ_ODDS,
+    'Line + giá cửa Xỉu nhà cái đang mở ở trận loại 20 phút, kèm tên 2 đội để lọc, và phút trận đang đá.',
+    GRADE,
+  ],
+  entry: [
+    'Trận đang đá, đúng loại 20 phút, còn trong hiệp 1.',
+    'Phút trận phải nằm trong khoảng 2 → 15: chưa tới phút 2 thì CHỜ; quá phút 15 mà chưa vào được thì BỎ HẲN trận (không đánh nữa, kể cả sau đó mới mở kèo).',
+    'Sau khi nhà cái vừa mở kèo, bot chờ thêm 1 phút rồi mới vào — né lúc giá mới mở hay bị nhảy/khóa lại ngay.',
+    'Lúc đặt lệnh: nhà cái phải đang MỞ KÈO thật, có line + giá Xỉu rõ ràng, KHÔNG bị khóa/tạm ngưng (khóa thì thà bỏ lỡ còn hơn vào mà người theo không vào được).',
+    'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
+    'Vào bất kể đang tỉ số mấy (0-0, 1-0, 2-1…) — miễn còn hiệp 1 và đang trong cửa sổ phút 2–15.',
+  ],
+  note: 'Bot đặt TIỀN THẬT. Lệnh trong group: /setmoney <số> (tiền mỗi lệnh) · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop (bật/tắt đặt lệnh) · /settoken 69-… (cập nhật token khi hết hạn) · /info (xem cấu hình + lệnh).',
+  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · vào phút 2–15 (quá 15 bỏ trận) · chờ 1′ sau khi mở kèo, book không khóa · né Indonesia/Saudi Arabia/Triều Tiên · 1 lệnh/trận, giữ tới hết trận.',
+};
+
 export const TX_RULES: Record<string, TxRule> = {
-  'V.Bot 12 Real': {
-    emoji: '💰',
-    headline: 'Đánh XỈU ngay khi nhà cái mở kèo (loại trận 20 phút) — ĐẶT TIỀN THẬT.',
-    side: 'Luôn đánh XỈU (Under)',
-    when: 'Ngay khi nhà cái vừa mở kèo cho cược, lúc trận còn ở hiệp 1.',
-    strategy: [
-      'Ý tưởng: ở loại trận 20 phút, nhà cái thường ra line HƠI CAO so với số bàn thực tế.',
-      'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
-      '→ Line bị đặt cao hơn thực tế → cửa XỈU có lợi thế. Nên bot luôn đánh XỈU.',
-      'Đang chạy bản R4-B (tối ưu từ backtest): NÉ đúng 3 đội đánh Xỉu hay thua — Indonesia, Saudi Arabia, Triều Tiên. Còn lại đánh hết.',
-      'Mỗi trận chỉ vào đúng 1 lệnh.',
-    ],
-    data: [
-      READ_ODDS,
-      'Line + giá cửa Xỉu nhà cái vừa mở ở trận loại 20 phút, kèm tên 2 đội để lọc.',
-      GRADE,
-    ],
-    entry: [
-      'Trận đang đá, đúng loại 20 phút, và còn trong hiệp 1.',
-      'Nhà cái đã MỞ KÈO thật (cho cược), có line + giá Xỉu rõ ràng.',
-      'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
-      'Vào bất kể đang tỉ số mấy, bất kể phút — miễn còn hiệp 1 và kèo đang mở.',
-    ],
-    note: 'Đây là bot đặt TIỀN THẬT. Số tiền mỗi lệnh chỉnh bằng lệnh /setmoney trong group. Nếu token hết hạn, bot sẽ nhắn báo để /settoken lại.',
+  'V.Bot 12 Real': VBOT12_REAL_RULE,
+  'V.Bot 12 Kien': {
+    ...VBOT12_REAL_RULE,
+    headline: 'Y hệt bản R4-C tiền thật, nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Kiên — độc lập với ví gốc (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token bot gốc.',
   },
   'V.Bot 12 R1': {
     emoji: '🧪',
