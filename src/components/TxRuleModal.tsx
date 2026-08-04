@@ -1,11 +1,15 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { getTxRule } from '../lib/txRules';
+
+// 4 con Real dùng blacklist ĐỘNG chung (đổi qua Telegram /setblacklist) → hiện danh sách live.
+const REAL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam']);
 
 // Modal xem RULE của 1 bot (calc_version). Mở từ nút "📖 Rule" trong Báo cáo T/X.
 export default function TxRuleModal({ version, onClose }: { version: string; onClose: () => void }) {
   const r = getTxRule(version);
+  const [blacklist, setBlacklist] = useState<string[] | null>(null);
 
   // ESC để đóng.
   useEffect(() => {
@@ -13,6 +17,17 @@ export default function TxRuleModal({ version, onClose }: { version: string; onC
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Blacklist động — chỉ fetch cho 4 con Real.
+  useEffect(() => {
+    if (!REAL_VERSIONS.has(version)) return;
+    let cancelled = false;
+    fetch('/api/gs-blacklist', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((j) => { if (!cancelled && j.ok) setBlacklist(j.exclude); })
+      .catch(() => { /* noop */ });
+    return () => { cancelled = true; };
+  }, [version]);
 
   const Section = ({ icon, title, items }: { icon: string; title: string; items: string[] }) => (
     <div className="mb-4">
@@ -70,6 +85,16 @@ export default function TxRuleModal({ version, onClose }: { version: string; onC
               ⏱ {r.when}
             </span>
           </div>
+
+          {REAL_VERSIONS.has(version) && (
+            <div className="mb-4 rounded-lg border border-[#fb7185]/30 bg-[#fb7185]/[.08] px-3 py-2">
+              <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-[#fda4af]">🚫 Blacklist hiện tại (động)</div>
+              <div className="text-[13px] text-[#e5c893]">
+                {blacklist == null ? 'Đang tải…' : blacklist.length ? `Né: ${blacklist.join(', ')}` : 'Không né đội nào'}
+              </div>
+              <div className="mt-1 text-[11px] text-[#9ca3af]">Đổi tức thời qua Telegram: <code>/setblacklist …</code> (4 con Real áp chung).</div>
+            </div>
+          )}
 
           <Section icon="🧠" title="Chiến lược" items={r.strategy} />
           <Section icon="🗂" title="Lấy data gì" items={r.data} />

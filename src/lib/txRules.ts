@@ -29,8 +29,8 @@ const VBOT12_REAL_RULE: TxRule = {
     'Ý tưởng: ở loại trận 20 phút (nhóm V — nhiều bàn), nhà cái thường ra line HƠI CAO so với số bàn thực tế → cửa XỈU có lợi thế.',
     'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
     'CHỈ VÀO KHI 0-0 (rule mới, quan trọng nhất): dữ liệu cho thấy vào lúc trận CÒN 0-0 mới có lãi (~+2,6%); vào SAU khi đã có bàn thì THUA nặng (1 bàn ≈ −4%, 2 bàn ≈ −6%, 3+ bàn ≈ −12%). Vì vậy đã có bàn là BỎ, không vào nữa.',
-    'NÉ 3 đội đánh Xỉu hay thua: Indonesia, Saudi Arabia và Triều Tiên (North Korea).',
-    'Các đội còn lại (India, Thái Lan, Iran, Trung Quốc, Qatar, New Zealand, Nhật, Hàn, Việt Nam…) đều đánh Xỉu tốt → giữ đánh hết.',
+    'NÉ các đội đánh Xỉu hay thua theo BLACKLIST ĐỘNG (xem mục 🚫 ở trên) — đổi tức thời qua Telegram /setblacklist, KHÔNG cần sửa code/restart; cả 4 con Real áp chung.',
+    'Các đội còn lại đều đánh Xỉu tốt → giữ đánh hết. Blacklist được job 22h tối rà soát ROI 28 ngày/đội và gợi ý thêm/bớt.',
     'Mỗi trận chỉ vào đúng 1 lệnh, giữ tới hết trận (không cắt lời/lỗ giữa chừng), tiền cố định mỗi lệnh.',
   ],
   data: [
@@ -44,10 +44,10 @@ const VBOT12_REAL_RULE: TxRule = {
     'CHỜ ĐẦU: đủ 30 giây THẬT (thời gian thực) kể từ lúc bot thấy trận — né lúc giá vừa mở còn nhảy. (Tính theo giây thật, KHÔNG theo đồng hồ trận chạy nhanh.)',
     'CẤM TRỄ: nếu tới phút 15 theo ĐỒNG HỒ TRONG TRẬN mà vẫn chưa vào được → BỎ HẲN trận (không đánh nữa, kể cả sau đó mới mở kèo).',
     'Lúc đặt lệnh: nhà cái phải đang MỞ KÈO thật, có line + giá Xỉu rõ ràng, KHÔNG bị khóa/tạm ngưng (khóa thì thà bỏ lỡ còn hơn vào mà người theo không vào được).',
-    'Cả hai đội đều KHÔNG phải Indonesia / Saudi Arabia / Triều Tiên.',
+    'Cả hai đội đều KHÔNG nằm trong blacklist động hiện tại (xem mục 🚫 ở trên).',
   ],
-  note: 'Bot đặt TIỀN THẬT. Lệnh trong group: /setmoney <số> (tiền mỗi lệnh) · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop (bật/tắt đặt lệnh) · /settoken 69-… (cập nhật token khi hết hạn) · /info (xem cấu hình + lệnh).',
-  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · CHỈ vào khi 0-0 · chờ 30s THẬT rồi vào khi book mở (không khóa) · quá phút 15 (đồng hồ trận) chưa vào thì bỏ · né Indonesia/Saudi Arabia/Triều Tiên · 1 lệnh/trận.',
+  note: 'Bot đặt TIỀN THẬT. Lệnh trong group: /setmoney <số> (tiền mỗi lệnh) · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop (bật/tắt đặt lệnh) · /settoken 69-… (cập nhật token khi hết hạn) · /info (xem cấu hình + lệnh). Blacklist đội: owner gõ /blacklist (xem) · /setblacklist <đội…> (đổi, áp cả 4 con Real).',
+  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · CHỈ vào khi 0-0 · chờ 30s THẬT rồi vào khi book mở (không khóa) · quá phút 15 (đồng hồ trận) chưa vào thì bỏ · né đội theo blacklist động · 1 lệnh/trận.',
 };
 
 export const TX_RULES: Record<string, TxRule> = {
