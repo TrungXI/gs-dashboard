@@ -67,6 +67,8 @@ export default function TxReport() {
   const [error, setError] = useState<string | null>(null);
   const [detailVersion, setDetailVersion] = useState<string | null>(null); // version đang mở drawer chi tiết
   const [ruleVersion, setRuleVersion] = useState<string | null>(null); // version đang mở modal Xem Rule
+  const [running, setRunning] = useState<Set<string> | null>(null); // calc_version của bot đang chạy ngầm (pm2 online)
+  const [showOff, setShowOff] = useState(false); // false = ẩn bot đã tắt; true = hiện full
 
   const load = useCallback(async (version: string, pageArg: number) => {
     setLoading(true);
@@ -91,7 +93,23 @@ export default function TxReport() {
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('tx-selected-version') : null;
     load(saved || '', 0);
+    try { setShowOff(localStorage.getItem('tx-show-off') === '1'); } catch { /* noop */ }
   }, [load]);
+
+  // Trạng thái bot đang chạy (pm2) — fetch lúc mount + refresh 20s.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchStatus = async () => {
+      try {
+        const res = await fetch('/api/gs-bot-status', { cache: 'no-store' });
+        const json = (await res.json()) as { ok: boolean; running: string[] };
+        if (!cancelled && json.ok) setRunning(new Set(json.running));
+      } catch { /* giữ nguyên */ }
+    };
+    fetchStatus();
+    const timer = setInterval(fetchStatus, 20000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
 
   // Auto-refresh — LUÔN 5s, silent (không bật spinner, lỗi tạm giữ nguyên bảng cũ).
   useEffect(() => {
@@ -123,6 +141,17 @@ export default function TxReport() {
   };
 
   const summary = data?.summaryByVersion ?? [];
+  // Ẩn bot đã tắt: chỉ giữ version đang chạy (pm2 online). showOff=true hoặc chưa biết status → hiện full.
+  const canFilter = !showOff && running != null && running.size > 0;
+  const visibleSummary = canFilter ? summary.filter((s) => running!.has(s.calcVersion)) : summary;
+  const hiddenCount = summary.length - visibleSummary.length;
+  const toggleShowOff = () => {
+    setShowOff((prev) => {
+      const next = !prev;
+      try { localStorage.setItem('tx-show-off', next ? '1' : '0'); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden">
@@ -150,13 +179,23 @@ export default function TxReport() {
           <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-4 lg:grid-cols-[320px_1fr] lg:grid-rows-1 lg:items-stretch">
             {/* List version — mobile: dưới chart, lấp phần còn lại & cuộn; desktop: cột trái full-height & cuộn */}
             <div className="order-2 flex min-h-0 min-w-0 flex-col lg:order-none lg:col-start-1 lg:row-start-1">
-              <div className="mb-2 shrink-0 text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</div>
+              <div className="mb-2 flex shrink-0 items-center justify-between gap-2">
+                <span className="text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">So sánh version</span>
+                <button
+                  type="button"
+                  onClick={toggleShowOff}
+                  title={showOff ? 'Đang hiện tất cả — bấm để ẩn bot đã tắt' : 'Đang ẩn bot đã tắt — bấm để hiện tất cả'}
+                  className={`inline-flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold leading-none transition active:scale-95 ${showOff ? 'border-[#38bdf8]/45 bg-[#38bdf8]/15 text-[#7dd3fc] hover:bg-[#38bdf8]/30' : 'border-[#22c55e]/45 bg-[#22c55e]/15 text-[#86efac] hover:bg-[#22c55e]/30'}`}
+                >
+                  {showOff ? '👁 Hiện tất cả' : `🟢 Chỉ bot đang chạy${hiddenCount > 0 ? ` (ẩn ${hiddenCount})` : ''}`}
+                </button>
+              </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
                   // Nhóm 1 (pin đầu): 4 con TIỀN THẬT, sort theo PnL. Nhóm 2 (dưới): còn lại, sort theo PnL.
                   const RM = ['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam'];
                   const isRM = (v: string) => RM.includes(v);
-                  const sorted = [...summary].sort((a, b) => {
+                  const sorted = [...visibleSummary].sort((a, b) => {
                     const ra = isRM(a.calcVersion), rb = isRM(b.calcVersion);
                     if (ra !== rb) return ra ? -1 : 1;           // real money luôn lên trên
                     return b.withNhoi.pnl - a.withNhoi.pnl;       // cùng nhóm → PnL giảm dần
