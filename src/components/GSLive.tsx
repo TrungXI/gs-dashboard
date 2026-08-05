@@ -624,6 +624,22 @@ function AwayBox({ children }: { children: React.ReactNode }) {
 
 const SUSPENDED_CELL = <span className="font-semibold text-[10px] text-[#555]">— — —</span>;
 
+// Nhà cái khoá kèo: giữ nguyên box kèo nhưng blur + dim, phủ ổ khoá 🔒 ở giữa.
+function LockedOverlay({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="relative inline-block">
+      <div className="blur-[2px] opacity-60 pointer-events-none select-none">{children}</div>
+      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-0.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        <span className="text-[8px] font-semibold text-[#fbbf24] leading-none whitespace-nowrap">Khoá kèo</span>
+      </div>
+    </div>
+  );
+}
+
 // Đối đầu (lịch sử H2H): 1 DÒNG TEXT gọn / hiệp. `ĐĐ H1: A 45% · Hoà 25% · B 30% (n35)`
 // A xanh / hòa xám / B hồng, n mẫu mỏng (<8) → vàng cảnh báo. Dùng cả desktop lẫn mobile.
 export function H2HLine({
@@ -706,8 +722,7 @@ function OuCell({
   suspended?: boolean;
 }) {
   if (lines.length === 0) return <span className="text-[#555]">—</span>;
-  if (suspended) return SUSPENDED_CELL;
-  return (
+  const inner = (
     <div className="flex flex-col gap-1">
       {lines.map((row, idx) => {
         const p = prevLines?.[idx];
@@ -730,6 +745,8 @@ function OuCell({
       })}
     </div>
   );
+  if (suspended) return <LockedOverlay>{inner}</LockedOverlay>;
+  return inner;
 }
 
 // Token lấy từ env (NEXT_PUBLIC_GS_TOKEN) — không còn nhập tay trên UI.
