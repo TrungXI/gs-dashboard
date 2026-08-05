@@ -669,12 +669,26 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         ? 'border-amber-500/50 bg-amber-900/10'
         : 'border-[#2a2a2a] bg-[#141414]'
     }`;
+    // Nhà cái KHOÁ kèo trận NÀY (per-match): đóng cược hoặc kèo O/U bị suspend.
+    const locked = !!m.isLive && (m.bettingOpen === false || m.ouLines?.[0]?.suspended || m.ouH1Lines?.[0]?.suspended);
     // ── Layout "Gọn Tài/Xỉu": ẩn cột 1X2, xếp dọc (dòng 1 đội+tỉ số+phase, dòng 2 hai box hiệp) ──
     return (
       <div
         data-event-id={m.eventId}
-        className={`${boxClass} flex flex-col gap-2`}
+        className={`${boxClass} relative flex flex-col gap-2`}
       >
+          {/* Khoá kèo: phủ mờ CẢ box + ổ khoá nổi lên — chỉ trận này, biết là ko vào lệnh được */}
+          {locked && (
+            <>
+              <div className="pointer-events-none absolute inset-0 z-10 rounded-lg bg-[#0d0d0d]/60" />
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                <div className="flex items-center gap-1.5 rounded-md border border-[#fbbf24]/50 bg-black/80 px-3 py-1.5 text-[12px] font-semibold text-[#fbbf24] shadow-lg">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+                  Nhà cái khoá kèo
+                </div>
+              </div>
+            </>
+          )}
           {/* Dòng 1: tên đội + tỉ số (trái) · phase (phải) */}
           <div className="flex items-center justify-between gap-2 md:gap-3">
             <div className="min-w-0 flex-1 flex items-center gap-2 md:gap-3">
