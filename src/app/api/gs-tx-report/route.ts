@@ -37,6 +37,14 @@ export interface TxReportRow {
   finalTotal: number | null;
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: number | null;
+  arm29: Arm29 | null; // kèo rung VBot14: OU line Tài/Xỉu lúc phút 29 (lúc cắm cờ)
+}
+
+// Snapshot OU line lúc phút 29 (VBot14 kèo rung) — hiển thị chi tiết lệnh.
+export interface Arm29 {
+  min: number;
+  score: number;
+  ou: Array<{ line: string; xiu: string | number | null; tai: string | number | null }>;
 }
 
 export interface TxAggLine {
@@ -150,6 +158,7 @@ interface TxDbRow {
   final_total: number | string | null;
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: string | number | null;
+  arm29: Arm29 | null;
 }
 
 function toRow(r: TxDbRow): TxReportRow {
@@ -175,6 +184,7 @@ function toRow(r: TxDbRow): TxReportRow {
     finalTotal: r.final_total == null ? null : Number(r.final_total),
     result: r.result,
     pnl: r.pnl == null ? null : Number(r.pnl),
+    arm29: r.arm29 ?? null,
   };
 }
 
@@ -216,7 +226,7 @@ export async function GET(req: Request) {
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
-                final_total, result, pnl
+                final_total, result, pnl, snapshot->'arm29' AS arm29
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -228,7 +238,7 @@ export async function GET(req: Request) {
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
-                final_total, result, pnl
+                final_total, result, pnl, snapshot->'arm29' AS arm29
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC

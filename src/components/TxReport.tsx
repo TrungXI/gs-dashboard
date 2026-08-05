@@ -193,7 +193,7 @@ export default function TxReport() {
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
                   // Nhóm 1 (pin đầu): 4 con TIỀN THẬT, sort theo PnL. Nhóm 2 (dưới): còn lại, sort theo PnL.
-                  const RM = ['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam'];
+                  const RM = ['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam', 'V.Bot 14 Real'];
                   const isRM = (v: string) => RM.includes(v);
                   const sorted = [...visibleSummary].sort((a, b) => {
                     const ra = isRM(a.calcVersion), rb = isRM(b.calcVersion);

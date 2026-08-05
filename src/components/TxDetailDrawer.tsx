@@ -1,8 +1,26 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
-import type { TxReportRow, TxReportResponse } from '../app/api/gs-tx-report/route';
+import type { TxReportRow, TxReportResponse, Arm29 } from '../app/api/gs-tx-report/route';
+
+// Kèo rung VBot14: OU line Tài/Xỉu tại phút 29 (lúc cắm cờ).
+function Arm29Row({ arm29 }: { arm29: Arm29 }) {
+  return (
+    <div className="mt-1.5 rounded border border-[#38bdf8]/25 bg-[#38bdf8]/[.06] px-2 py-1 text-[11px] leading-relaxed text-[#9ca3af]">
+      <span className="text-[#7dd3fc]">📍 Phút {arm29.min} (tỉ số {arm29.score}) — OU lúc cắm cờ:</span>
+      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+        {arm29.ou.map((o, i) => (
+          <span key={i}>
+            <span className="text-[#bbb]">OU {o.line}</span>{' '}
+            <span className="text-[#86efac]">Xỉu {o.xiu ?? '—'}</span>{' '}
+            <span className="text-[#fca5a5]">Tài {o.tai ?? '—'}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── Helpers (giống bảng chi tiết cũ trong TxReport) ──────────────────────────
 
@@ -132,7 +150,8 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} className={`border-b border-[#222] ${r.result == null ? 'tx-pending-row' : ''}`}>
+                      <Fragment key={r.id}>
+                      <tr className={`border-b border-[#222] ${r.result == null ? 'tx-pending-row' : ''}`}>
                         <td className="px-3 py-2 text-[#bbb]">{vnTime(r.entryAt)}</td>
                         <td className="px-3 py-2">
                           <span style={{ color: '#4ade80' }}>{r.homeTeam}</span>
@@ -151,6 +170,14 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                           <KqCell result={r.result} pnl={r.pnl} />
                         </td>
                       </tr>
+                      {r.arm29 && (
+                        <tr className="border-b border-[#222]">
+                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                            <Arm29Row arm29={r.arm29} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>
@@ -181,6 +208,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                         <KqCell result={r.result} pnl={r.pnl} />
                       </span>
                     </div>
+                    {r.arm29 && <Arm29Row arm29={r.arm29} />}
                   </div>
                 ))}
               </div>
