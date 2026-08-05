@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import { getTxRule } from '../lib/txRules';
 
-// 4 con Real dùng blacklist ĐỘNG chung (đổi qua Telegram /setblacklist) → hiện danh sách live.
-const REAL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam']);
+// Các con dùng blacklist ĐỘNG chung (đổi qua Telegram /setblacklist) → hiện danh sách live.
+// Gồm 4 con Real (tiền) + V.Bot 12 R4-B (paper, chạy ngầm cùng blacklist để đối chiếu).
+const REAL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam', 'V.Bot 12 R4-B']);
 
 // Modal xem RULE của 1 bot (calc_version). Mở từ nút "📖 Rule" trong Báo cáo T/X.
 export default function TxRuleModal({ version, onClose }: { version: string; onClose: () => void }) {
