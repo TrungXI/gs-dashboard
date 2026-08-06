@@ -15,8 +15,9 @@ import H2HMatrix, { type OpenPairFn } from './H2HMatrix';
 import TeamFormReport from './TeamFormReport';
 import RankingLive from './RankingLive';
 import TxReport from './TxReport';
+import BotReport from './BotReport';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'monitor';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'monitor';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -248,6 +249,7 @@ export default function Dashboard({
     // ['h2h-matrix', '🔥', 'Ma trận Tài/Xỉu'],   // hidden per OPS task (matrix)
     // ['team-form', '🔄', 'Quy luật phong độ'], // hidden from nav
     ['tx-report', '💰', 'Báo cáo TX'],
+    ['bot-report', '🤖', 'Bot Report'],
     ['monitor', '🖥️', 'Monitor'],
   ];
 
@@ -439,6 +441,8 @@ export default function Dashboard({
           <SystemMonitor />
         ) : view === 'tx-report' ? (
           <TxReport />
+        ) : view === 'bot-report' ? (
+          <BotReport />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
