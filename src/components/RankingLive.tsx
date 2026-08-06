@@ -65,6 +65,46 @@ function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; 
   return { lineVal: v, isQuarter: false, loLine: v, hiLine: v };
 }
 
+// ── OU line LIVE (dải 2 box trên card) ──────────────────────────────────────
+// over = giá cửa TÀI, under = giá cửa XỈU. Lấy .slice(0,2) mỗi mảng = 2 line.
+type OuLine = { line: string | null; over: string | null; under: string | null; suspended?: boolean };
+
+// Một dòng OU line: line — Tài <over> · Xỉu <under>. Line thiếu/suspended → mọi ô "—"
+// (không crash, không NaN). Tài xanh lá (#4ade80), Xỉu đỏ (#fb7185) — đồng bộ card.
+function OuLiveRow({ row, divider }: { row: OuLine | null; divider: boolean }) {
+  const dead = !row || row.suspended;
+  return (
+    <div className={`flex items-center gap-1 text-[10px] md:text-[11px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
+      <span className="w-[26px] md:w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
+      <span className="min-w-0 flex-1 truncate text-[#4ade80]">Tài <span className="font-semibold">{dead ? '—' : row!.over ?? '—'}</span></span>
+      <span className="shrink-0 text-[#555]">·</span>
+      <span className="min-w-0 flex-1 truncate text-[#fb7185]">Xỉu <span className="font-semibold">{dead ? '—' : row!.under ?? '—'}</span></span>
+    </div>
+  );
+}
+
+// Box OU line LIVE cho MỘT hiệp (H1 hoặc H2/cả trận). Luôn giữ khung 2 dòng =
+// "2 kèo Tài + 2 kèo Xỉu"; thiếu line thì dòng đó hiện "—". active = hiệp ĐANG đá
+// → tô viền/nền xanh da trời (đồng bộ box active "Kiểu 2" phía trên card).
+function OuLiveBox({ title, lines, active = false }: { title: string; lines?: OuLine[]; active?: boolean }) {
+  const src = lines ?? [];
+  const rows: (OuLine | null)[] = [src[0] ?? null, src[1] ?? null];
+  return (
+    <div
+      className={`flex min-w-0 flex-1 flex-col rounded-md border px-2 py-1.5 ${
+        active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/15' : 'border-[#2a2a2a] bg-[#1c1c1c]'
+      }`}
+    >
+      <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#777]">{title}</div>
+      <div className="flex flex-col gap-0.5">
+        {rows.map((row, idx) => (
+          <OuLiveRow key={idx} row={row} divider={idx > 0} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Xác suất Malay hoà vốn ngụ ý bởi giá m (đảo của implied): m>0 → 1/(1+m); m<0 → |m|/(1+|m|).
 function malayToProb(m: number): number {
   if (m === 0) return 0.5;
@@ -808,6 +848,16 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               Kèo VẪN bắn Telegram bình thường qua bot VPS tx-paper-bot.mjs (độc lập FE).
               Bật lại = bỏ comment dòng dưới. */}
           {false && <TxSuggestionRow m={m} activeMarket={activeMarket} />}
+          {/* OU line LIVE của trận này — chèn GIỮA cụm box thống kê và list 10 trận.
+              2 box: TRÁI = Hiệp 1 (m.ouH1Lines), PHẢI = Hiệp 2/cả trận (m.ouLines).
+              Mỗi box 2 line = 2 kèo Tài (over) + 2 kèo Xỉu (under). */}
+          <div className="mt-1.5 border-t border-[#222] pt-1.5">
+            <div className="mb-1 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">📊 OU line (live)</div>
+            <div className="flex gap-1.5 md:gap-2">
+              <OuLiveBox title="🕐 Hiệp 1" lines={m.ouH1Lines} active={activeMarket === 'h1'} />
+              <OuLiveBox title="⚽ Hiệp 2 / cả trận" lines={m.ouLines} active={activeMarket === 'ft'} />
+            </div>
+          </div>
           {/* 10 trận đối đầu gần nhất — H1 đang đá → score H1; H2/HT → score FT. */}
           <H2HMiniList eventId={m.eventId} showH2={m.isH2 || isHT} />
         </div>
