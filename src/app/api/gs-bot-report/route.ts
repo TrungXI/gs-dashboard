@@ -20,9 +20,9 @@ const BOTS: { calcVersion: string; label: string; side: 'xiu' | 'tai' }[] = [
   { calcVersion: 'V.Bot 14', label: 'TÀI / V.Bot14', side: 'tai' },
 ];
 
-// 4 time buckets (VN / Asia/Bangkok), hour // 6.
-const BUCKET_COUNT = 4;
-export const BUCKET_LABELS = ['00-06h', '06-12h', '12-18h', '18-24h'];
+// 8 time buckets (VN / Asia/Bangkok), hour // 3.
+const BUCKET_COUNT = 8;
+export const BUCKET_LABELS = ['00-03h', '03-06h', '06-09h', '09-12h', '12-15h', '15-18h', '18-21h', '21-24h'];
 // "Recent" window for the golden-window ranking: last N days (by distinct dates present).
 const RECENT_DAYS = 3;
 
@@ -122,12 +122,12 @@ export async function GET() {
   try {
     const calcVersions = BOTS.map((b) => b.calcVersion);
 
-    // Single scan: aggregate wins / losses / net per (bot, local-day, 6h-bucket).
+    // Single scan: aggregate wins / losses / net per (bot, local-day, 3h-bucket).
     // win + half-win → w ; lose + half-lose → l ; push / null excluded from all.
     const aggRes = await pool.query<AggDbRow>(
       `SELECT calc_version,
               to_char((entry_at AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') AS d,
-              (EXTRACT(HOUR FROM entry_at AT TIME ZONE 'Asia/Bangkok')::int / 6)  AS bucket,
+              (EXTRACT(HOUR FROM entry_at AT TIME ZONE 'Asia/Bangkok')::int / 3)  AS bucket,
               COUNT(*) FILTER (WHERE result IN ('win', 'half-win'))   AS w,
               COUNT(*) FILTER (WHERE result IN ('lose', 'half-lose')) AS l,
               COALESCE(SUM(pnl) FILTER (WHERE result IS NOT NULL), 0) AS net
