@@ -18,6 +18,7 @@ function getPool(): Pool | null {
 const BOTS: { calcVersion: string; label: string; side: 'xiu' | 'tai' }[] = [
   { calcVersion: 'V.Bot 14', label: 'TÀI / V.Bot14', side: 'tai' },
   { calcVersion: 'V.Bot 12 Test Whitelist', label: 'XỈU / Test Whitelist', side: 'xiu' },
+  { calcVersion: 'V.Bot 17 Test BlackList', label: 'TÀI / Test BlackList', side: 'tai' },
 ];
 
 // 8 time buckets (VN / Asia/Bangkok), hour // 3.
