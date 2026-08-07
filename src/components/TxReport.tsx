@@ -142,8 +142,8 @@ export default function TxReport() {
     load(v, 0); // đổi version → về trang đầu
   };
 
-  // Ẩn hẳn 2 bản R4 cũ khỏi report (user 2026-08-07): R4-B + R4-D.
-  const HIDDEN_VERSIONS = new Set(['V.Bot 12 R4-B', 'V.Bot 12 R4-D']);
+  // Ẩn hẳn các bản R4 cũ khỏi report (user 2026-08-07): R4-B + R4-C + R4-D (đều đã stop).
+  const HIDDEN_VERSIONS = new Set(['V.Bot 12 R4-B', 'V.Bot 12 R4-C', 'V.Bot 12 R4-D']);
   const summary = (data?.summaryByVersion ?? []).filter((s) => !HIDDEN_VERSIONS.has(s.calcVersion));
   // Ẩn bot đã tắt: chỉ giữ version đang chạy (pm2 online). showOff=true hoặc chưa biết status → hiện full.
   const canFilter = !showOff && running != null && running.size > 0;
