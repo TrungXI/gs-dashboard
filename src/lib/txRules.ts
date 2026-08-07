@@ -57,7 +57,7 @@ const VBOT17_RULE: TxRule = {
   emoji: '⬆️',
   headline: 'Đánh TÀI (Over) trận 20 phút — CHỈ vào khi CẶP đang đá nằm trong danh sách BLACKLIST (cặp hay nổ Tài). Mirror ngược con Xỉu-whitelist.',
   side: 'Luôn đánh TÀI (Over)',
-  when: 'Chỉ vào khi tỉ số 0-0, chờ 30 giây thật rồi vào khi nhà cái mở kèo (không khóa); quá phút 15 (đồng hồ trận) chưa vào hoặc đã có bàn thì BỎ.',
+  when: 'Chỉ vào khi tỉ số 0-0, VÀO NGAY khi nhà cái mở kèo (KHÔNG chờ 30s, không khóa); quá phút 15 (đồng hồ trận) chưa vào hoặc đã có bàn thì BỎ.',
   strategy: [
     'PAIRING-BLACKLIST = "whitelist" của con này: CHỈ đánh TÀI khi CẶP đang đá nằm trong danh sách cặp NỔ TÀI — xem box 🎯 ở trên. Cặp khác → BỎ HẲN.',
     'Danh sách cặp lấy từ backtest FT (tổng bàn THẬT gs_matches_history vs line mở kèo 0-0): cặp Xỉu-kém = Tài-tốt. Đổi qua Telegram /setpairbl (reload 5s) hoặc nút "Set blacklist" trang 📈 Cặp WL/BL.',
@@ -69,10 +69,10 @@ const VBOT17_RULE: TxRule = {
   entry: [
     'Trận 20 phút, hiệp 1, nhà cái mở kèo (không khóa), tỉ số 0-0.',
     'CẶP đang đá PHẢI nằm trong danh sách blacklist (box 🎯 ở trên). Cặp khác → BỎ.',
-    'Đủ 30 giây thật; chưa quá phút 15.',
+    'Vào NGAY khi book mở (KHÔNG chờ 30s); chưa quá phút 15.',
   ],
   note: 'Model TÀI-blacklist. Đổi cặp qua /setpairbl hoặc trang 📈. Áp cả V.Bot 17 Real + Kiên + Test.',
-  short: '⬆️ TÀI trận 20p · CHỈ cặp trong blacklist (nổ Tài) · vào 0-0 · chờ 30s · quá phút 15 bỏ · 1 lệnh/trận.',
+  short: '⬆️ TÀI trận 20p · CHỈ cặp trong blacklist (nổ Tài) · vào 0-0 · VÀO NGAY (ko chờ) · quá phút 15 bỏ · 1 lệnh/trận.',
 };
 
 export const TX_RULES: Record<string, TxRule> = {
@@ -81,7 +81,7 @@ export const TX_RULES: Record<string, TxRule> = {
     emoji: '💰',
     headline: 'ĐẶT TIỀN THẬT — đánh TÀI trận 20 phút, CHỈ cặp trong blacklist (nổ Tài). Mirror ngược con Xỉu-whitelist.',
     note: 'Bot đặt TIỀN THẬT — model TÀI-blacklist (chỉ đánh cặp trong pair-blacklist). Ví/token RIÊNG (group Real ⬆️ Blacklist). Lệnh: /setmoney · /pnl · /balance · /start /stop · /settoken 69-… · /info. Đổi cặp: /setpairbl hoặc nút Set trang 📈.',
-    short: '💰 TIỀN THẬT · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · chờ 30s · quá phút 15 bỏ · 1 lệnh/trận.',
+    short: '💰 TIỀN THẬT · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · VÀO NGAY (ko chờ) · quá phút 15 bỏ · 1 lệnh/trận.',
   },
   'V.Bot 17 Real Kien': {
     ...VBOT17_RULE,
