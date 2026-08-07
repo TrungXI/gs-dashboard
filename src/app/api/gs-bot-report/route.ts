@@ -16,9 +16,8 @@ function getPool(): Pool | null {
 // ── Config ────────────────────────────────────────────────────────────────────
 // `calc_version` is the DB key; `label` is what the UI shows.
 const BOTS: { calcVersion: string; label: string; side: 'xiu' | 'tai' }[] = [
-  { calcVersion: 'V.Bot 12 R4-B', label: 'XỈU / R4-B', side: 'xiu' },
-  { calcVersion: 'V.Bot 12 R4-D', label: 'XỈU / R4-D', side: 'xiu' },
   { calcVersion: 'V.Bot 14', label: 'TÀI / V.Bot14', side: 'tai' },
+  { calcVersion: 'V.Bot 12 Test Whitelist', label: 'XỈU / Test Whitelist', side: 'xiu' },
 ];
 
 // 8 time buckets (VN / Asia/Bangkok), hour // 3.
