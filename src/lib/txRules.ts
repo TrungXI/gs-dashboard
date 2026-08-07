@@ -346,8 +346,10 @@ export const TX_RULES: Record<string, TxRule> = {
     data: [READ_ODDS, 'Line + giá Tài/Xỉu của hiệp (16p S), tỉ số, phút trong hiệp.', 'Chấm: H1 theo bàn hiệp 1; H2 theo tổng bàn cả trận (FT).'],
     entry: [
       'Trận 16 phút (S), đang trong hiệp, phút 25→42.',
-      'Thoả A HOẶC B (Xỉu@25 + số bàn cửa sổ 25-32).',
-      'Line over gap 0,5 trên tỉ số, giá over ≥ −0,6, nhà cái mở kèo.',
+      'Thoả 1 TRONG 2 điều kiện:',
+      '• A) Xỉu@25 ≥ 0,5  VÀ  0 bàn ghi trong cửa sổ phút 25→32.',
+      '• B) Xỉu@25 ≥ 0,6  VÀ  dưới 2 bàn (tức 0 hoặc 1) trong cửa sổ phút 25→32.',
+      'Line over gap 0,5 trên tỉ số (cần thêm 1 bàn), giá over ≥ −0,6, nhà cái mở kèo.',
     ],
     note: 'PAPER — chạy thử, KHÔNG tiền, KHÔNG Telegram (ngầm). ⚠️ Backtest sơ bộ 1 ngày (18 lượt) cho TÀI muộn chỉ ~11% thắng — nhưng data quá mỏng + logger cắt cụt ~phút 42; đang forward-test lấy số thật. Rule do owner đề xuất 2026-08-07.',
     short: '⏱️ PAPER · KÈO RUNG 16p (S) · TÀI over 0.5 · phút25 ghi Xỉu, phút32 xét (A:Xỉu≥0.5&0 bàn / B:Xỉu≥0.6&<2 bàn) · chờ over≥−0,6 · ⚠️ chưa validate.',
