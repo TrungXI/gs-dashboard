@@ -3,14 +3,15 @@
 import { useEffect, useState } from 'react';
 import { getTxRule } from '../lib/txRules';
 
-// Các con dùng blacklist ĐỘNG chung (đổi qua Telegram /setblacklist) → hiện danh sách live.
-// Gồm 4 con Real (tiền) + V.Bot 12 R4-B (paper, chạy ngầm cùng blacklist để đối chiếu).
-const REAL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam', 'V.Bot 12 R4-B']);
+// Các con chạy model PAIR_WL (2026-08-07) — CHỈ đánh 4 CẶP whitelist (pair-whitelist-r4d.json, reload 5s).
+// Gồm 4 con Real tiền thật + paper "V.Bot 12 Test Whitelist" (cùng gate PAIR_WL). Hiện live danh sách cặp ở box 🎯.
+const PAIR_WL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam', 'V.Bot 12 Test Whitelist']);
 
 // Modal xem RULE của 1 bot (calc_version). Mở từ nút "📖 Rule" trong Báo cáo T/X.
 export default function TxRuleModal({ version, onClose }: { version: string; onClose: () => void }) {
   const r = getTxRule(version);
-  const [blacklist, setBlacklist] = useState<string[] | null>(null);
+  const [wlPairs, setWlPairs] = useState<string[] | null>(null);
+  const isPairWl = PAIR_WL_VERSIONS.has(version);
 
   // ESC để đóng.
   useEffect(() => {
@@ -19,13 +20,13 @@ export default function TxRuleModal({ version, onClose }: { version: string; onC
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  // Blacklist động — chỉ fetch cho 4 con Real.
+  // Pairing-whitelist động — chỉ fetch cho các con dùng PAIR_WL (chỉ đánh đúng 4 cặp).
   useEffect(() => {
-    if (!REAL_VERSIONS.has(version)) return;
+    if (!PAIR_WL_VERSIONS.has(version)) return;
     let cancelled = false;
-    fetch('/api/gs-blacklist', { cache: 'no-store' })
+    fetch('/api/gs-pair-whitelist', { cache: 'no-store' })
       .then((res) => res.json())
-      .then((j) => { if (!cancelled && j.ok) setBlacklist(j.exclude); })
+      .then((j) => { if (!cancelled && j.ok) setWlPairs(j.pairs); })
       .catch(() => { /* noop */ });
     return () => { cancelled = true; };
   }, [version]);
@@ -87,13 +88,18 @@ export default function TxRuleModal({ version, onClose }: { version: string; onC
             </span>
           </div>
 
-          {REAL_VERSIONS.has(version) && (
-            <div className="mb-4 rounded-lg border border-[#fb7185]/30 bg-[#fb7185]/[.08] px-3 py-2">
-              <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-[#fda4af]">🚫 Blacklist hiện tại (động)</div>
+          {isPairWl && (
+            /* 🎯 Pairing WHITELIST động — CHỈ đánh khi gặp đúng các cặp này (model PAIR_WL). */
+            <div className="mb-4 rounded-lg border border-[#34d399]/30 bg-[#34d399]/[.08] px-3 py-2">
+              <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-[#6ee7b7]">🎯 CHỈ đánh các CẶP này (pairing-whitelist)</div>
               <div className="text-[13px] text-[#e5c893]">
-                {blacklist == null ? 'Đang tải…' : blacklist.length ? `Né: ${blacklist.join(', ')}` : 'Không né đội nào'}
+                {wlPairs == null
+                  ? 'Đang tải…'
+                  : wlPairs.length
+                    ? `${wlPairs.length} cặp: ${wlPairs.map((p) => p.replace('|', ' vs ')).join(', ')}`
+                    : 'Chưa set cặp nào → KHÔNG đánh gì'}
               </div>
-              <div className="mt-1 text-[11px] text-[#9ca3af]">Đổi tức thời qua Telegram: <code>/setblacklist …</code> (4 con Real áp chung).</div>
+              <div className="mt-1 text-[11px] text-[#9ca3af]">Đã BỎ whitelist/blacklist/pairing per-đội — chỉ đánh đúng cặp trong list (file pair-whitelist-r4d.json, reload 5s, áp cả 4 con Real).</div>
             </div>
           )}
 

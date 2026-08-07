@@ -60,7 +60,7 @@ const buildQuery = (version: string, pageArg: number): string => {
 };
 
 export default function TxReport() {
-  const [selected, setSelected] = useState<string>('all'); // '' = latest (server default)
+  const [selected, setSelected] = useState<string>('V.Bot 14 Real'); // default mở trang = V.Bot 14 Real
   const [page, setPage] = useState(0); // 0-based, trang bảng chi tiết
   const [data, setData] = useState<TxReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -92,7 +92,9 @@ export default function TxReport() {
   // Initial load — khôi phục version đã xem trước đó (localStorage) → F5 không mất context.
   useEffect(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('tx-selected-version') : null;
-    load(saved || '', 0);
+    const initial = saved || 'V.Bot 14 Real'; // mặc định mở V.Bot 14 (nếu chưa từng chọn bot khác)
+    setSelected(initial);
+    load(initial, 0);
     try { setShowOff(localStorage.getItem('tx-show-off') === '1'); } catch { /* noop */ }
   }, [load]);
 
@@ -140,7 +142,9 @@ export default function TxReport() {
     load(v, 0); // đổi version → về trang đầu
   };
 
-  const summary = data?.summaryByVersion ?? [];
+  // Ẩn hẳn 2 bản R4 cũ khỏi report (user 2026-08-07): R4-B + R4-D.
+  const HIDDEN_VERSIONS = new Set(['V.Bot 12 R4-B', 'V.Bot 12 R4-D']);
+  const summary = (data?.summaryByVersion ?? []).filter((s) => !HIDDEN_VERSIONS.has(s.calcVersion));
   // Ẩn bot đã tắt: chỉ giữ version đang chạy (pm2 online). showOff=true hoặc chưa biết status → hiện full.
   const canFilter = !showOff && running != null && running.size > 0;
   const visibleSummary = canFilter ? summary.filter((s) => running!.has(s.calcVersion)) : summary;
@@ -192,8 +196,8 @@ export default function TxReport() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
-                  // Nhóm 1 (pin đầu): 4 con TIỀN THẬT, sort theo PnL. Nhóm 2 (dưới): còn lại, sort theo PnL.
-                  const RM = ['V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Trong', 'V.Bot 14 Real Nam'];
+                  // Nhóm 1 (pin đầu): các con TIỀN THẬT + 2 con PAPER test (theo dõi thí nghiệm), sort theo PnL. Nhóm 2 (dưới): còn lại.
+                  const RM = ['V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Trong', 'V.Bot 14 Real Nam', 'V.Bot 12 Real', 'V.Bot 12 Test Full', 'V.Bot 12 Test Whitelist'];
                   const isRM = (v: string) => RM.includes(v);
                   const sorted = [...visibleSummary].sort((a, b) => {
                     const ra = isRM(a.calcVersion), rb = isRM(b.calcVersion);
