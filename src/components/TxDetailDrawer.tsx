@@ -4,6 +4,44 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
 import type { TxReportRow, TxReportResponse, Arm29 } from '../app/api/gs-tx-report/route';
 
+// V.Bot 16 kèo rung 16p: 1 mốc OU (phút 25 / phút 32) — hiện line + Xỉu + Tài.
+function ArmLine({ label, color, arm }: { label: string; color: string; arm: Arm29 }) {
+  return (
+    <div className="mt-1 rounded border border-[#38bdf8]/25 bg-[#38bdf8]/[.06] px-2 py-1 text-[11px] leading-relaxed text-[#9ca3af]">
+      <span style={{ color }}>{label} (tỉ số {arm.score}):</span>
+      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+        {arm.ou.map((o, i) => (
+          <span key={i}>
+            <span className="text-[#bbb]">OU {o.line}</span>{' '}
+            <span className="text-[#86efac]">Xỉu {o.xiu ?? '—'}</span>{' '}
+            <span className="text-[#fca5a5]">Tài {o.tai ?? '—'}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+// V.Bot 16: timeline giá tại phút 25 → phút 32 → LÚC VÀO (giá over vào lệnh).
+function Vbot16Timeline({ r }: { r: TxReportRow }) {
+  if (!r.arm25 && !r.arm32 && !r.entryOdds) return null;
+  return (
+    <div className="mt-1.5 space-y-1">
+      {r.arm25 && <ArmLine label={`📍 Phút ${r.arm25.min} — cắm mốc (ghi Xỉu)`} color="#7dd3fc" arm={r.arm25} />}
+      {r.arm32 && <ArmLine label={`📍 Phút ${r.arm32.min} — chốt cửa sổ (đếm bàn 25→32)`} color="#fbbf24" arm={r.arm32} />}
+      {r.entryOdds && (
+        <div className="rounded border border-[#4ade80]/30 bg-[#4ade80]/[.06] px-2 py-1 text-[11px] text-[#9ca3af]">
+          <span className="text-[#4ade80]">✅ VÀO LỆNH:</span>{' '}
+          <span className="text-[#bbb]">OVER {r.entryOdds.line}</span>{' '}
+          <span className="text-[#fca5a5]">@ giá {r.entryOdds.over ?? '—'}</span>
+          {r.entryOdds.under != null && r.entryOdds.under !== '' && (
+            <span className="text-[#86efac]"> · Xỉu {r.entryOdds.under}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Kèo rung VBot14: OU line Tài/Xỉu tại phút 29 (lúc cắm cờ).
 function Arm29Row({ arm29 }: { arm29: Arm29 }) {
   return (
@@ -177,6 +215,13 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                           </td>
                         </tr>
                       )}
+                      {(r.arm25 || r.arm32 || r.entryOdds) && (
+                        <tr className="border-b border-[#222]">
+                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                            <Vbot16Timeline r={r} />
+                          </td>
+                        </tr>
+                      )}
                       </Fragment>
                     ))}
                   </tbody>
@@ -209,6 +254,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                       </span>
                     </div>
                     {r.arm29 && <Arm29Row arm29={r.arm29} />}
+                    <Vbot16Timeline r={r} />
                   </div>
                 ))}
               </div>

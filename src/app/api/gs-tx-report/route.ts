@@ -38,6 +38,9 @@ export interface TxReportRow {
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: number | null;
   arm29: Arm29 | null; // kèo rung VBot14: OU line Tài/Xỉu lúc phút 29 (lúc cắm cờ)
+  arm25: Arm29 | null; // V.Bot 16 kèo rung 16p: OU line lúc phút 25 (cắm mốc)
+  arm32: Arm29 | null; // V.Bot 16: OU line lúc phút 32 (chốt cửa sổ, đếm bàn)
+  entryOdds: EntryOdds | null; // V.Bot 16: giá lúc VÀO lệnh (line over + giá)
 }
 
 // Snapshot OU line lúc phút 29 (VBot14 kèo rung) — hiển thị chi tiết lệnh.
@@ -46,6 +49,7 @@ export interface Arm29 {
   score: number;
   ou: Array<{ line: string; xiu: string | number | null; tai: string | number | null }>;
 }
+export interface EntryOdds { line: string; over: string | number | null; under: string | number | null }
 
 export interface TxAggLine {
   bets: number;
@@ -159,6 +163,9 @@ interface TxDbRow {
   result: 'win' | 'half-win' | 'lose' | 'half-lose' | 'push' | null;
   pnl: string | number | null;
   arm29: Arm29 | null;
+  arm25: Arm29 | null;
+  arm32: Arm29 | null;
+  entry_odds: EntryOdds | null;
 }
 
 function toRow(r: TxDbRow): TxReportRow {
@@ -185,6 +192,9 @@ function toRow(r: TxDbRow): TxReportRow {
     result: r.result,
     pnl: r.pnl == null ? null : Number(r.pnl),
     arm29: r.arm29 ?? null,
+    arm25: r.arm25 ?? null,
+    arm32: r.arm32 ?? null,
+    entryOdds: r.entry_odds ?? null,
   };
 }
 
@@ -226,7 +236,8 @@ export async function GET(req: Request) {
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
-                final_total, result, pnl, snapshot->'arm29' AS arm29
+                final_total, result, pnl, snapshot->'arm29' AS arm29,
+                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -238,7 +249,8 @@ export async function GET(req: Request) {
         `SELECT id, calc_version, entry_at, event_id, home_team, away_team, market, side,
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
-                final_total, result, pnl, snapshot->'arm29' AS arm29
+                final_total, result, pnl, snapshot->'arm29' AS arm29,
+                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC
