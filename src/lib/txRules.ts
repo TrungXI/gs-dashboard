@@ -93,9 +93,10 @@ export const TX_RULES: Record<string, TxRule> = {
   'V.Bot 17 Test BlackList': {
     ...VBOT17_RULE,
     emoji: '🎯',
-    headline: 'PAPER: đánh TÀI, CHỈ cặp trong blacklist — mirror ngược V.Bot 12 Test Whitelist để so edge 2 chiều.',
-    note: 'PAPER — không tiền, không Telegram, chỉ ghi DB. Cùng model TÀI-blacklist với 2 con Real (V.Bot 17 Real + Kiên) để đối chiếu.',
-    short: '🎯 PAPER · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · mirror ngược Test Whitelist.',
+    headline: 'PAPER: đánh TÀI, CHỈ cặp trong blacklist — mirror ngược V.Bot 12 Test Whitelist. Khác 2 con Real: CHỜ 10 GIÂY thực rồi mới check.',
+    when: 'CHỜ 10 GIÂY THỰC kể từ lúc thấy trận, rồi mới xét: tỉ số vẫn 0-0? nhà cái đã mở kèo? → vào TÀI. Quá phút 15 hoặc đã có bàn hoặc book khóa lúc đó → BỎ. (2 con Real thì vào NGAY, không chờ.)',
+    note: 'PAPER — không tiền, không Telegram, chỉ ghi DB. Cùng model TÀI-blacklist với 2 con Real nhưng CHỜ 10s (Real vào ngay) — để so timing.',
+    short: '🎯 PAPER · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · CHỜ 10s (Real vào ngay) · mirror ngược Test Whitelist.',
   },
   'V.Bot 12 Real': VBOT12_REAL_RULE,
   'V.Bot 12 Kien': {
