@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 
-interface Row { pair: string; n: number; roi: number; wr: number; avgLine: number }
+interface Row { pair: string; n: number; avgLine: number; xiuRoi: number; xiuWr: number; taiRoi: number; taiWr: number }
 interface Data { ok: boolean; updatedAt?: string; total?: number; minN?: number; minRoi?: number; whitelist?: Row[]; blacklist?: Row[]; gray?: Row[] }
 
 const pnlColor = (roi: number) => (roi > 0 ? '#4ade80' : roi < 0 ? '#f87171' : '#9ca3af');
@@ -78,7 +78,7 @@ export default function FtPairs() {
       <div className="min-w-0 flex-1">
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-[15px] font-bold" style={{ color: accent }}>
-            {kind === 'wl' ? '🟢 WHITELIST — cặp Xỉu TỐT (nên đánh)' : '🔴 BLACKLIST — cặp hay NỔ TÀI (nên né)'}
+            {kind === 'wl' ? '🟢 WHITELIST — cặp Xỉu TỐT → ĐÁNH XỈU' : '🔴 BLACKLIST — cặp hay NỔ TÀI → ĐÁNH TÀI'}
             <span className="ml-2 text-[12px] font-normal text-[#888]">{rows.length} cặp · tick {sel.size}</span>
           </h3>
         </div>
@@ -86,7 +86,7 @@ export default function FtPairs() {
           <button type="button" disabled={saving} onClick={() => save(kind)}
             className="rounded-md border px-3 py-1.5 text-[12px] font-semibold transition disabled:opacity-40"
             style={{ borderColor: accent + '66', background: accent + '1a', color: accent }}>
-            💾 Set {kind === 'wl' ? 'whitelist' : 'blacklist'} ({sel.size} cặp) → 4 con Real + Test WL
+            💾 Set {kind === 'wl' ? 'whitelist' : 'blacklist'} ({sel.size} cặp) → {kind === 'wl' ? '4 con V.Bot 12 Real + Test WL' : 'V.Bot 17 Real + Kiên + Test'}
           </button>
           <button type="button" onClick={() => copyCmd(kind)}
             className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1.5 text-[12px] font-semibold text-[#7dd3fc]">
@@ -112,14 +112,16 @@ export default function FtPairs() {
                 <th className="px-2 py-2 text-left">Cặp</th>
                 <th className="px-2 py-2 text-right" title="Line FT mở kèo lúc 0-0, trung bình">Line mở</th>
                 <th className="px-2 py-2 text-right">n</th>
-                <th className="px-2 py-2 text-right">ROI</th>
-                <th className="px-2 py-2 text-right">WR</th>
+                <th className="px-2 py-2 text-right">ROI {kind === 'wl' ? '(Xỉu)' : '(Tài)'}</th>
+                <th className="px-2 py-2 text-right">WR {kind === 'wl' ? '(Xỉu)' : '(Tài)'}</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
                 const on = sel.has(r.pair);
                 const isCur = cur.has(r.pair);
+                const roi = kind === 'wl' ? r.xiuRoi : r.taiRoi;  // whitelist = ROI Xỉu, blacklist = ROI Tài
+                const wr = kind === 'wl' ? r.xiuWr : r.taiWr;
                 return (
                   <tr key={r.pair} className={`border-t border-[#222] ${isCur ? 'bg-white/[.04]' : ''}`}>
                     <td className="px-2 py-1.5">
@@ -131,10 +133,10 @@ export default function FtPairs() {
                     </td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-[#e5c893]">{r.avgLine}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-[#9ca3af]">{r.n}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: pnlColor(r.roi) }}>
-                      {r.roi > 0 ? '+' : ''}{r.roi}%
+                    <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: pnlColor(roi) }}>
+                      {roi > 0 ? '+' : ''}{roi}%
                     </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-[#d4d4d4]">{r.wr}%</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-[#d4d4d4]">{wr}%</td>
                   </tr>
                 );
               })}
@@ -148,9 +150,9 @@ export default function FtPairs() {
   return (
     <div className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col overflow-hidden">
       <div className="mb-3 shrink-0">
-        <h1 className="text-[20px] font-bold text-white">📈 Cặp Whitelist / Blacklist (backtest FT-Xỉu)</h1>
+        <h1 className="text-[20px] font-bold text-white">📈 Cặp Whitelist / Blacklist (backtest FT)</h1>
         <p className="mt-1 text-[12px] leading-snug text-[#9ca3af]">
-          Chấm kèo XỈU FT: <b>tổng bàn THẬT</b> (gs_matches_history) vs <b>line mở kèo lúc 0-0</b> (odds_log). Cột <b>Line mở</b> = line FT đầu H1 trung bình dùng để chấm.
+          Chấm <b>tổng bàn THẬT</b> (gs_matches_history) vs <b>line mở kèo lúc 0-0</b> (odds_log). Phân loại theo cửa Xỉu → bảng 🟢 hiện <b>ROI/WR đánh XỈU</b>, bảng 🔴 hiện <b>ROI/WR đánh TÀI</b>. Cột <b>Line mở</b> = line FT đầu H1 trung bình.
           {data?.total != null && <> · {data.total} trận · ngưỡng n≥{data.minN}, ROI≥±{data.minRoi}%</>}
         </p>
         <p className="mt-1 text-[11px] text-[#e5a13a]">⚠️ Line mở phút~0 cao hơn line bot vào phút~9 (~0.25) → ROI/WR hơi lạc quan; thứ hạng cặp thì đúng.</p>

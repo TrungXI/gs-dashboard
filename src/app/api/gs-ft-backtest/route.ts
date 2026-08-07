@@ -21,16 +21,24 @@ function pool(): Pool | null {
   return _pool;
 }
 
-// Chấm 1 kèo XỈU: line L, tổng bàn ft, odds Malay Xỉu o → pnl (cược 1 đơn vị).
-function grade(L: number, ft: number, o: number): number {
+// Chấm 1 kèo: line L, tổng bàn ft, odds Malay o, over=true (TÀI/Over) / false (XỈU/Under) → pnl (cược 1 đơn vị).
+function grade(L: number, ft: number, o: number, over: boolean): number {
   const wamt = o >= 0 ? o : 1;
   const lamt = o >= 0 ? -1 : o;
   const fl = Math.floor(L);
   const frac = Math.round((L - fl) * 100) / 100;
-  if (frac === 0) return ft < L ? wamt : ft > L ? lamt : 0;
-  if (frac === 0.5) return ft < L ? wamt : lamt;
-  if (frac === 0.25) return ft < fl ? wamt : ft === fl ? wamt / 2 : lamt;
-  return ft <= fl ? wamt : ft === fl + 1 ? lamt / 2 : lamt;
+  if (!over) {
+    // XỈU (Under): thắng khi ft < L
+    if (frac === 0) return ft < L ? wamt : ft > L ? lamt : 0;
+    if (frac === 0.5) return ft < L ? wamt : lamt;
+    if (frac === 0.25) return ft < fl ? wamt : ft === fl ? wamt / 2 : lamt;
+    return ft <= fl ? wamt : ft === fl + 1 ? lamt / 2 : lamt;
+  }
+  // TÀI (Over): thắng khi ft > L (mirror ngược)
+  if (frac === 0) return ft > L ? wamt : ft < L ? lamt : 0;
+  if (frac === 0.5) return ft > L ? wamt : lamt;
+  if (frac === 0.25) return ft >= fl + 1 ? wamt : ft === fl ? lamt / 2 : lamt;
+  return ft >= fl + 2 ? wamt : ft === fl + 1 ? wamt / 2 : lamt;
 }
 
 export async function GET() {
@@ -41,12 +49,12 @@ export async function GET() {
   try {
     const { rows } = await db.query(`
       SELECT least(ht.name, at.name) || '|' || greatest(ht.name, at.name) AS pair,
-             (mh.tt_home + mh.tt_away)::int AS ft, o.line::float AS line, o.xodds
+             (mh.tt_home + mh.tt_away)::int AS ft, o.line::float AS line, o.over, o.under
       FROM gs_matches_history mh
       JOIN gs_teams ht ON ht.id = mh.home_team_id
       JOIN gs_teams at ON at.id = mh.away_team_id
       LEFT JOIN LATERAL (
-        SELECT ol.ou_line::numeric AS line, ol.ou_under AS xodds
+        SELECT ol.ou_line::numeric AS line, ol.ou_over AS over, ol.ou_under AS under
         FROM match_odds_log ol
         WHERE ol.match_type = mh.match_type AND ol.score_home = 0 AND ol.score_away = 0
           AND ol.ou_line ~ '^[0-9.]+$'
@@ -58,28 +66,32 @@ export async function GET() {
       WHERE ht.type = 'V' AND at.type = 'V' AND mh.match_type = '20p'
         AND mh.tt_home IS NOT NULL AND o.line IS NOT NULL`);
 
-    const agg = new Map<string, { n: number; pnl: number; win: number; lose: number; lineSum: number }>();
-    for (const r of rows as { pair: string; ft: number; line: number; xodds: string }[]) {
-      const o = parseFloat(r.xodds);
-      if (!Number.isFinite(o) || !Number.isFinite(r.line)) continue;
-      const p = grade(r.line, r.ft, o);
-      const a = agg.get(r.pair) || { n: 0, pnl: 0, win: 0, lose: 0, lineSum: 0 };
-      a.n++; a.pnl += p; a.lineSum += r.line;
-      if (p > 0) a.win++; else if (p < 0) a.lose++;
+    type Agg = { n: number; xPnl: number; xW: number; xL: number; tPnl: number; tW: number; tL: number; lineSum: number };
+    const agg = new Map<string, Agg>();
+    for (const r of rows as { pair: string; ft: number; line: number; over: string; under: string }[]) {
+      if (!Number.isFinite(r.line)) continue;
+      const ou = parseFloat(r.under), oo = parseFloat(r.over);
+      const a = agg.get(r.pair) || { n: 0, xPnl: 0, xW: 0, xL: 0, tPnl: 0, tW: 0, tL: 0, lineSum: 0 };
+      a.n++; a.lineSum += r.line;
+      if (Number.isFinite(ou)) { const p = grade(r.line, r.ft, ou, false); a.xPnl += p; if (p > 0) a.xW++; else if (p < 0) a.xL++; }
+      if (Number.isFinite(oo)) { const p = grade(r.line, r.ft, oo, true); a.tPnl += p; if (p > 0) a.tW++; else if (p < 0) a.tL++; }
       agg.set(r.pair, a);
     }
 
     const pairs = [...agg.entries()].map(([pair, a]) => ({
       pair,
       n: a.n,
-      roi: Math.round((1000 * a.pnl) / a.n) / 10,
-      wr: a.win + a.lose ? Math.round((1000 * a.win) / (a.win + a.lose)) / 10 : 0,
       avgLine: Math.round((a.lineSum / a.n) * 100) / 100,
-    })).sort((x, y) => y.roi - x.roi);
+      xiuRoi: Math.round((1000 * a.xPnl) / a.n) / 10,
+      xiuWr: a.xW + a.xL ? Math.round((1000 * a.xW) / (a.xW + a.xL)) / 10 : 0,
+      taiRoi: Math.round((1000 * a.tPnl) / a.n) / 10,
+      taiWr: a.tW + a.tL ? Math.round((1000 * a.tW) / (a.tW + a.tL)) / 10 : 0,
+    }));
 
-    const whitelist = pairs.filter((p) => p.n >= MIN_N && p.roi >= MIN_ROI);
-    const blacklist = pairs.filter((p) => p.n >= MIN_N && p.roi <= -MIN_ROI).reverse();
-    const gray = pairs.filter((p) => p.n >= MIN_N && p.roi > -MIN_ROI && p.roi < MIN_ROI);
+    // Phân loại theo cửa XỈU: whitelist = Xỉu tốt (đánh XỈU); blacklist = Xỉu kém = nổ Tài (đánh TÀI).
+    const whitelist = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi >= MIN_ROI).sort((a, b) => b.xiuRoi - a.xiuRoi);
+    const blacklist = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi <= -MIN_ROI).sort((a, b) => b.taiRoi - a.taiRoi); // xếp theo ROI TÀI giảm dần
+    const gray = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi > -MIN_ROI && p.xiuRoi < MIN_ROI);
 
     const data = {
       ok: true,
