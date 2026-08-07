@@ -331,6 +331,27 @@ export const TX_RULES: Record<string, TxRule> = {
     note: 'PAPER — chạy thử, không tiền, không Telegram. HIỆN ĐANG TẮT (pm2 stopped, mới 3 lệnh). Ngược hướng các V.Bot XỈU: bản này đánh TÀI.',
     short: '🌅 PAPER (đang TẮT) · TÀI đầu trận 16p (S) · line mở ≥2.75 · phút 1–4 · backtest +13,5% chưa forward-test.',
   },
+  'V.Bot 16': {
+    emoji: '⏱️',
+    headline: 'KÈO RUNG 16p: giữa hiệp (phút 25→32) nếu trận đang tịt + thị trường nghiêng Xỉu → đánh TÀI (over 0.5), chờ giá over về −0,6. PAPER.',
+    side: 'Đánh TÀI (Over) · chỉ trận (S) 16 phút',
+    when: 'Mỗi hiệp: phút 25 ghi mốc, xét ở phút 32, đặt khi giá over đạt ngưỡng (tối đa tới phút 42).',
+    strategy: [
+      'Ý tưởng (mean-reversion, cho trận 16 phút): giữa hiệp mà vẫn ít bàn VÀ thị trường nghiêng Xỉu → kỳ vọng 1 bàn muộn → đánh TÀI.',
+      'Phút 25: ghi tỉ lệ Xỉu (under) + tỉ số nền.',
+      'Đếm bàn trong cửa sổ 25→32. Tại phút 32 vào nếu thoả 1 TRONG 2: (A) Xỉu@25 ≥ 0,5 và 0 bàn (25-32); (B) Xỉu@25 ≥ 0,6 và < 2 bàn (25-32).',
+      'Vào OVER 0.5 (line gap 0,5 trên tỉ số → cần thêm 1 bàn), NHƯNG chờ đến khi giá over của line đó ≥ −0,6 (Malay) mới đặt — lấy value, tránh vào lúc over quá được ưu ái.',
+      'Mỗi (trận × hiệp) tối đa 1 lệnh; quá phút 42 chưa đặt được thì bỏ. Có lưu odds phút 25/32/lúc vào để đối chiếu/backtest.',
+    ],
+    data: [READ_ODDS, 'Line + giá Tài/Xỉu của hiệp (16p S), tỉ số, phút trong hiệp.', 'Chấm: H1 theo bàn hiệp 1; H2 theo tổng bàn cả trận (FT).'],
+    entry: [
+      'Trận 16 phút (S), đang trong hiệp, phút 25→42.',
+      'Thoả A HOẶC B (Xỉu@25 + số bàn cửa sổ 25-32).',
+      'Line over gap 0,5 trên tỉ số, giá over ≥ −0,6, nhà cái mở kèo.',
+    ],
+    note: 'PAPER — chạy thử, KHÔNG tiền, KHÔNG Telegram (ngầm). ⚠️ Backtest sơ bộ 1 ngày (18 lượt) cho TÀI muộn chỉ ~11% thắng — nhưng data quá mỏng + logger cắt cụt ~phút 42; đang forward-test lấy số thật. Rule do owner đề xuất 2026-08-07.',
+    short: '⏱️ PAPER · KÈO RUNG 16p (S) · TÀI over 0.5 · phút25 ghi Xỉu, phút32 xét (A:Xỉu≥0.5&0 bàn / B:Xỉu≥0.6&<2 bàn) · chờ over≥−0,6 · ⚠️ chưa validate.',
+  },
   'V.Bot 1': {
     emoji: '📈',
     headline: 'Đợi hết hiệp 1, đoán hiệp 2 ghi thêm mấy bàn rồi so với line.',
