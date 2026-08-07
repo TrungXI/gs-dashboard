@@ -52,7 +52,51 @@ const VBOT12_REAL_RULE: TxRule = {
   short: '💰 TIỀN THẬT · XỈU trận 20p · CHỈ 4 CẶP whitelist (China·Iran, Malaysia·NZ, Malaysia·Vietnam, NZ·Vietnam) · vào 0-0 · chờ 30s · quá phút 15 bỏ · 1 lệnh/trận.',
 };
 
+// Rule con V.Bot 17 — đánh TÀI, CHỈ đánh cặp trong pair-blacklist ("nổ Tài"). Mirror ngược V.Bot 12 whitelist.
+const VBOT17_RULE: TxRule = {
+  emoji: '⬆️',
+  headline: 'Đánh TÀI (Over) trận 20 phút — CHỈ vào khi CẶP đang đá nằm trong danh sách BLACKLIST (cặp hay nổ Tài). Mirror ngược con Xỉu-whitelist.',
+  side: 'Luôn đánh TÀI (Over)',
+  when: 'Chỉ vào khi tỉ số 0-0, chờ 30 giây thật rồi vào khi nhà cái mở kèo (không khóa); quá phút 15 (đồng hồ trận) chưa vào hoặc đã có bàn thì BỎ.',
+  strategy: [
+    'PAIRING-BLACKLIST = "whitelist" của con này: CHỈ đánh TÀI khi CẶP đang đá nằm trong danh sách cặp NỔ TÀI — xem box 🎯 ở trên. Cặp khác → BỎ HẲN.',
+    'Danh sách cặp lấy từ backtest FT (tổng bàn THẬT gs_matches_history vs line mở kèo 0-0): cặp Xỉu-kém = Tài-tốt. Đổi qua Telegram /setpairbl (reload 5s) hoặc nút "Set blacklist" trang 📈 Cặp WL/BL.',
+    'Bỏ hết lọc per-đội (whitelist/blacklist theo ĐỘI). Gate DUY NHẤT: cặp phải nằm trong list blacklist.',
+    'CHỈ vào 0-0. Mỗi trận 1 lệnh, giữ tới hết trận, tiền cố định.',
+    'Đây là MIRROR NGƯỢC của V.Bot 12 Test Whitelist (Xỉu, cặp whitelist) — để so edge 2 chiều.',
+  ],
+  data: [READ_ODDS, 'Line + giá cửa TÀI (Over) trận 20 phút, tên 2 đội (khớp list blacklist), tỉ số, phút trận.', GRADE],
+  entry: [
+    'Trận 20 phút, hiệp 1, nhà cái mở kèo (không khóa), tỉ số 0-0.',
+    'CẶP đang đá PHẢI nằm trong danh sách blacklist (box 🎯 ở trên). Cặp khác → BỎ.',
+    'Đủ 30 giây thật; chưa quá phút 15.',
+  ],
+  note: 'Model TÀI-blacklist. Đổi cặp qua /setpairbl hoặc trang 📈. Áp cả V.Bot 17 Real + Kiên + Test.',
+  short: '⬆️ TÀI trận 20p · CHỈ cặp trong blacklist (nổ Tài) · vào 0-0 · chờ 30s · quá phút 15 bỏ · 1 lệnh/trận.',
+};
+
 export const TX_RULES: Record<string, TxRule> = {
+  'V.Bot 17 Real': {
+    ...VBOT17_RULE,
+    emoji: '💰',
+    headline: 'ĐẶT TIỀN THẬT — đánh TÀI trận 20 phút, CHỈ cặp trong blacklist (nổ Tài). Mirror ngược con Xỉu-whitelist.',
+    note: 'Bot đặt TIỀN THẬT — model TÀI-blacklist (chỉ đánh cặp trong pair-blacklist). Ví/token RIÊNG (group Real ⬆️ Blacklist). Lệnh: /setmoney · /pnl · /balance · /start /stop · /settoken 69-… · /info. Đổi cặp: /setpairbl hoặc nút Set trang 📈.',
+    short: '💰 TIỀN THẬT · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · chờ 30s · quá phút 15 bỏ · 1 lệnh/trận.',
+  },
+  'V.Bot 17 Real Kien': {
+    ...VBOT17_RULE,
+    emoji: '💰',
+    headline: 'Y hệt V.Bot 17 Real (TÀI, cặp blacklist) nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Kiên — model TÀI-blacklist, độc lập hoàn toàn (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /balance · /start /stop · /settoken 69-… · /info. /settoken KHÔNG đụng ví khác.',
+    short: '💰 TIỀN THẬT (ví Kiên) · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · 1 lệnh/trận.',
+  },
+  'V.Bot 17 Test BlackList': {
+    ...VBOT17_RULE,
+    emoji: '🎯',
+    headline: 'PAPER: đánh TÀI, CHỈ cặp trong blacklist — mirror ngược V.Bot 12 Test Whitelist để so edge 2 chiều.',
+    note: 'PAPER — không tiền, không Telegram, chỉ ghi DB. Cùng model TÀI-blacklist với 2 con Real (V.Bot 17 Real + Kiên) để đối chiếu.',
+    short: '🎯 PAPER · ⬆️ TÀI 20p · CHỈ cặp blacklist · vào 0-0 · mirror ngược Test Whitelist.',
+  },
   'V.Bot 12 Real': VBOT12_REAL_RULE,
   'V.Bot 12 Kien': {
     ...VBOT12_REAL_RULE,
