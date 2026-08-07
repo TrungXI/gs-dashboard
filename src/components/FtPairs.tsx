@@ -101,7 +101,14 @@ export default function FtPairs() {
           <table className="w-full text-[13px]">
             <thead className="sticky top-0 bg-[#1a1a1a] text-[11px] uppercase text-[#888]">
               <tr>
-                <th className="px-2 py-2 text-left"> </th>
+                <th className="px-2 py-2 text-left">
+                  <input type="checkbox" title="Chọn / bỏ chọn tất cả"
+                    checked={rows.length > 0 && rows.every((r) => sel.has(r.pair))}
+                    onChange={() => {
+                      const allOn = rows.length > 0 && rows.every((r) => sel.has(r.pair));
+                      setter(allOn ? new Set() : new Set(rows.map((r) => r.pair)));
+                    }} />
+                </th>
                 <th className="px-2 py-2 text-left">Cặp</th>
                 <th className="px-2 py-2 text-right" title="Line FT mở kèo lúc 0-0, trung bình">Line mở</th>
                 <th className="px-2 py-2 text-right">n</th>
