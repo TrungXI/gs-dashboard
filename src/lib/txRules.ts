@@ -18,49 +18,58 @@ const READ_ODDS = 'Đọc trực tiếp từ nhà cái: line Tài/Xỉu + giá c
 const GRADE = 'Chấm thắng/thua dựa trên TỔNG SỐ BÀN cuối trận.';
 const HISTORY = 'Xem lại rất nhiều trận tương tự trong quá khứ để ước tính hiệp 2 thường ghi thêm mấy bàn.';
 
-// Rule bot đặt TIỀN THẬT — dùng chung cho 'V.Bot 12 Real' (ví gốc) và 'V.Bot 12 Kien' (ví Kiên).
-// Cùng file code, cùng chiến lược, chỉ khác group + ví + stake.
+// Rule bot đặt TIỀN THẬT — dùng chung cho cả 4 con V.Bot 12 (Real/Kien/Trong/Nam).
+// Cùng file code (tx-paper-bot-vbot12real-r4d.mjs = model R4D), cùng chiến lược, chỉ khác group + ví + stake.
 const VBOT12_REAL_RULE: TxRule = {
   emoji: '💰',
-  headline: 'Đánh XỈU loại trận 20 phút: chờ 30 giây thật đầu trận rồi vào khi nhà cái mở kèo, né 3 đội xấu — ĐẶT TIỀN THẬT.',
+  headline: 'Đánh XỈU loại trận 20 phút (model R4D): chờ 30 giây thật rồi vào khi nhà cái mở kèo, CHỈ đánh khi trận có ≥1 đội trong whitelist, né đội theo blacklist động, BỎ line mở 3.0 — ĐẶT TIỀN THẬT.',
   side: 'Luôn đánh XỈU (Under)',
   when: 'Đợi 30 giây (thời gian thật) kể từ lúc thấy trận, rồi CHỈ vào khi nhà cái mở kèo (không khóa) VÀ tỉ số vẫn 0-0. Nếu tới phút 15 (đồng hồ trong trận) mà vẫn chưa vào được, HOẶC trận đã có bàn thắng, thì BỎ trận.',
   strategy: [
     'Ý tưởng: ở loại trận 20 phút (nhóm V — nhiều bàn), nhà cái thường ra line HƠI CAO so với số bàn thực tế → cửa XỈU có lợi thế.',
     'So sánh: line trung bình nhà cái đưa ~3,69 bàn, nhưng thực tế các trận này trung bình chỉ ~3,56 bàn.',
-    'CHỈ VÀO KHI 0-0 (rule mới, quan trọng nhất): dữ liệu cho thấy vào lúc trận CÒN 0-0 mới có lãi (~+2,6%); vào SAU khi đã có bàn thì THUA nặng (1 bàn ≈ −4%, 2 bàn ≈ −6%, 3+ bàn ≈ −12%). Vì vậy đã có bàn là BỎ, không vào nữa.',
-    'NÉ các đội đánh Xỉu hay thua theo BLACKLIST ĐỘNG (xem mục 🚫 ở trên) — đổi tức thời qua Telegram /setblacklist, KHÔNG cần sửa code/restart; cả 4 con Real áp chung.',
-    'Các đội còn lại đều đánh Xỉu tốt → giữ đánh hết. Blacklist được job 22h tối rà soát ROI 28 ngày/đội và gợi ý thêm/bớt.',
+    'CHỈ VÀO KHI 0-0 (rule quan trọng nhất): dữ liệu cho thấy vào lúc trận CÒN 0-0 mới có lãi (~+2,6%); vào SAU khi đã có bàn thì THUA nặng (1 bàn ≈ −4%, 2 bàn ≈ −6%, 3+ bàn ≈ −12%). Vì vậy đã có bàn là BỎ, không vào nữa.',
+    'CHỈ ĐÁNH KHI CÓ ĐỘI TỐT — WHITELIST ĐỘNG (R4D, lọc mới): trận phải có ÍT NHẤT 1 đội trong danh sách whitelist (xem mục 🟢 ở trên — mặc định India, New Zealand, Iran, China, Qatar, Vietnam, Indonesia, các đội Xỉu có lãi rõ theo data 28 ngày). Trận mà CẢ 2 đội đều NGOÀI whitelist → BỎ. Đổi tức thời qua Telegram /setwhitelist, KHÔNG restart; cả 4 con Real áp chung.',
+    'NÉ các đội đánh Xỉu hay thua theo BLACKLIST ĐỘNG (xem mục 🚫 ở trên) — đổi tức thời qua Telegram /setblacklist, KHÔNG cần sửa code/restart; cả 4 con Real áp chung. Nếu dính blacklist thì BỎ kể cả đối thủ là đội whitelist.',
+    'BỎ LINE MỞ 3.0 (R4D, lọc mới): nếu nhà cái mở đúng mức line 3.0 thì KHÔNG vào — mức này backtest lỗ ~−4%.',
+    'Blacklist + whitelist đều được job 22h tối rà soát ROI 28 ngày/đội và gợi ý thêm/bớt (gõ /blcheck để tính ngay).',
     'Mỗi trận chỉ vào đúng 1 lệnh, giữ tới hết trận (không cắt lời/lỗ giữa chừng), tiền cố định mỗi lệnh.',
   ],
   data: [
     READ_ODDS,
-    'Line + giá cửa Xỉu nhà cái đang mở ở trận loại 20 phút, kèm tên 2 đội để lọc, tỉ số hiện tại, và phút trận đang đá.',
+    'Line + giá cửa Xỉu nhà cái đang mở ở trận loại 20 phút, kèm tên 2 đội để lọc whitelist/blacklist, tỉ số hiện tại, và phút trận đang đá.',
     GRADE,
   ],
   entry: [
     'Trận đang đá, đúng loại 20 phút, còn trong hiệp 1.',
     'CHỈ VÀO KHI TỈ SỐ 0-0: nhà cái vừa mở khóa mà tỉ số VẪN 0-0 mới đánh. Đã có bàn (1-0, 0-1, 2-1…) → BỎ HẲN, không vào nữa.',
+    'CÓ ÍT NHẤT 1 đội trong WHITELIST động hiện tại (xem mục 🟢 ở trên) — cả 2 đội ngoài whitelist thì BỎ.',
+    'Cả hai đội đều KHÔNG nằm trong BLACKLIST động hiện tại (xem mục 🚫 ở trên).',
+    'Line nhà cái mở phải KHÁC 3.0 (đúng 3.0 thì bỏ).',
     'CHỜ ĐẦU: đủ 30 giây THẬT (thời gian thực) kể từ lúc bot thấy trận — né lúc giá vừa mở còn nhảy. (Tính theo giây thật, KHÔNG theo đồng hồ trận chạy nhanh.)',
     'CẤM TRỄ: nếu tới phút 15 theo ĐỒNG HỒ TRONG TRẬN mà vẫn chưa vào được → BỎ HẲN trận (không đánh nữa, kể cả sau đó mới mở kèo).',
     'Lúc đặt lệnh: nhà cái phải đang MỞ KÈO thật, có line + giá Xỉu rõ ràng, KHÔNG bị khóa/tạm ngưng (khóa thì thà bỏ lỡ còn hơn vào mà người theo không vào được).',
-    'Cả hai đội đều KHÔNG nằm trong blacklist động hiện tại (xem mục 🚫 ở trên).',
   ],
-  note: 'Bot đặt TIỀN THẬT. Lệnh trong group: /setmoney <số> (tiền mỗi lệnh) · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop (bật/tắt đặt lệnh) · /settoken 69-… (cập nhật token khi hết hạn) · /info (xem cấu hình + lệnh). Blacklist đội: owner gõ /blacklist (xem) · /setblacklist <đội…> (đổi, áp cả 4 con Real).',
-  short: '💰 TIỀN THẬT · XỈU trận 20p (V) · CHỈ vào khi 0-0 · chờ 30s THẬT rồi vào khi book mở (không khóa) · quá phút 15 (đồng hồ trận) chưa vào thì bỏ · né đội theo blacklist động · 1 lệnh/trận.',
+  note: 'Bot đặt TIỀN THẬT — model R4D (whitelist + né blacklist + bỏ line mở 3.0). Lệnh trong group: /setmoney <số> · /pnl (lãi/lỗ hôm nay) · /balance (số dư) · /start /stop · /settoken 69-… · /info. Owner (áp cả 4 con Real): /blacklist · /setblacklist <đội…> (né) · /whitelist · /setwhitelist <đội…> (chỉ đánh khi có ≥1) · /blcheck (tính 28 ngày, gợi ý cả 2).',
+  short: '💰 TIỀN THẬT · R4D · XỈU trận 20p (V) · CHỈ vào 0-0 · CHỈ đánh khi có ≥1 đội whitelist · né blacklist động · BỎ line mở 3.0 · chờ 30s THẬT rồi vào khi book mở · quá phút 15 thì bỏ · 1 lệnh/trận.',
 };
 
 export const TX_RULES: Record<string, TxRule> = {
   'V.Bot 12 Real': VBOT12_REAL_RULE,
   'V.Bot 12 Kien': {
     ...VBOT12_REAL_RULE,
-    headline: 'Y hệt bản tiền thật, nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
-    note: 'Bot đặt TIỀN THẬT trên ví Kiên — độc lập với ví gốc (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token bot gốc / group khác.',
+    headline: 'Y hệt bản tiền thật (model R4D), nhưng chạy trên VÍ RIÊNG của Kiên (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Kiên — model R4D (whitelist + né blacklist + bỏ line 3.0), độc lập với ví gốc (token/stake/số dư riêng). Lệnh trong group Kiên: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token bot gốc / group khác.',
   },
   'V.Bot 12 Trong': {
     ...VBOT12_REAL_RULE,
-    headline: 'Y hệt bản tiền thật, nhưng chạy trên VÍ RIÊNG của Trọng (group + token + tiền tách biệt).',
-    note: 'Bot đặt TIỀN THẬT trên ví Trọng — độc lập hoàn toàn (token/stake/số dư/PnL riêng). Lệnh trong group Trọng: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token gốc / Kiên / Nam.',
+    headline: 'Y hệt bản tiền thật (model R4D), nhưng chạy trên VÍ RIÊNG của Trọng (group + token + tiền tách biệt).',
+    note: 'Bot đặt TIỀN THẬT trên ví Trọng — model R4D (whitelist + né blacklist + bỏ line 3.0), độc lập hoàn toàn (token/stake/số dư/PnL riêng). Lệnh trong group Trọng: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info. /settoken ở đây KHÔNG đụng token gốc / Kiên / Nam.',
+  },
+  'V.Bot 12 Nam': {
+    ...VBOT12_REAL_RULE,
+    headline: 'Y hệt bản tiền thật (model R4D), nhưng chạy trên VÍ RIÊNG của Nam — con V.Bot 12 Xỉu (KHÁC hẳn V.Bot 14 Real Nam đánh Tài).',
+    note: 'Bot đặt TIỀN THẬT trên ví Nam (V.Bot 12 Xỉu) — model R4D (whitelist + né blacklist + bỏ line 3.0), độc lập hoàn toàn (token/stake/số dư/PnL riêng). ⚠️ ĐỪNG nhầm với V.Bot 14 Real Nam (đánh TÀI, ví khác). Lệnh trong group Nam V12: /setmoney · /pnl · /pnltotal · /balance · /start /stop · /settoken 69-… · /info.',
   },
   'V.Bot 12 R1': {
     emoji: '🧪',
