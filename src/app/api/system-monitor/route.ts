@@ -88,7 +88,12 @@ function errorLogs() {
   const out = sh(`for f in /root/.pm2/logs/*-error.log; do tail -n 40 "$f" 2>/dev/null | grep -aiE "error|err |fail|exception|econn|timeout|throw" | sed "s#^#$(basename $f .-error.log): #"; done | tail -40`);
   const hb = sh(`for f in /opt/gs-collector/tx-paper/heartbeat-*.log; do tail -n 30 "$f" 2>/dev/null | grep -aiE "FAIL|ERR" | sed "s#^#$(basename $f .log): #"; done | tail -20`);
   const lines = (out + '\n' + hb).split('\n').map((l) => l.trim()).filter(Boolean);
-  return lines.slice(-60);
+  // Mới nhất LÊN ĐẦU: sort giảm dần theo timestamp ISO nhúng trong dòng.
+  // Dòng không có timestamp (vd log pm2 thô) giữ nguyên thứ tự, xếp xuống dưới.
+  const tsOf = (l: string) => { const m = l.match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/); return m ? Date.parse(m[0]) : NaN; };
+  const withTs = lines.filter((l) => !Number.isNaN(tsOf(l))).sort((a, b) => tsOf(b) - tsOf(a));
+  const noTs = lines.filter((l) => Number.isNaN(tsOf(l)));
+  return [...withTs, ...noTs].slice(0, 60);
 }
 
 async function dbInfo() {
