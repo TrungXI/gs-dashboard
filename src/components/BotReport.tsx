@@ -223,6 +223,7 @@ export default function BotReport() {
   const [data, setData] = useState<BotReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<string | null>(null); // calcVersion của bot đang xem
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -250,6 +251,8 @@ export default function BotReport() {
 
   const days = data?.days ?? [];
   const bots = data?.bots ?? [];
+  // Bot đang chọn: theo tab, fallback về con đầu (xử lý cả lúc data mới load / tab cũ không còn).
+  const activeBot = bots.find((b) => b.calcVersion === activeTab) ?? bots[0] ?? null;
 
   return (
     <>
@@ -270,7 +273,7 @@ export default function BotReport() {
         )}
       </div>
       <p className="mb-4 text-[12px] text-[#888]">
-        Ma trận <span className="font-semibold text-[#ddd]">khung giờ × ngày</span> cho 2 con bot. Ô{' '}
+        Ma trận <span className="font-semibold text-[#ddd]">khung giờ × ngày</span> — chọn bot ở thanh tab. Ô{' '}
         <span className="text-[#4ade80]">xanh</span> = net dương, <span className="text-[#f87171]">đỏ</span> = âm,
         đậm dần theo độ lớn; xám/&quot;·&quot; = không có kèo. Cột &quot;nhất quán&quot; cho biết khung nào là edge
         THẬT (dương đều) hay nhiễu.
@@ -292,14 +295,32 @@ export default function BotReport() {
       ) : days.length === 0 || bots.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]">
           <div className="mb-3 text-4xl">📭</div>
-          <div className="text-[14px] text-[#888]">Chưa có dữ liệu kèo cho 2 con bot này</div>
+          <div className="text-[14px] text-[#888]">Chưa có dữ liệu kèo cho các con bot này</div>
         </div>
       ) : (
         <div className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
           <GoldenWindow bots={bots} recentDays={data?.recentDays ?? []} />
-          {bots.map((bot) => (
-            <BotMatrix key={bot.calcVersion} bot={bot} days={days} />
-          ))}
+          {/* Tab bar chọn bot — cuộn ngang trên mobile; thêm model KHÔNG làm trang dài thêm */}
+          <div className="mb-3 flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {bots.map((bot) => {
+              const on = bot.calcVersion === activeBot?.calcVersion;
+              const accent = bot.side === 'tai' ? '#4ade80' : '#f87171';
+              return (
+                <button
+                  key={bot.calcVersion}
+                  onClick={() => setActiveTab(bot.calcVersion)}
+                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-[12px] font-bold transition-colors ${
+                    on ? 'bg-white/[.07]' : 'border-transparent text-[#888] hover:text-[#ccc]'
+                  }`}
+                  style={on ? { color: accent, borderColor: accent } : undefined}
+                >
+                  {bot.label}
+                  {bot.decayFlag ? ' ⚠️' : ''}
+                </button>
+              );
+            })}
+          </div>
+          {activeBot && <BotMatrix key={activeBot.calcVersion} bot={activeBot} days={days} />}
         </div>
       )}
     </>
