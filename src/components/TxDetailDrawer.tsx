@@ -30,7 +30,7 @@ function Vbot16Timeline({ r }: { r: TxReportRow }) {
       {r.arm32 && <ArmLine label={`📍 Phút ${r.arm32.min} — chốt cửa sổ (đếm bàn 25→32)`} color="#fbbf24" arm={r.arm32} />}
       {r.entryOdds && (
         <div className="rounded border border-[#4ade80]/30 bg-[#4ade80]/[.06] px-2 py-1 text-[11px] text-[#9ca3af]">
-          <span className="text-[#4ade80]">✅ VÀO LỆNH:</span>{' '}
+          <span className="text-[#4ade80]">✅ VÀO LỆNH{r.entryMin != null ? ` (phút ${r.entryMin})` : ''}:</span>{' '}
           <span className="text-[#bbb]">OVER {r.entryOdds.line}</span>{' '}
           <span className="text-[#fca5a5]">@ giá {r.entryOdds.over ?? '—'}</span>
           {r.entryOdds.under != null && r.entryOdds.under !== '' && (

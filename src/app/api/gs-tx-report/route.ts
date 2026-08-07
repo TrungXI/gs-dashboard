@@ -41,6 +41,7 @@ export interface TxReportRow {
   arm25: Arm29 | null; // V.Bot 16 kèo rung 16p: OU line lúc phút 25 (cắm mốc)
   arm32: Arm29 | null; // V.Bot 16: OU line lúc phút 32 (chốt cửa sổ, đếm bàn)
   entryOdds: EntryOdds | null; // V.Bot 16: giá lúc VÀO lệnh (line over + giá)
+  entryMin: number | null; // V.Bot 16: phút (trong hiệp) lúc đặt lệnh
 }
 
 // Snapshot OU line lúc phút 29 (VBot14 kèo rung) — hiển thị chi tiết lệnh.
@@ -166,6 +167,7 @@ interface TxDbRow {
   arm25: Arm29 | null;
   arm32: Arm29 | null;
   entry_odds: EntryOdds | null;
+  entry_min: string | number | null;
 }
 
 function toRow(r: TxDbRow): TxReportRow {
@@ -195,6 +197,7 @@ function toRow(r: TxDbRow): TxReportRow {
     arm25: r.arm25 ?? null,
     arm32: r.arm32 ?? null,
     entryOdds: r.entry_odds ?? null,
+    entryMin: r.entry_min == null ? null : Number(r.entry_min),
   };
 }
 
@@ -237,7 +240,8 @@ export async function GET(req: Request) {
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl, snapshot->'arm29' AS arm29,
-                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds
+                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds,
+                snapshot->>'minuteAtBet' AS entry_min
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -250,7 +254,8 @@ export async function GET(req: Request) {
                 line, line_raw, price, p_model, edge, kind, prev_line, scored_at_entry,
                 score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl, snapshot->'arm29' AS arm29,
-                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds
+                snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds,
+                snapshot->>'minuteAtBet' AS entry_min
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC
