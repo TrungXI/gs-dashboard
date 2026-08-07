@@ -263,7 +263,7 @@ export async function GET(req: Request) {
               COUNT(*) FILTER (WHERE result = 'lose')::int      AS lose,
               COUNT(*) FILTER (WHERE result = 'half-lose')::int AS half_lose,
               COUNT(*) FILTER (WHERE result = 'push')::int      AS push,
-              COUNT(*) FILTER (WHERE result IS NULL AND entry_at > now() - interval '15 minutes')::int AS open_bets,
+              COUNT(*) FILTER (WHERE result IS NULL AND entry_at > now() - interval '2 hours')::int AS open_bets,
               COALESCE(SUM(pnl) FILTER (WHERE result IS NOT NULL), 0) AS pnl
          FROM gs_tx_paper
          GROUP BY calc_version, kind`,

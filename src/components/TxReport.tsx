@@ -24,7 +24,7 @@ interface TxVersionAgg {
   primaryOnly: TxAggLine;   // kind='primary' only
   withNhoi: TxAggLine;      // primary + nhoi combined
   nhoiOnly: TxAggLine;      // kind='nhoi' only
-  openBets: number;         // kèo pending vào <15' gần đây — đang thật sự vô kèo (mồ côi cũ không tính)
+  openBets: number;         // lệnh đang MỞ (result NULL) trong 2h — box hiện suốt lúc lệnh còn sống, không cắt ở 15' (mồ côi cũ >2h không tính)
 }
 interface TxReportResponse {
   ok: boolean;
@@ -261,7 +261,7 @@ export default function TxReport() {
                         <span className="text-[#444]">·</span>
                         <span>{wlp(s.withNhoi)}</span>
                         {s.openBets > 0 && (
-                          <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${s.openBets} kèo vừa vào <15'`}>
+                          <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${s.openBets} lệnh đang MỞ (chưa chấm)`}>
                             <span className="tx-open-dot" />vô kèo
                           </span>
                         )}
