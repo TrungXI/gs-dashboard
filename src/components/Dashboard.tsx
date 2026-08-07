@@ -16,8 +16,9 @@ import TeamFormReport from './TeamFormReport';
 import RankingLive from './RankingLive';
 import TxReport from './TxReport';
 import BotReport from './BotReport';
+import FtPairs from './FtPairs';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'monitor';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'monitor';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -250,6 +251,7 @@ export default function Dashboard({
     // ['team-form', '🔄', 'Quy luật phong độ'], // hidden from nav
     ['tx-report', '💰', 'Báo cáo TX'],
     ['bot-report', '🤖', 'Bot Report'],
+    ['ft-pairs', '📈', 'Cặp WL/BL'],
     ['monitor', '🖥️', 'Monitor'],
   ];
 
@@ -443,6 +445,8 @@ export default function Dashboard({
           <TxReport />
         ) : view === 'bot-report' ? (
           <BotReport />
+        ) : view === 'ft-pairs' ? (
+          <FtPairs />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
