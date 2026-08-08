@@ -880,25 +880,44 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               <OuLiveBox title="⚽ Hiệp 2 / cả trận" lines={m.ouLines} active={activeMarket === 'ft'} />
             </div>
           </div>
-          {/* Phút GHI BÀN của trận này (suy từ match_odds_log) — chèn giữa OU line và list 10 trận. */}
+          {/* Timeline GHI BÀN của trận này (suy từ match_odds_log) — thanh H1|H2, mốc bàn theo phút. */}
           {(() => {
             const goals = goalLog.filter((g) => g.eventId === m.eventId);
             if (goals.length === 0) return null;
+            const HOME = '#38bdf8', AWAY = '#fb7185';   // nhà = cyan, khách = hồng
+            const HALF_MAX = 45;                        // phút mô phỏng mỗi hiệp ~0-45
+            const posOf = (g: GoalEvent) => {
+              const mm = Math.min(Math.max(g.minute, 0), HALF_MAX);
+              return g.half === 'H1' ? (mm / HALF_MAX) * 50 : 50 + (mm / HALF_MAX) * 50;
+            };
             return (
               <div className="mt-1.5 border-t border-[#222] pt-1.5">
-                <div className="mb-1 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">⚽ Phút ghi bàn ({goals.length})</div>
-                <div className="flex flex-wrap gap-1">
+                <div className="mb-1 flex items-center gap-2 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">
+                  <span>⚽ Timeline ghi bàn ({goals.length})</span>
+                  <span className="ml-auto flex items-center gap-2 normal-case tracking-normal text-[9px]">
+                    <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: HOME }} /><span className="max-w-[70px] truncate" style={{ color: HOME }}>{m.homeTeam}</span></span>
+                    <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: AWAY }} /><span className="max-w-[70px] truncate" style={{ color: AWAY }}>{m.awayTeam}</span></span>
+                  </span>
+                </div>
+                <div className="relative h-10 rounded border border-[#242424] bg-[#161616]">
+                  {/* nền H1 / H2 + vạch HT */}
+                  <div className="absolute inset-y-0 left-0 w-1/2 rounded-l bg-[#fbbf24]/[.04]" />
+                  <div className="absolute inset-y-0 right-0 w-1/2 rounded-r bg-[#4ade80]/[.04]" />
+                  <div className="absolute inset-y-0 left-1/2 w-px bg-[#3a3a3a]" />
+                  <span className="absolute left-1 top-0.5 text-[8px] font-semibold text-[#fbbf24]/70">H1</span>
+                  <span className="absolute right-1 top-0.5 text-[8px] font-semibold text-[#4ade80]/70">H2</span>
                   {goals.map((g, i) => {
-                    const c = g.half === 'H2' ? '#4ade80' : '#fbbf24';
+                    const left = posOf(g);
+                    const color = g.side === 'home' ? HOME : AWAY;
                     return (
-                      <span key={`${g.side}-${g.minute}-${g.sh}-${g.sa}-${i}`}
-                        className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] md:text-[11px] font-semibold tabular-nums"
-                        style={{ color: c, background: `${c}1a` }}
-                        title={`${g.team} ghi phút ${g.minute}' (${g.half}) — tỉ số ${g.sh}-${g.sa}`}>
-                        <span className="opacity-70">{g.half}</span>{g.minute}&apos;
-                        <span className="text-white/90">{g.side === 'home' ? '🏠' : '✈️'}</span>
-                        <span className="text-white/50">{g.sh}-{g.sa}</span>
-                      </span>
+                      <div key={`${g.side}-${g.half}-${g.minute}-${g.sh}-${g.sa}-${i}`}
+                        className="absolute inset-y-0" style={{ left: `${left}%` }}
+                        title={`${g.team} ghi phút ${g.minute}' (${g.half}) — ${g.sh}-${g.sa}`}>
+                        <div className="absolute inset-y-1.5 w-px" style={{ background: color, opacity: 0.4, transform: 'translateX(-0.5px)' }} />
+                        <div className="absolute left-0 top-1/2 h-[9px] w-[9px] rounded-full" style={{ background: color, transform: 'translate(-50%,-50%)', boxShadow: '0 0 0 2px #161616' }} />
+                        <span className="absolute left-0 -top-0.5 text-[8px] font-bold tabular-nums" style={{ color, transform: 'translateX(-50%)' }}>{g.minute}&apos;</span>
+                        <span className="absolute left-0 bottom-0 text-[7px] tabular-nums text-white/45" style={{ transform: 'translateX(-50%)' }}>{g.sh}-{g.sa}</span>
+                      </div>
                     );
                   })}
                 </div>
