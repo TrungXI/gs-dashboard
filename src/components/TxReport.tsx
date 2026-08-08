@@ -196,84 +196,105 @@ export default function TxReport() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
-                  // Nhóm 1 (pin đầu): các con TIỀN THẬT + 2 con PAPER test (theo dõi thí nghiệm), sort theo PnL. Nhóm 2 (dưới): còn lại.
-                  const RM = ['V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Trong', 'V.Bot 14 Real Nam', 'V.Bot 12 Real', 'V.Bot 17 Real', 'V.Bot 17 Real Kien'];
-                  const isRM = (v: string) => RM.includes(v);
-                  const sorted = [...visibleSummary].sort((a, b) => {
-                    const ra = isRM(a.calcVersion), rb = isRM(b.calcVersion);
-                    if (ra !== rb) return ra ? -1 : 1;           // real money luôn lên trên
-                    return b.withNhoi.pnl - a.withNhoi.pnl;       // cùng nhóm → PnL giảm dần
-                  });
-                  const firstOther = sorted.findIndex((s) => !isRM(s.calcVersion));
-                  return sorted.map((s, idx) => {
-                  const showDivider = idx === firstOther && firstOther > 0;
-                  const active = s.calcVersion === selected;
-                  return (
-                    <Fragment key={s.calcVersion}>
-                      {showDivider && (
-                        <div className="mb-0.5 mt-2 flex items-center gap-2 px-1 text-[10px] font-semibold uppercase tracking-wide text-[#666]">
-                          <span className="h-px flex-1 bg-[#2a2a2a]" />Các bot khác<span className="h-px flex-1 bg-[#2a2a2a]" />
+                  // Gom bot TIỀN THẬT theo CHỦ VÍ (name) thành từng section cho dễ quan sát: Chính / Kiên / Nam / Trọng.
+                  const REAL = new Set(['V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Trong', 'V.Bot 14 Real Nam', 'V.Bot 12 Real', 'V.Bot 17 Real', 'V.Bot 17 Real Kien']);
+                  const owner = (v: string): string => (/ Kien$/.test(v) ? 'Kiên' : / Nam$/.test(v) ? 'Nam' : / Trong$/.test(v) ? 'Trọng' : 'Chính');
+                  const SECTION_ORDER = ['Chính', 'Kiên', 'Nam', 'Trọng'];
+                  const SECTION_ICON: Record<string, string> = { 'Chính': '👑', 'Kiên': '🧑', 'Nam': '🧑', 'Trọng': '🧑' };
+
+                  const reals = visibleSummary.filter((s) => REAL.has(s.calcVersion));
+                  const others = visibleSummary.filter((s) => !REAL.has(s.calcVersion)).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
+                  const sections = SECTION_ORDER
+                    .map((name) => ({ name, bots: reals.filter((s) => owner(s.calcVersion) === name).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl) }))
+                    .filter((sec) => sec.bots.length > 0);
+
+                  const renderCard = (s: TxVersionAgg) => {
+                    const active = s.calcVersion === selected;
+                    return (
+                      <div
+                        key={s.calcVersion}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onSelect(s.calcVersion)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); } }}
+                        title="Bấm để xem chart của version này"
+                        className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition ${s.openBets > 0 ? 'tx-pending ' : ''}${active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/10' : 'border-[#2a2a2a] bg-[#141414] hover:bg-white/[.05]'}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate text-[13px] font-semibold text-white">{s.calcVersion}</span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span className="text-[13px] font-semibold tabular-nums" style={{ color: pnlColor(s.withNhoi.pnl) }}>
+                              {pnlStr(s.withNhoi.pnl)}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onSelect(s.calcVersion); setDetailVersion(s.calcVersion); }}
+                              title="Xem chi tiết kèo (drawer)"
+                              aria-label="Xem chi tiết kèo"
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#38bdf8]/45 bg-[#38bdf8]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#7dd3fc] shadow-sm transition hover:bg-[#38bdf8]/30 hover:text-white active:scale-95"
+                            >
+                              📋 Chi tiết
+                            </button>
+                          </div>
                         </div>
-                      )}
-                    <div
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => onSelect(s.calcVersion)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(s.calcVersion); } }}
-                      title="Bấm để xem chart của version này"
-                      className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-left transition ${s.openBets > 0 ? 'tx-pending ' : ''}${active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/10' : 'border-[#2a2a2a] bg-[#141414] hover:bg-white/[.05]'}`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-[13px] font-semibold text-white">{s.calcVersion}</span>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          <span className="text-[13px] font-semibold tabular-nums" style={{ color: pnlColor(s.withNhoi.pnl) }}>
-                            {pnlStr(s.withNhoi.pnl)}
-                          </span>
+                        {/* Nút Xem Rule — ngay dưới Chi tiết, mở modal rule của CHÍNH bot này */}
+                        <div className="mt-1.5 flex justify-end">
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onSelect(s.calcVersion); setDetailVersion(s.calcVersion); }}
-                            title="Xem chi tiết kèo (drawer)"
-                            aria-label="Xem chi tiết kèo"
-                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#38bdf8]/45 bg-[#38bdf8]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#7dd3fc] shadow-sm transition hover:bg-[#38bdf8]/30 hover:text-white active:scale-95"
+                            onClick={(e) => { e.stopPropagation(); setRuleVersion(s.calcVersion); }}
+                            title="Xem rule / chiến lược bot này đang chạy"
+                            aria-label="Xem rule bot"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#fbbf24]/45 bg-[#fbbf24]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#fcd34d] shadow-sm transition hover:bg-[#fbbf24]/30 hover:text-white active:scale-95"
                           >
-                            📋 Chi tiết
+                            📖 Xem Rule
                           </button>
                         </div>
-                      </div>
-                      {/* Nút Xem Rule — ngay dưới Chi tiết, mở modal rule của CHÍNH bot này */}
-                      <div className="mt-1.5 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); setRuleVersion(s.calcVersion); }}
-                          title="Xem rule / chiến lược bot này đang chạy"
-                          aria-label="Xem rule bot"
-                          className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#fbbf24]/45 bg-[#fbbf24]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#fcd34d] shadow-sm transition hover:bg-[#fbbf24]/30 hover:text-white active:scale-95"
-                        >
-                          📖 Xem Rule
-                        </button>
-                      </div>
-                      {/* Note rule INLINE (ngoài modal) — chỉ hiện cho bot có tóm tắt `short` (2 con tiền thật). */}
-                      {getTxRule(s.calcVersion).short && (
-                        <div className="mt-1 rounded-md border border-[#fbbf24]/25 bg-[#fbbf24]/[.06] px-2 py-1 text-[11px] leading-snug text-[#d4b483]">
-                          {getTxRule(s.calcVersion).short}
-                        </div>
-                      )}
-                      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
-                        <span>{s.withNhoi.bets} kèo</span>
-                        <span className="text-[#444]">·</span>
-                        <span>WR {winRatePct(s.withNhoi.winRate)}</span>
-                        <span className="text-[#444]">·</span>
-                        <span>{wlp(s.withNhoi)}</span>
-                        {s.openBets > 0 && (
-                          <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${s.openBets} lệnh đang MỞ (chưa chấm)`}>
-                            <span className="tx-open-dot" />vô kèo
-                          </span>
+                        {/* Note rule INLINE (ngoài modal) — chỉ hiện cho bot có tóm tắt `short` (2 con tiền thật). */}
+                        {getTxRule(s.calcVersion).short && (
+                          <div className="mt-1 rounded-md border border-[#fbbf24]/25 bg-[#fbbf24]/[.06] px-2 py-1 text-[11px] leading-snug text-[#d4b483]">
+                            {getTxRule(s.calcVersion).short}
+                          </div>
                         )}
+                        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
+                          <span>{s.withNhoi.bets} kèo</span>
+                          <span className="text-[#444]">·</span>
+                          <span>WR {winRatePct(s.withNhoi.winRate)}</span>
+                          <span className="text-[#444]">·</span>
+                          <span>{wlp(s.withNhoi)}</span>
+                          {s.openBets > 0 && (
+                            <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${s.openBets} lệnh đang MỞ (chưa chấm)`}>
+                              <span className="tx-open-dot" />vô kèo
+                            </span>
+                          )}
+                        </div>
                       </div>
+                    );
+                  };
+
+                  const SectionHeader = ({ label, count, total }: { label: string; count: number; total: number }) => (
+                    <div className="mt-3 first:mt-0 flex items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5">
+                      <span className="text-[12px] font-bold text-[#e5c07b]">{label}</span>
+                      <span className="rounded bg-white/[.06] px-1.5 py-0.5 text-[10px] font-semibold text-[#999]">{count} bot</span>
+                      <span className="ml-auto text-[12px] font-bold tabular-nums" style={{ color: pnlColor(total) }}>{pnlStr(total)}</span>
                     </div>
-                    </Fragment>
                   );
-                });
+
+                  return (
+                    <>
+                      {sections.map((sec) => (
+                        <Fragment key={sec.name}>
+                          <SectionHeader label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} total={sec.bots.reduce((sum, s) => sum + s.withNhoi.pnl, 0)} />
+                          {sec.bots.map(renderCard)}
+                        </Fragment>
+                      ))}
+                      {others.length > 0 && (
+                        <Fragment key="__others">
+                          <SectionHeader label="📄 Các bot khác" count={others.length} total={others.reduce((sum, s) => sum + s.withNhoi.pnl, 0)} />
+                          {others.map(renderCard)}
+                        </Fragment>
+                      )}
+                    </>
+                  );
                 })()}
               </div>
             </div>
