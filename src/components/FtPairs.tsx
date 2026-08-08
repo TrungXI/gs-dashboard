@@ -17,7 +17,7 @@ export default function FtPairs() {
   const [selWl, setSelWl] = useState<Set<string>>(new Set());
   const [selBl, setSelBl] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
-  const [active, setActive] = useState<Set<string>>(new Set(['7'])); // filter đang bật; ≥2 → chế độ so sánh
+  const [active, setActive] = useState<Set<string>>(new Set(['28'])); // filter đang bật; ≥2 → chế độ so sánh
 
   const loadCurrent = useCallback(async () => {
     const [w, b] = await Promise.all([

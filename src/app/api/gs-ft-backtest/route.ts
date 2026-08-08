@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 const MIN_N = 25;
 const MIN_ROI = 3; // %
 
-const ALLOWED_DAYS = new Set(['7', '14', '21', '28']); // 4 mốc; mặc định 7
+const ALLOWED_DAYS = new Set(['7', '14', '21', '28']); // 4 mốc; mặc định 28
 // Cache LƯU DB (bảng gs_ft_backtest_cache) — job đêm precompute ghi sẵn, API chỉ đọc (nhanh, hết 9s/call).
 
 let _pool: Pool | null = null;
@@ -45,7 +45,7 @@ export async function GET(req: Request) {
   // ?days=1|3|7|14|21 → chỉ trận N ngày gần nhất; else 'all' = hết data. Mỗi mốc ra WL/BL khác nhau.
   const sp = new URL(req.url).searchParams;
   const raw = sp.get('days') || 'all';
-  const days = ALLOWED_DAYS.has(raw) ? raw : '7'; // mặc định 7 ngày
+  const days = ALLOWED_DAYS.has(raw) ? raw : '28'; // mặc định 28 ngày
   const force = sp.get('force') === '1'; // cron đêm gọi force=1 để tính lại
   const db = pool();
   if (!db) return Response.json({ ok: false, error: 'no db' });
