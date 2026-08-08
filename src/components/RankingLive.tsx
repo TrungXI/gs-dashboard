@@ -294,6 +294,10 @@ function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string
   return { big: 'H1', small: `${min}'`, color: '#fbbf24' };
 }
 
+// 1 bàn thắng bắt realtime từ vòng poll: phút + hiệp (H1/H2) + đội ghi.
+interface GoalEvent { key: string; eventId: number; matchType: string; home: string; away: string; team: string; minute: number; half: 'H1' | 'H2'; sh: number; sa: number; ts: number }
+const GOALLOG_LS = 'gs_live_goallog';
+
 export default function RankingLive({ initialMatch = null }: { initialMatch?: number | null }) {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -392,6 +396,21 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastIdRef = useRef(0);
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
+  const [goalLog, setGoalLog] = useState<GoalEvent[]>([]); // nhật ký bàn thắng realtime (phút + hiệp)
+  const [goalLogOpen, setGoalLogOpen] = useState(true);
+  // Load goal-log đã lưu (reset sang ngày mới) + nhớ trạng thái mở/gọn.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(GOALLOG_LS);
+      const today = new Date().toISOString().slice(0, 10);
+      if (raw) { const o = JSON.parse(raw) as { day: string; log: GoalEvent[] }; if (o.day === today && Array.isArray(o.log)) setGoalLog(o.log); }
+      setGoalLogOpen(localStorage.getItem('gs_live_goallog_open') !== '0');
+    } catch { /* noop */ }
+  }, []);
+  // Persist goal-log kèm ngày.
+  useEffect(() => {
+    try { localStorage.setItem(GOALLOG_LS, JSON.stringify({ day: new Date().toISOString().slice(0, 10), log: goalLog })); } catch { /* noop */ }
+  }, [goalLog]);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
   const osNotiGoalRef = useRef(false);
@@ -490,13 +509,22 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           const next = json.matches ?? [];
           // Goal detection vs previous poll → toast + OS noti + green flash
           const newScored = new Set<number>();
+          const newGoals: GoalEvent[] = []; // bàn thắng bắt trong poll này → ghi ra section Line Active
           for (const nm of next) {
             const pm = prevRef.current.get(nm.eventId);
             if (!pm) continue;
-            const matchTime = `${nm.isH2 ? '2H' : '1H'} ${nm.minuteElapsed ?? 0}'`;
+            const half: 'H1' | 'H2' = nm.isH2 ? 'H2' : 'H1';
+            const minute = nm.minuteElapsed ?? 0;
+            const matchTime = `${nm.isH2 ? '2H' : '1H'} ${minute}'`;
             const notifyThis = passesFilter(nm.matchType); // trận không qua bộ lọc → không noti/toast
+            const logGoal = (team: string) => newGoals.push({
+              key: `${nm.eventId}-${nm.h1Home}-${nm.h1Away}-${half}-${minute}`,
+              eventId: nm.eventId, matchType: nm.matchType, home: nm.homeTeam, away: nm.awayTeam,
+              team, minute, half, sh: nm.h1Home, sa: nm.h1Away, ts: Date.now(),
+            });
             if (nm.h1Home > pm.h1Home) {
               newScored.add(nm.eventId);
+              logGoal(nm.homeTeam);
               if (notifyThis) {
                 pushToast('goal', `⚽ ${nm.homeTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
                 notifyOS('goal', `⚽ ${nm.homeTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
@@ -504,6 +532,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
             }
             if (nm.h1Away > pm.h1Away) {
               newScored.add(nm.eventId);
+              logGoal(nm.awayTeam);
               if (notifyThis) {
                 pushToast('goal', `⚽ ${nm.awayTeam} ghi bàn! ${nm.h1Home}-${nm.h1Away} · ${matchTime}`);
                 notifyOS('goal', `⚽ ${nm.awayTeam} ghi bàn!`, `${nm.homeTeam}  ${nm.h1Home} – ${nm.h1Away}  ${nm.awayTeam}\n${matchTime}`, nm.eventId);
@@ -513,6 +542,14 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           if (newScored.size > 0) {
             setScoredIds(newScored);
             setTimeout(() => setScoredIds(new Set()), 3000);
+          }
+          if (newGoals.length > 0) {
+            // dedup theo key (poll trùng) rồi ghép, mới nhất lên đầu, cap 120.
+            setGoalLog((prev) => {
+              const seen = new Set(prev.map((g) => g.key));
+              const add = newGoals.filter((g) => !seen.has(g.key));
+              return add.length ? [...add.reverse(), ...prev].slice(0, 120) : prev;
+            });
           }
           // Track H1→H2 transition to remember H1 final + notify halftime
           let h1Changed = false;
@@ -1218,6 +1255,48 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           {error}
         </div>
       )}
+
+      {/* ── Line Active — nhật ký BÀN THẮNG realtime (phút + hiệp H1/H2), ngoài danh sách ── */}
+      {(() => {
+        const shown = goalLog.filter((g) => typeFilter === 'all' || g.matchType === typeFilter);
+        if (shown.length === 0) return null;
+        const liveSet = new Set(liveMatches.map((m) => m.eventId));
+        const toggleOpen = () => setGoalLogOpen((o) => { const n = !o; try { localStorage.setItem('gs_live_goallog_open', n ? '1' : '0'); } catch { /* noop */ } return n; });
+        return (
+          <div className="mb-5 rounded-xl border border-[#4ade80]/25 bg-[#101410]">
+            <div className="flex items-center gap-2 px-3 py-2">
+              <button type="button" onClick={toggleOpen} className="flex flex-1 items-center gap-2 text-left" title={goalLogOpen ? 'Thu gọn' : 'Mở rộng'}>
+                <span className="w-3 shrink-0 text-[10px] text-[#888]">{goalLogOpen ? '▾' : '▸'}</span>
+                <span className="text-[13px] font-bold text-[#4ade80]">⚽ Line Active — Bàn thắng realtime</span>
+                <span className="rounded bg-white/[.06] px-1.5 py-0.5 text-[10px] font-semibold text-[#999]">{shown.length} bàn</span>
+              </button>
+              <button type="button" onClick={() => { setGoalLog([]); try { localStorage.removeItem(GOALLOG_LS); } catch { /* noop */ } }}
+                className="rounded-md border border-[#2a2a2a] bg-[#1a1a1a] px-2 py-1 text-[11px] font-semibold text-[#aaa] transition hover:border-[#f87171]/40 hover:text-[#f87171]" title="Xoá nhật ký bàn thắng">
+                🗑 Xoá
+              </button>
+            </div>
+            {goalLogOpen && (
+              <div className="flex max-h-[260px] flex-col gap-1 overflow-y-auto border-t border-[#1e2a1e] px-3 py-2">
+                {shown.map((g) => {
+                  const isLive = liveSet.has(g.eventId);
+                  const halfColor = g.half === 'H2' ? '#4ade80' : '#fbbf24';
+                  return (
+                    <div key={`${g.key}-${g.ts}`} className="flex items-center gap-2 text-[12px] tabular-nums">
+                      <span className="shrink-0 rounded px-1.5 py-0.5 text-[11px] font-bold" style={{ color: halfColor, background: `${halfColor}1a` }}>
+                        {g.half} {g.minute}&apos;
+                      </span>
+                      <span className="shrink-0 font-semibold text-white">⚽ {g.team}</span>
+                      <span className="min-w-0 truncate text-[#8a8a8a]">{g.home} {g.sh}–{g.sa} {g.away}</span>
+                      {isLive && <span className="shrink-0 rounded bg-[#ef4444]/15 px-1 text-[10px] font-semibold text-[#fca5a5]">LIVE</span>}
+                      <span className="ml-auto shrink-0 text-[10px] text-[#666]">{g.matchType}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {group16.length === 0 && group20.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
