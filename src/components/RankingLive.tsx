@@ -294,8 +294,8 @@ function phaseParts(m: GsLiveMatch, nowMs: number): { big: string; small: string
   return { big: 'H1', small: `${min}'`, color: '#fbbf24' };
 }
 
-// 1 bàn thắng suy từ match_odds_log của trận đang live: phút + hiệp (H1/H2) + đội ghi.
-interface GoalEvent { eventId: number; matchType: string; home: string; away: string; team: string; side: 'home' | 'away'; half: 'H1' | 'H2'; minute: number; sh: number; sa: number }
+// 1 bàn thắng suy từ match_odds_log (payload TỐI THIỂU): e=eventId, s=side(h/a), h2=hiệp2?, m=phút, sh/sa=tỉ số.
+interface GoalEvent { e: number; s: 'h' | 'a'; h2: boolean; m: number; sh: number; sa: number }
 
 export default function RankingLive({ initialMatch = null }: { initialMatch?: number | null }) {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
@@ -396,23 +396,22 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const toastIdRef = useRef(0);
   const [scoredIds, setScoredIds] = useState<Set<number>>(new Set());
   const [goalLog, setGoalLog] = useState<GoalEvent[]>([]); // phút ghi bàn (suy từ match_odds_log) của trận đang live
-  const liveIdsRef = useRef<number[]>([]); // eventId các trận đang live → fetch phút ghi bàn
-  // Fetch phút ghi bàn từ match_odds_log cho các trận live — poll 6s (độc lập poll chính).
+  // Key = danh sách eventId trận live (đổi khi có trận vào/ra) → fetch NGAY, không chờ tick (hết trễ ~6s).
+  const liveIdsKey = matches.filter((m) => m.isLive).map((m) => m.eventId).sort((a, b) => a - b).join(',');
   useEffect(() => {
+    if (!liveIdsKey) { setGoalLog([]); return; }
     let alive = true;
     const fetchGoals = async () => {
-      const ids = liveIdsRef.current;
-      if (ids.length === 0) { if (alive) setGoalLog([]); return; }
       try {
-        const res = await fetch(`/api/gs-live-goals?events=${ids.join(',')}`, { cache: 'no-store' });
+        const res = await fetch(`/api/gs-live-goals?events=${liveIdsKey}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; goals?: GoalEvent[] };
         if (alive && json.ok) setGoalLog(json.goals ?? []);
       } catch { /* giữ nguyên */ }
     };
-    fetchGoals();
-    const id = setInterval(fetchGoals, 6000);
+    fetchGoals();                       // fetch ngay khi set trận live đổi
+    const id = setInterval(fetchGoals, 10000); // sau đó 10s/lần (bàn thắng hiếm → thưa cho nhẹ 3G)
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [liveIdsKey]);
   const [osNotiGoal, setOsNotiGoal] = useState(false);
   const [osNotiHT, setOsNotiHT] = useState(false);
   const osNotiGoalRef = useRef(false);
@@ -535,7 +534,6 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
             setScoredIds(newScored);
             setTimeout(() => setScoredIds(new Set()), 3000);
           }
-          liveIdsRef.current = next.filter((m) => m.isLive).map((m) => m.eventId); // cho poll phút-ghi-bàn
           // Track H1→H2 transition to remember H1 final + notify halftime
           let h1Changed = false;
           for (const nm of next) {
@@ -882,13 +880,13 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           </div>
           {/* Timeline GHI BÀN của trận này (suy từ match_odds_log) — thanh H1|H2, mốc bàn theo phút. */}
           {(() => {
-            const goals = goalLog.filter((g) => g.eventId === m.eventId);
+            const goals = goalLog.filter((g) => g.e === m.eventId);
             if (goals.length === 0) return null;
             const HOME = '#38bdf8', AWAY = '#fb7185';   // nhà = cyan, khách = hồng
             const HALF_MAX = 45;                        // phút mô phỏng mỗi hiệp ~0-45
             const posOf = (g: GoalEvent) => {
-              const mm = Math.min(Math.max(g.minute, 0), HALF_MAX);
-              return g.half === 'H1' ? (mm / HALF_MAX) * 50 : 50 + (mm / HALF_MAX) * 50;
+              const mm = Math.min(Math.max(g.m, 0), HALF_MAX);
+              return g.h2 ? 50 + (mm / HALF_MAX) * 50 : (mm / HALF_MAX) * 50;
             };
             return (
               <div className="mt-1.5 border-t border-[#222] pt-1.5">
@@ -908,14 +906,15 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
                   <span className="absolute right-1 top-0.5 text-[8px] font-semibold text-[#4ade80]/70">H2</span>
                   {goals.map((g, i) => {
                     const left = posOf(g);
-                    const color = g.side === 'home' ? HOME : AWAY;
+                    const color = g.s === 'h' ? HOME : AWAY;
+                    const team = g.s === 'h' ? m.homeTeam : m.awayTeam;
                     return (
-                      <div key={`${g.side}-${g.half}-${g.minute}-${g.sh}-${g.sa}-${i}`}
+                      <div key={`${g.s}-${g.h2 ? 'H2' : 'H1'}-${g.m}-${g.sh}-${g.sa}-${i}`}
                         className="absolute inset-y-0" style={{ left: `${left}%` }}
-                        title={`${g.team} ghi phút ${g.minute}' (${g.half}) — ${g.sh}-${g.sa}`}>
+                        title={`${team} ghi phút ${g.m}' (${g.h2 ? 'H2' : 'H1'}) — ${g.sh}-${g.sa}`}>
                         <div className="absolute inset-y-1.5 w-px" style={{ background: color, opacity: 0.4, transform: 'translateX(-0.5px)' }} />
                         <div className="absolute left-0 top-1/2 h-[9px] w-[9px] rounded-full" style={{ background: color, transform: 'translate(-50%,-50%)', boxShadow: '0 0 0 2px #161616' }} />
-                        <span className="absolute left-0 -top-0.5 text-[8px] font-bold tabular-nums" style={{ color, transform: 'translateX(-50%)' }}>{g.minute}&apos;</span>
+                        <span className="absolute left-0 -top-0.5 text-[8px] font-bold tabular-nums" style={{ color, transform: 'translateX(-50%)' }}>{g.m}&apos;</span>
                         <span className="absolute left-0 bottom-0 text-[7px] tabular-nums text-white/45" style={{ transform: 'translateX(-50%)' }}>{g.sh}-{g.sa}</span>
                       </div>
                     );
