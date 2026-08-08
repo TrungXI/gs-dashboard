@@ -99,8 +99,10 @@ export async function GET(req: Request) {
       avgLine: Math.round((a.lineSum / a.n) * 100) / 100,
       xiuRoi: Math.round((1000 * a.xPnl) / a.n) / 10,
       xiuWr: a.xW + a.xL ? Math.round((1000 * a.xW) / (a.xW + a.xL)) / 10 : 0,
+      xiuPnl: Math.round(a.xPnl * 10) / 10, // tổng đơn vị lời/lỗ đánh XỈU (cược 1 đơn vị/trận)
       taiRoi: Math.round((1000 * a.tPnl) / a.n) / 10,
       taiWr: a.tW + a.tL ? Math.round((1000 * a.tW) / (a.tW + a.tL)) / 10 : 0,
+      taiPnl: Math.round(a.tPnl * 10) / 10, // tổng đơn vị lời/lỗ đánh TÀI
     }));
 
     // whitelist = cửa XỈU có LỜI (đánh XỈU); blacklist = cửa TÀI có LỜI (đánh TÀI).

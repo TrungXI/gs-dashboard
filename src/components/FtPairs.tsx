@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-interface Row { pair: string; n: number; avgLine: number; xiuRoi: number; xiuWr: number; taiRoi: number; taiWr: number }
+interface Row { pair: string; n: number; avgLine: number; xiuRoi: number; xiuWr: number; xiuPnl: number; taiRoi: number; taiWr: number; taiPnl: number }
 interface Data { ok: boolean; updatedAt?: string; total?: number; minN?: number; minRoi?: number; whitelist?: Row[]; blacklist?: Row[]; gray?: Row[] }
 
 const FILTERS: [string, string][] = [['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày'], ['28', '28 ngày']];
@@ -58,21 +58,22 @@ export default function FtPairs() {
     const key = kind === 'wl' ? 'whitelist' : 'blacklist';
     const roiKey = kind === 'wl' ? 'xiuRoi' : 'taiRoi';
     const wrKey = kind === 'wl' ? 'xiuWr' : 'taiWr';
+    const pnlKey = kind === 'wl' ? 'xiuPnl' : 'taiPnl';
     const lists = activeList.map((v) => ({ v, rows: (store[v]?.[key] ?? []) as Row[] }));
-    if (lists.length === 0) return [] as { pair: string; perRoi: Record<string, number>; perWr: Record<string, number>; minRoi: number; n: number }[];
+    if (lists.length === 0) return [] as { pair: string; perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; minRoi: number; n: number }[];
     // đếm cặp xuất hiện ở bao nhiêu filter
-    const seen = new Map<string, { perRoi: Record<string, number>; perWr: Record<string, number>; count: number; n: number }>();
+    const seen = new Map<string, { perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; count: number; n: number }>();
     for (const { v, rows } of lists) {
       for (const r of rows) {
-        const e = seen.get(r.pair) || { perRoi: {}, perWr: {}, count: 0, n: 0 };
-        e.perRoi[v] = r[roiKey]; e.perWr[v] = r[wrKey]; e.count++; e.n = Math.max(e.n, r.n);
+        const e = seen.get(r.pair) || { perRoi: {}, perWr: {}, perPnl: {}, count: 0, n: 0 };
+        e.perRoi[v] = r[roiKey]; e.perWr[v] = r[wrKey]; e.perPnl[v] = r[pnlKey]; e.count++; e.n = Math.max(e.n, r.n);
         seen.set(r.pair, e);
       }
     }
     const need = lists.length; // giao = phải có ở HẾT filter đang bật
     return [...seen.entries()]
       .filter(([, e]) => e.count === need)
-      .map(([pair, e]) => ({ pair, perRoi: e.perRoi, perWr: e.perWr, minRoi: Math.min(...activeList.map((v) => e.perRoi[v] ?? 999)), n: e.n }))
+      .map(([pair, e]) => ({ pair, perRoi: e.perRoi, perWr: e.perWr, perPnl: e.perPnl, minRoi: Math.min(...activeList.map((v) => e.perRoi[v] ?? 999)), n: e.n }))
       .sort((a, b) => b.minRoi - a.minRoi);
   }, [activeList, store]);
 
@@ -140,8 +141,10 @@ export default function FtPairs() {
                 </th>
                 <th className="px-2 py-2 text-left">Cặp</th>
                 {activeList.map((v) => (
-                  <th key={v} className="px-2 py-2 text-right" title={`ROI ${kind === 'wl' ? 'Xỉu' : 'Tài'} — ${v} ngày`}>ROI {v}d</th>
+                  <th key={v} className="px-2 py-2 text-right" title={`ROI ${kind === 'wl' ? 'Xỉu' : 'Tài'} — ${v} ngày`}>ROI{compareMode ? ` ${v}d` : ''}</th>
                 ))}
+                {!compareMode && <th className="px-2 py-2 text-right" title="Winrate cửa đang xét">WR</th>}
+                {!compareMode && <th className="px-2 py-2 text-right" title="Tổng đơn vị lời/lỗ (cược 1 đơn vị/trận)">PNL</th>}
                 <th className="px-2 py-2 text-right">n</th>
               </tr>
             </thead>
@@ -166,12 +169,19 @@ export default function FtPairs() {
                         </td>
                       );
                     })}
+                    {!compareMode && (
+                      <td className="px-2 py-1.5 text-right tabular-nums text-[#d4d4d4]">{r.perWr[activeList[0]]}%</td>
+                    )}
+                    {!compareMode && (() => {
+                      const p = r.perPnl[activeList[0]];
+                      return <td className="px-2 py-1.5 text-right tabular-nums font-semibold" style={{ color: pnlColor(p) }}>{p > 0 ? '+' : ''}{p}</td>;
+                    })()}
                     <td className="px-2 py-1.5 text-right tabular-nums text-[#9ca3af]">{r.n}</td>
                   </tr>
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={activeList.length + 3} className="px-2 py-6 text-center text-[#666]">
+                <tr><td colSpan={activeList.length + 3 + (compareMode ? 0 : 2)} className="px-2 py-6 text-center text-[#666]">
                   {compareMode ? `Không cặp nào có mặt ở CẢ ${activeList.join(' + ')} ngày` : 'Chưa đủ data (n≥25)'}
                 </td></tr>
               )}
