@@ -282,16 +282,17 @@ export default function TxReport() {
                     );
                   };
 
-                  const SectionHeader = ({ name, label, count, open }: { name: string; label: string; count: number; open: boolean }) => (
+                  const SectionHeader = ({ name, label, count, open, live }: { name: string; label: string; count: number; open: boolean; live: boolean }) => (
                     <button
                       type="button"
                       onClick={() => toggleSection(name)}
                       title={open ? 'Bấm để thu gọn' : 'Bấm để mở rộng'}
-                      className="mt-3 first:mt-0 flex w-full items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5 text-left transition hover:bg-white/[.04] active:scale-[.99]"
+                      className={`mt-3 first:mt-0 flex w-full items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5 text-left transition hover:bg-white/[.04] active:scale-[.99]${live ? ' tx-section-live' : ''}`}
                     >
                       <span className="w-3 shrink-0 text-[10px] text-[#888]">{open ? '▾' : '▸'}</span>
                       <span className="text-[12px] font-bold text-[#e5c07b]">{label}</span>
                       <span className="rounded bg-white/[.06] px-1.5 py-0.5 text-[10px] font-semibold text-[#999]">{count} bot</span>
+                      {live && <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-[#fca5a5]"><span className="tx-open-dot" style={{ background: '#ef4444' }} />vô kèo</span>}
                     </button>
                   );
 
@@ -301,7 +302,7 @@ export default function TxReport() {
                         const open = !collapsed.has(sec.name);
                         return (
                           <Fragment key={sec.name}>
-                            <SectionHeader name={sec.name} label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} open={open} />
+                            <SectionHeader name={sec.name} label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} open={open} live={sec.bots.some((s) => s.openBets > 0)} />
                             {open && sec.bots.map(renderCard)}
                           </Fragment>
                         );
@@ -310,7 +311,7 @@ export default function TxReport() {
                         const open = !collapsed.has('__others');
                         return (
                           <Fragment key="__others">
-                            <SectionHeader name="__others" label="📄 Các bot khác" count={others.length} open={open} />
+                            <SectionHeader name="__others" label="📄 Các bot khác" count={others.length} open={open} live={others.some((s) => s.openBets > 0)} />
                             {open && others.map(renderCard)}
                           </Fragment>
                         );

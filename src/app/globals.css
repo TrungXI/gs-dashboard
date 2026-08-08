@@ -61,6 +61,28 @@ body {
   pointer-events: none;
 }
 
+/* Section header chủ ví có bot đang vô kèo → viền ĐỎ chạy 1 vệt quanh border (marching light). */
+.tx-section-live { position: relative; isolation: isolate; }
+.tx-section-live::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;                       /* độ dày viền */
+  background: conic-gradient(from var(--tx-angle),
+    transparent 0deg 215deg,
+    #7f1d1d 250deg,
+    #ef4444 300deg,
+    #fca5a5 335deg,
+    transparent 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: tx-spin 1.8s linear infinite;
+  pointer-events: none;
+}
+
 /* Desktop table row: tr không host được viền chạy → glow nhấp nháy cyan↔tím + accent trái. */
 .tx-pending-row > td { animation: tx-row-tint 1.8s ease-in-out infinite; }
 .tx-pending-row > td:first-child { box-shadow: inset 3px 0 0 0 #38bdf8; }
@@ -78,6 +100,7 @@ body {
 /* Ai bật "giảm chuyển động" → tắt animation, giữ viền tĩnh cho vẫn phân biệt. */
 @media (prefers-reduced-motion: reduce) {
   .tx-pending::before { animation: none; background: none; box-shadow: inset 0 0 0 1.5px #38bdf8aa; }
+  .tx-section-live::before { animation: none; background: none; box-shadow: inset 0 0 0 1.5px #ef4444aa; }
   .tx-pending-row > td { animation: none; background: rgba(56, 189, 248, 0.08); }
   .tx-open-dot { animation: none; }
 }
