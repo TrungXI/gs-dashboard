@@ -17,7 +17,6 @@ export default function FtPairs() {
   const [selWl, setSelWl] = useState<Set<string>>(new Set());
   const [selBl, setSelBl] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [active, setActive] = useState<Set<string>>(new Set(['7'])); // filter đang bật; ≥2 → chế độ so sánh
 
   const loadCurrent = useCallback(async () => {
@@ -96,20 +95,6 @@ export default function FtPairs() {
     const n = new Set(set); if (n.has(pair)) n.delete(pair); else n.add(pair); setter(n);
   };
 
-  const save = async (kind: 'wl' | 'bl') => {
-    const pairs = [...(kind === 'wl' ? selWl : selBl)];
-    const label = kind === 'wl' ? 'WHITELIST (4 con Real + Test WL CHỈ đánh Xỉu)' : 'BLACKLIST (V.Bot 17 đánh Tài)';
-    if (!window.confirm(`⚠️ TIỀN THẬT — Set ${label} = ${pairs.length} cặp?${compareMode ? '\n(đang ở chế độ SO SÁNH — chỉ set cặp GIAO ' + activeList.join('∩') + ')' : ''}\nÁp ngay cho bot (reload ~5s).`)) return;
-    setSaving(true); setMsg(null);
-    try {
-      const url = kind === 'wl' ? '/api/gs-pair-whitelist' : '/api/gs-pair-blacklist';
-      const j = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pairs }) }).then((r) => r.json());
-      if (j.ok) { setMsg(`✅ Đã set ${kind === 'wl' ? 'whitelist' : 'blacklist'} ${j.pairs.length} cặp — bot đọc ~5s.`); await loadCurrent(); }
-      else setMsg(`❌ Lỗi: ${j.error || 'unknown'}`);
-    } catch (e) { setMsg(`❌ ${e}`); }
-    setSaving(false);
-  };
-
   const copyCmd = (kind: 'wl' | 'bl') => {
     const pairs = [...(kind === 'wl' ? selWl : selBl)];
     const cmd = `${kind === 'wl' ? '/setpairwl' : '/setpairbl'} ${pairs.join(', ') || 'none'}`;
@@ -132,14 +117,10 @@ export default function FtPairs() {
           </h3>
         </div>
         <div className="mb-2 flex flex-wrap gap-2">
-          <button type="button" disabled={saving} onClick={() => save(kind)}
-            className="rounded-md border px-3 py-1.5 text-[12px] font-semibold transition disabled:opacity-40"
-            style={{ borderColor: accent + '66', background: accent + '1a', color: accent }}>
-            💾 Set {kind === 'wl' ? 'whitelist' : 'blacklist'} ({sel.size} cặp) → {kind === 'wl' ? '4 con V.Bot 12 Real + Test WL' : 'V.Bot 17 Real + Kiên + Test'}
-          </button>
           <button type="button" onClick={() => copyCmd(kind)}
-            className="rounded-md border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1.5 text-[12px] font-semibold text-[#7dd3fc]">
-            📋 Copy lệnh {kind === 'wl' ? '/setpairwl' : '/setpairbl'}
+            className="rounded-md border px-3 py-1.5 text-[12px] font-semibold transition"
+            style={{ borderColor: accent + '66', background: accent + '1a', color: accent }}>
+            📋 Copy lệnh {kind === 'wl' ? '/setpairwl' : '/setpairbl'} ({sel.size} cặp) → dán vào Telegram
           </button>
         </div>
         <div className="mb-2 select-all break-all rounded-md border border-[#2a2a2a] bg-[#0f0f0f] px-2 py-1.5 font-mono text-[11px] text-[#9ca3af]">
