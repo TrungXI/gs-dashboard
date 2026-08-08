@@ -112,6 +112,11 @@ export default function Dashboard({
     return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
   }, [view, fType, fDate, fTeam, fTeam2]);
 
+  // Vào trang GS Dữ liệu (mount hoặc nhấn tab) → luôn reset filter 2 đội về 'all', không nhớ lựa chọn trước.
+  useEffect(() => {
+    if (view === 'data') { setFTeam('all'); setFTeam2('all'); }
+  }, [view]);
+
   // ── Fetch a server-filtered page. offset 0 replaces, >0 appends. ────────
   // `loadPageWith` takes explicit filters (used at mount before state settles);
   // `loadPage` uses the current filter state.
@@ -156,8 +161,7 @@ export default function Dashboard({
       if (ui.view && !deepLinkConsumed.current) setView(ui.view);
       if (ui.fType) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
-      if (ui.fTeam) setFTeam(ui.fTeam);
-      if (ui.fTeam2) setFTeam2(ui.fTeam2);
+      // KHÔNG khôi phục fTeam/fTeam2 — filter 2 đội luôn reset về 'all' mỗi lần vào trang (user 2026-08-08).
     }
     uiRestored.current = true;
 
@@ -166,8 +170,8 @@ export default function Dashboard({
     // filter-change effect below only fires *after* a filter actually changes.
     const rType = ui?.fType ?? 'all';
     const rDate = ui?.fDate ?? 'all';
-    const rTeam = ui?.fTeam ?? 'all';
-    const rTeam2 = ui?.fTeam2 ?? 'all';
+    const rTeam = 'all'; // team filter không khôi phục → luôn 'all' lúc vào
+    const rTeam2 = 'all';
     const isDefault = rType === 'all' && rDate === 'all' && rTeam === 'all' && rTeam2 === 'all';
     const ssrOk = initialMatches.length > 0 || !!initialOptions;
     if (isDefault && !ssrOk) {
