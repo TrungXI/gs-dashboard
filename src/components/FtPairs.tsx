@@ -17,7 +17,7 @@ export default function FtPairs() {
   const [selBl, setSelBl] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [days, setDays] = useState<string>('all'); // filter: '1'|'3'|'7'|'14'|'21'|'all'
+  const [days, setDays] = useState<string>('7'); // filter: '7'|'14'|'21' — mặc định 7
 
   const loadCurrent = useCallback(async () => {
     const [w, b] = await Promise.all([
@@ -160,7 +160,7 @@ export default function FtPairs() {
         {/* Filter số ngày gần nhất — mỗi mốc ra WL/BL khác nhau (data precompute job đêm). */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-[#888]">Data:</span>
-          {[['1', '1 ngày'], ['3', '3 ngày'], ['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày'], ['all', 'Tất cả']].map(([v, label]) => (
+          {[['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày']].map(([v, label]) => (
             <button key={v} type="button" onClick={() => setDays(v)} disabled={loading}
               className={`rounded-md border px-2.5 py-1 text-[12px] font-semibold transition disabled:opacity-40 ${days === v ? 'border-[#38bdf8]/60 bg-[#38bdf8]/20 text-[#7dd3fc]' : 'border-[#2a2a2a] bg-[#141414] text-[#9ca3af] hover:bg-white/[.05]'}`}>
               {label}
