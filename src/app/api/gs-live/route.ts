@@ -68,8 +68,6 @@ export interface GsLiveMatch {
   h1Home: number;
   h1Away: number;
   minuteElapsed: number | null;
-  secondsElapsed: number | null; // e-sports: ms elapsed in current period → seconds
-  totalMsElapsed: number | null; // raw ms elapsed in current period (used by frontend for realtime interpolation)
   bettingOpen: boolean;
   period: number;          // ev['10']: 2=H1, 4=Halftime, 8=H2
   isH2: boolean;           // true = second half underway (ev['10']===8)
@@ -79,14 +77,6 @@ export interface GsLiveMatch {
   oddsHome: number | null;
   oddsAway: number | null;
   oddsDraw: number | null;
-  // 1X2 Hiệp 1 (ev['7']['2']) — chỉ có khi trận đang H1; null khi đã sang H2/nghỉ.
-  oddsH1Home: number | null;
-  oddsH1Away: number | null;
-  oddsH1Draw: number | null;
-  // Malay-format odds strings (e.g. "-4.76", "+9.00"). null when unavailable.
-  malayHome: string | null;
-  malayAway: string | null;
-  malayDraw: string | null;
   // Kèo Chấp (Asian Handicap) — market '5' TT, '15' H1. 2 lines. Values in Malay format.
   // homeGives=true → home team gives handicap (line shown in home row); false → away gives.
   hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
@@ -101,12 +91,6 @@ export interface GsLiveMatch {
   redAway: number;
   cornersHome: number;
   cornersAway: number;
-}
-
-/** Decimal → Malay odds string. Positive = "stake 1 to win N"; negative = "stake N to win 1". */
-function decToMalay(dec: number): string {
-  if (dec >= 2.0) return `+${(dec - 1).toFixed(2)}`;
-  return (-(1 / (dec - 1))).toFixed(2); // negative means "stake this to win 1"
 }
 
 /**
@@ -214,7 +198,6 @@ function buildMatch(
   const cornersHome = score['5'] ?? 0;
   const cornersAway = score['6'] ?? 0;
   const odds = parse1x2(ev['7']);       // 1X2 toàn trận
-  const oddsH1 = parse1x2(ev['7'], '2'); // 1X2 Hiệp 1 (chỉ có khi đang H1)
   const hcRaw = parseAsianMarket(ev['7'], '5');
   const ouRaw = parseAsianMarket(ev['7'], '3');
   // H1 market keys: '6' = HC H1, '4' = OU H1 (different from pre-match keys '15'/'13')
@@ -242,8 +225,6 @@ function buildMatch(
     h1Home: score['0'] ?? 0,
     h1Away: score['1'] ?? 0,
     minuteElapsed,
-    secondsElapsed: ev6ms !== null ? Math.floor(ev6ms / 1000) % 60 : null,
-    totalMsElapsed: ev6ms,
     bettingOpen: ev['11'] !== true,
     period: typeof ev['10'] === 'number' ? (ev['10'] as number) : 0,
     isH2,
@@ -252,12 +233,6 @@ function buildMatch(
     oddsHome: odds.home,
     oddsAway: odds.away,
     oddsDraw: odds.draw,
-    oddsH1Home: oddsH1.home,
-    oddsH1Away: oddsH1.away,
-    oddsH1Draw: oddsH1.draw,
-    malayHome: odds.home != null ? decToMalay(odds.home) : null,
-    malayAway: odds.away != null ? decToMalay(odds.away) : null,
-    malayDraw: odds.draw != null ? decToMalay(odds.draw) : null,
     hcLines: hcRaw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
     hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
     ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away, suspended: r.suspended })),

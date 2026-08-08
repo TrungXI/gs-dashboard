@@ -490,7 +490,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     return () => clearInterval(id);
   }, []);
 
-  // Poll trận live mỗi POLL_MS (5s) — ngừng khi tab ẩn (trừ khi bật noti).
+  // Poll trận live mỗi POLL_MS (10s) — ngừng khi tab ẩn (trừ khi bật noti).
   useEffect(() => {
     let alive = true;
 
@@ -583,7 +583,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
 
     poll();
     // Poll 10s/lần (giảm tải call /api/gs-live).
-    const POLL_MS = 5_000;
+    const POLL_MS = 10_000;
     const id = setInterval(poll, POLL_MS);
     const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
     document.addEventListener('visibilitychange', onVis);
@@ -787,18 +787,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               {phase.small && (
                 <div className="text-[12px] md:text-[13px] font-semibold text-[#aaa] mt-1">{phase.small}</div>
               )}
-              {/* Nút mở drawer chi tiết đối đầu — thay cho click cả card. */}
-              <button
-                type="button"
-                onClick={() => setSelected(m)}
-                title="Xem chi tiết đối đầu"
-                aria-label="Xem chi tiết đối đầu"
-                className="mt-1.5 inline-flex items-center justify-center rounded-full border border-[#38bdf8]/50 bg-[#38bdf8]/15 p-1 text-[#7dd3fc] shadow-sm transition-all hover:scale-110 hover:bg-[#38bdf8]/30 active:scale-95"
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 md:h-3.5 md:w-3.5">
-                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
-                </svg>
-              </button>
+              {/* Nút mở drawer đã bỏ (user 2026-08-08) — drawer vẫn mở được qua deep-link Telegram ?match=. */}
             </div>
           </div>
           {/* Bố cục 2 cột: TRÁI = Bàn muộn (trên) + Tỉ lệ thắng (dưới, giãn cao) · PHẢI = Chỉ số TB (giãn cao).

@@ -303,7 +303,11 @@ export default function TxReport() {
                         return (
                           <Fragment key={sec.name}>
                             <SectionHeader name={sec.name} label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} open={open} live={sec.bots.some((s) => s.openBets > 0)} />
-                            {open && sec.bots.map(renderCard)}
+                            {open && (
+                              <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                                {sec.bots.map(renderCard)}
+                              </div>
+                            )}
                           </Fragment>
                         );
                       })}
@@ -312,7 +316,11 @@ export default function TxReport() {
                         return (
                           <Fragment key="__others">
                             <SectionHeader name="__others" label="📄 Các bot khác" count={others.length} open={open} live={others.some((s) => s.openBets > 0)} />
-                            {open && others.map(renderCard)}
+                            {open && (
+                              <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                                {others.map(renderCard)}
+                              </div>
+                            )}
                           </Fragment>
                         );
                       })()}
