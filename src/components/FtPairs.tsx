@@ -60,20 +60,20 @@ export default function FtPairs() {
     const wrKey = kind === 'wl' ? 'xiuWr' : 'taiWr';
     const pnlKey = kind === 'wl' ? 'xiuPnl' : 'taiPnl';
     const lists = activeList.map((v) => ({ v, rows: (store[v]?.[key] ?? []) as Row[] }));
-    if (lists.length === 0) return [] as { pair: string; perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; minRoi: number; n: number }[];
+    if (lists.length === 0) return [] as { pair: string; perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; perLine: Record<string, number>; minRoi: number; n: number }[];
     // đếm cặp xuất hiện ở bao nhiêu filter
-    const seen = new Map<string, { perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; count: number; n: number }>();
+    const seen = new Map<string, { perRoi: Record<string, number>; perWr: Record<string, number>; perPnl: Record<string, number>; perLine: Record<string, number>; count: number; n: number }>();
     for (const { v, rows } of lists) {
       for (const r of rows) {
-        const e = seen.get(r.pair) || { perRoi: {}, perWr: {}, perPnl: {}, count: 0, n: 0 };
-        e.perRoi[v] = r[roiKey]; e.perWr[v] = r[wrKey]; e.perPnl[v] = r[pnlKey]; e.count++; e.n = Math.max(e.n, r.n);
+        const e = seen.get(r.pair) || { perRoi: {}, perWr: {}, perPnl: {}, perLine: {}, count: 0, n: 0 };
+        e.perRoi[v] = r[roiKey]; e.perWr[v] = r[wrKey]; e.perPnl[v] = r[pnlKey]; e.perLine[v] = r.avgLine; e.count++; e.n = Math.max(e.n, r.n);
         seen.set(r.pair, e);
       }
     }
     const need = lists.length; // giao = phải có ở HẾT filter đang bật
     return [...seen.entries()]
       .filter(([, e]) => e.count === need)
-      .map(([pair, e]) => ({ pair, perRoi: e.perRoi, perWr: e.perWr, perPnl: e.perPnl, minRoi: Math.min(...activeList.map((v) => e.perRoi[v] ?? 999)), n: e.n }))
+      .map(([pair, e]) => ({ pair, perRoi: e.perRoi, perWr: e.perWr, perPnl: e.perPnl, perLine: e.perLine, minRoi: Math.min(...activeList.map((v) => e.perRoi[v] ?? 999)), n: e.n }))
       .sort((a, b) => b.minRoi - a.minRoi);
   }, [activeList, store]);
 
@@ -140,6 +140,7 @@ export default function FtPairs() {
                     }} />
                 </th>
                 <th className="px-2 py-2 text-left">Cặp</th>
+                {!compareMode && <th className="px-2 py-2 text-right" title="Line FT vào trận đầu H1 (lúc 0-0), trung bình">Line vào</th>}
                 {activeList.map((v) => (
                   <th key={v} className="px-2 py-2 text-right" title={`ROI ${kind === 'wl' ? 'Xỉu' : 'Tài'} — ${v} ngày`}>ROI{compareMode ? ` ${v}d` : ''}</th>
                 ))}
@@ -161,6 +162,7 @@ export default function FtPairs() {
                       {r.pair.replace('|', ' vs ')}
                       {isCur && <span className="ml-1.5 rounded bg-[#38bdf8]/20 px-1 text-[10px] text-[#7dd3fc]">đang áp</span>}
                     </td>
+                    {!compareMode && <td className="px-2 py-1.5 text-right tabular-nums text-[#e5c893]">{r.perLine[activeList[0]]}</td>}
                     {activeList.map((v) => {
                       const val = r.perRoi[v];
                       return (
@@ -181,7 +183,7 @@ export default function FtPairs() {
                 );
               })}
               {rows.length === 0 && (
-                <tr><td colSpan={activeList.length + 3 + (compareMode ? 0 : 2)} className="px-2 py-6 text-center text-[#666]">
+                <tr><td colSpan={activeList.length + 3 + (compareMode ? 0 : 3)} className="px-2 py-6 text-center text-[#666]">
                   {compareMode ? `Không cặp nào có mặt ở CẢ ${activeList.join(' + ')} ngày` : 'Chưa đủ data (n≥25)'}
                 </td></tr>
               )}

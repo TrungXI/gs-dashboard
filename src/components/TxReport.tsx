@@ -69,6 +69,12 @@ export default function TxReport() {
   const [ruleVersion, setRuleVersion] = useState<string | null>(null); // version đang mở modal Xem Rule
   const [running, setRunning] = useState<Set<string> | null>(null); // calc_version của bot đang chạy ngầm (pm2 online)
   const [showOff, setShowOff] = useState(false); // false = ẩn bot đã tắt; true = hiện full
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // section chủ ví đang thu gọn
+  const toggleSection = (name: string) => setCollapsed((prev) => {
+    const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name);
+    try { localStorage.setItem('tx-collapsed-sections', JSON.stringify([...n])); } catch { /* noop */ }
+    return n;
+  });
 
   const load = useCallback(async (version: string, pageArg: number) => {
     setLoading(true);
@@ -96,6 +102,7 @@ export default function TxReport() {
     setSelected(initial);
     load(initial, 0);
     try { setShowOff(localStorage.getItem('tx-show-off') === '1'); } catch { /* noop */ }
+    try { const c = localStorage.getItem('tx-collapsed-sections'); if (c) setCollapsed(new Set(JSON.parse(c) as string[])); } catch { /* noop */ }
   }, [load]);
 
   // Trạng thái bot đang chạy (pm2) — fetch lúc mount + refresh 20s.
@@ -275,28 +282,39 @@ export default function TxReport() {
                     );
                   };
 
-                  const SectionHeader = ({ label, count, total }: { label: string; count: number; total: number }) => (
-                    <div className="mt-3 first:mt-0 flex items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5">
+                  const SectionHeader = ({ name, label, count, open }: { name: string; label: string; count: number; open: boolean }) => (
+                    <button
+                      type="button"
+                      onClick={() => toggleSection(name)}
+                      title={open ? 'Bấm để thu gọn' : 'Bấm để mở rộng'}
+                      className="mt-3 first:mt-0 flex w-full items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5 text-left transition hover:bg-white/[.04] active:scale-[.99]"
+                    >
+                      <span className="w-3 shrink-0 text-[10px] text-[#888]">{open ? '▾' : '▸'}</span>
                       <span className="text-[12px] font-bold text-[#e5c07b]">{label}</span>
                       <span className="rounded bg-white/[.06] px-1.5 py-0.5 text-[10px] font-semibold text-[#999]">{count} bot</span>
-                      <span className="ml-auto text-[12px] font-bold tabular-nums" style={{ color: pnlColor(total) }}>{pnlStr(total)}</span>
-                    </div>
+                    </button>
                   );
 
                   return (
                     <>
-                      {sections.map((sec) => (
-                        <Fragment key={sec.name}>
-                          <SectionHeader label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} total={sec.bots.reduce((sum, s) => sum + s.withNhoi.pnl, 0)} />
-                          {sec.bots.map(renderCard)}
-                        </Fragment>
-                      ))}
-                      {others.length > 0 && (
-                        <Fragment key="__others">
-                          <SectionHeader label="📄 Các bot khác" count={others.length} total={others.reduce((sum, s) => sum + s.withNhoi.pnl, 0)} />
-                          {others.map(renderCard)}
-                        </Fragment>
-                      )}
+                      {sections.map((sec) => {
+                        const open = !collapsed.has(sec.name);
+                        return (
+                          <Fragment key={sec.name}>
+                            <SectionHeader name={sec.name} label={`${SECTION_ICON[sec.name]} ${sec.name}`} count={sec.bots.length} open={open} />
+                            {open && sec.bots.map(renderCard)}
+                          </Fragment>
+                        );
+                      })}
+                      {others.length > 0 && (() => {
+                        const open = !collapsed.has('__others');
+                        return (
+                          <Fragment key="__others">
+                            <SectionHeader name="__others" label="📄 Các bot khác" count={others.length} open={open} />
+                            {open && others.map(renderCard)}
+                          </Fragment>
+                        );
+                      })()}
                     </>
                   );
                 })()}
