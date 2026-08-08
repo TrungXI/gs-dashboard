@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 const MIN_N = 25;
 const MIN_ROI = 3; // %
 
-const ALLOWED_DAYS = new Set(['7', '14', '21']); // chỉ 3 mốc; mặc định 21
+const ALLOWED_DAYS = new Set(['7', '14', '21', '28']); // 4 mốc; mặc định 7
 // Cache LƯU DB (bảng gs_ft_backtest_cache) — job đêm precompute ghi sẵn, API chỉ đọc (nhanh, hết 9s/call).
 
 let _pool: Pool | null = null;

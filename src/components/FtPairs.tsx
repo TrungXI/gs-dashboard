@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 interface Row { pair: string; n: number; avgLine: number; xiuRoi: number; xiuWr: number; taiRoi: number; taiWr: number }
 interface Data { ok: boolean; updatedAt?: string; total?: number; minN?: number; minRoi?: number; whitelist?: Row[]; blacklist?: Row[]; gray?: Row[] }
 
-const FILTERS: [string, string][] = [['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày']];
+const FILTERS: [string, string][] = [['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày'], ['28', '28 ngày']];
 const pnlColor = (roi: number) => (roi > 0 ? '#4ade80' : roi < 0 ? '#f87171' : '#9ca3af');
 
 export default function FtPairs() {
