@@ -197,7 +197,11 @@ export default function TxReport() {
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
                   // Gom bot TIỀN THẬT theo CHỦ VÍ (name) thành từng section cho dễ quan sát: Chính / Kiên / Nam / Trọng.
-                  const REAL = new Set(['V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Trong', 'V.Bot 14 Real Nam', 'V.Bot 12 Real', 'V.Bot 17 Real', 'V.Bot 17 Real Kien']);
+                  const REAL = new Set([
+                    'V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Nam', 'V.Bot 12 Trong', // V.Bot 12 real 4 ví (Nam/Kien/Trong KHÔNG có chữ "Real")
+                    'V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Nam', 'V.Bot 14 Real Trong',
+                    'V.Bot 17 Real', 'V.Bot 17 Real Kien', 'V.Bot 17 Real Nam', 'V.Bot 17 Real Trong',
+                  ]);
                   const owner = (v: string): string => (/ Kien$/.test(v) ? 'Kiên' : / Nam$/.test(v) ? 'Nam' : / Trong$/.test(v) ? 'Trọng' : 'Chính');
                   const SECTION_ORDER = ['Chính', 'Kiên', 'Nam', 'Trọng'];
                   const SECTION_ICON: Record<string, string> = { 'Chính': '👑', 'Kiên': '🧑', 'Nam': '🧑', 'Trọng': '🧑' };
