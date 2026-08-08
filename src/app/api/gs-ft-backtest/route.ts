@@ -7,11 +7,11 @@ export const dynamic = 'force-dynamic';
 // neo team + recorded_at±25'). Chấm Malay + line lẻ → ROI/winrate + line mở trung bình mỗi cặp.
 // Nặng (~9s) → cache in-memory 10 phút.
 
-const MIN_N = 25;
+const MIN_N = 15;
 const MIN_ROI = 3; // %
 
-let _cache: { at: number; data: unknown } | null = null;
-const TTL = 10 * 60 * 1000;
+const ALLOWED_DAYS = new Set(['1', '3', '7', '14', '21']); // 'all' = không giới hạn
+// Cache LƯU DB (bảng gs_ft_backtest_cache) — job đêm precompute ghi sẵn, API chỉ đọc (nhanh, hết 9s/call).
 
 let _pool: Pool | null = null;
 function pool(): Pool | null {
@@ -41,10 +41,25 @@ function grade(L: number, ft: number, o: number, over: boolean): number {
   return ft >= fl + 2 ? wamt : ft === fl + 1 ? wamt / 2 : lamt;
 }
 
-export async function GET() {
-  if (_cache && Date.now() - _cache.at < TTL) return Response.json(_cache.data);
+export async function GET(req: Request) {
+  // ?days=1|3|7|14|21 → chỉ trận N ngày gần nhất; else 'all' = hết data. Mỗi mốc ra WL/BL khác nhau.
+  const sp = new URL(req.url).searchParams;
+  const raw = sp.get('days') || 'all';
+  const days = ALLOWED_DAYS.has(raw) ? raw : 'all';
+  const force = sp.get('force') === '1'; // cron đêm gọi force=1 để tính lại
   const db = pool();
   if (!db) return Response.json({ ok: false, error: 'no db' });
+
+  // Đọc cache DB (job đêm ghi sẵn) → trả ngay, KHÔNG tính 9s. force=1 (cron) mới tính lại.
+  if (!force) {
+    try {
+      const c = await db.query('SELECT data FROM gs_ft_backtest_cache WHERE days=$1', [days]);
+      if (c.rows[0]?.data) return Response.json(c.rows[0].data);
+    } catch { /* bảng chưa tạo → tính on-demand + tạo bên dưới */ }
+  }
+
+  // Lọc theo số ngày gần nhất (match_time). 'all' → không lọc.
+  const dayFilter = days === 'all' ? '' : `AND mh.match_time >= now() - interval '${Number(days)} days'`;
 
   try {
     const { rows } = await db.query(`
@@ -63,7 +78,7 @@ export async function GET() {
           AND ol.recorded_at BETWEEN mh.match_time - interval '25 min' AND mh.match_time + interval '25 min'
         ORDER BY ol.recorded_at, ol.id LIMIT 1
       ) o ON true
-      WHERE ht.type = 'V' AND at.type = 'V' AND mh.match_type = '20p'
+      WHERE ht.type = 'V' AND at.type = 'V' AND mh.match_type = '20p' ${dayFilter}
         AND mh.tt_home IS NOT NULL AND o.line IS NOT NULL`);
 
     type Agg = { n: number; xPnl: number; xW: number; xL: number; tPnl: number; tW: number; tL: number; lineSum: number };
@@ -95,6 +110,7 @@ export async function GET() {
 
     const data = {
       ok: true,
+      days,
       updatedAt: new Date().toISOString(),
       total: rows.length,
       minN: MIN_N,
@@ -103,7 +119,12 @@ export async function GET() {
       blacklist,
       gray,
     };
-    _cache = { at: Date.now(), data };
+    // Ghi cache DB (tạo bảng nếu chưa có) → lần sau đọc nhanh; job đêm cũng ghi vào đây.
+    try {
+      await db.query(`CREATE TABLE IF NOT EXISTS gs_ft_backtest_cache (days text PRIMARY KEY, computed_at timestamptz, data jsonb)`);
+      await db.query(`INSERT INTO gs_ft_backtest_cache(days, computed_at, data) VALUES($1, now(), $2)
+                      ON CONFLICT (days) DO UPDATE SET computed_at=now(), data=$2`, [days, JSON.stringify(data)]);
+    } catch { /* noop */ }
     return Response.json(data);
   } catch (e) {
     return Response.json({ ok: false, error: String(e) });

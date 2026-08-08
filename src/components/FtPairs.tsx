@@ -17,6 +17,7 @@ export default function FtPairs() {
   const [selBl, setSelBl] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [days, setDays] = useState<string>('all'); // filter: '1'|'3'|'7'|'14'|'21'|'all'
 
   const loadCurrent = useCallback(async () => {
     const [w, b] = await Promise.all([
@@ -32,7 +33,7 @@ export default function FtPairs() {
     (async () => {
       setLoading(true); setErr(null);
       try {
-        const j: Data = await fetch('/api/gs-ft-backtest', { cache: 'no-store' }).then((r) => r.json());
+        const j: Data = await fetch(`/api/gs-ft-backtest?days=${days}`, { cache: 'no-store' }).then((r) => r.json());
         if (cancel) return;
         if (!j.ok) { setErr('Không tải được backtest'); setLoading(false); return; }
         setData(j);
@@ -43,7 +44,7 @@ export default function FtPairs() {
       if (!cancel) setLoading(false);
     })();
     return () => { cancel = true; };
-  }, [loadCurrent]);
+  }, [loadCurrent, days]);
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, pair: string) => {
     const n = new Set(set); if (n.has(pair)) n.delete(pair); else n.add(pair); setter(n);
@@ -156,6 +157,16 @@ export default function FtPairs() {
           {data?.total != null && <> · {data.total} trận · ngưỡng n≥{data.minN}, ROI≥±{data.minRoi}%</>}
         </p>
         <p className="mt-1 text-[11px] text-[#e5a13a]">⚠️ Line mở phút~0 cao hơn line bot vào phút~9 (~0.25) → ROI/WR hơi lạc quan; thứ hạng cặp thì đúng.</p>
+        {/* Filter số ngày gần nhất — mỗi mốc ra WL/BL khác nhau (data precompute job đêm). */}
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-[#888]">Data:</span>
+          {[['1', '1 ngày'], ['3', '3 ngày'], ['7', '7 ngày'], ['14', '14 ngày'], ['21', '21 ngày'], ['all', 'Tất cả']].map(([v, label]) => (
+            <button key={v} type="button" onClick={() => setDays(v)} disabled={loading}
+              className={`rounded-md border px-2.5 py-1 text-[12px] font-semibold transition disabled:opacity-40 ${days === v ? 'border-[#38bdf8]/60 bg-[#38bdf8]/20 text-[#7dd3fc]' : 'border-[#2a2a2a] bg-[#141414] text-[#9ca3af] hover:bg-white/[.05]'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         {msg && <div className="mt-2 rounded-md border border-[#2a2a2a] bg-[#141414] px-3 py-1.5 text-[12px] text-[#d4d4d4]">{msg}</div>}
       </div>
       {loading ? (
