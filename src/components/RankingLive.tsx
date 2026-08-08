@@ -921,9 +921,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   function H2HMiniList({ eventId, showH2 }: { eventId: number; showH2: boolean }) {
     const st = pairByEvent.get(eventId);
     if (!st || st.status !== 'ready' || !st.matches?.length) return null;
+    void showH2; // giờ hiện CẢ HT + FT, không toggle nữa
     const rows = st.matches.slice(0, 10);
     const stripTag = (s: string) => s.replace(/\s*\([VS]\)\s*$/, '');
-    const scoreColor = showH2 ? '#e5e7eb' : '#fbbf24'; // H2/HT → FT (trắng) · H1 → H1 (vàng)
+    // Hiện CẢ HT (hiệp 1, vàng) và FT (cả trận, trắng) — data từ gs_matches_history (htScore/ftScore).
     const Col = ({ items }: { items: H2HPairMatch[] }) => (
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         {items.map((mt, i) => (
@@ -933,8 +934,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               <span className="text-[#666]"> v </span>
               <span className="text-[#fb7185]">{stripTag(mt.away)}</span>
             </span>
-            <span className="shrink-0 tabular-nums font-extrabold text-[14px] md:text-[16px] leading-none" style={{ color: scoreColor }}>
-              {showH2 ? mt.ftScore : mt.htScore}
+            <span className="shrink-0 tabular-nums font-extrabold text-[12px] md:text-[14px] leading-none">
+              <span style={{ color: '#fbbf24' }} title="Hiệp 1 (HT)">{mt.htScore}</span>
+              <span className="mx-0.5 text-[#555]">/</span>
+              <span style={{ color: '#e5e7eb' }} title="Cả trận (FT)">{mt.ftScore}</span>
             </span>
           </div>
         ))}
@@ -945,7 +948,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         <div className="mb-1 flex items-center gap-1.5 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">
           <span>10 trận gần nhất</span>
           <span className="text-[#444]">·</span>
-          <span style={{ color: scoreColor }}>{showH2 ? 'score H2' : 'score H1'}</span>
+          <span><span style={{ color: '#fbbf24' }}>HT</span> <span className="text-[#555]">/</span> <span style={{ color: '#e5e7eb' }}>FT</span></span>
         </div>
         <div className="flex gap-1.5 md:gap-2">
           <Col items={rows.slice(0, 5)} />
