@@ -103,10 +103,12 @@ export async function GET(req: Request) {
       taiWr: a.tW + a.tL ? Math.round((1000 * a.tW) / (a.tW + a.tL)) / 10 : 0,
     }));
 
-    // Phân loại theo cửa XỈU: whitelist = Xỉu tốt (đánh XỈU); blacklist = Xỉu kém = nổ Tài (đánh TÀI).
+    // whitelist = cửa XỈU có LỜI (đánh XỈU); blacklist = cửa TÀI có LỜI (đánh TÀI).
+    // Lọc TỪNG cửa theo ROI CHÍNH cửa đó — KHÔNG suy "Xỉu kém ⇒ Tài tốt" (vig ăn cả 2 cửa: có cặp
+    // Xỉu lỗ mà Tài cũng lỗ → phải loại khỏi cả 2 list, không đánh cửa nào).
     const whitelist = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi >= MIN_ROI).sort((a, b) => b.xiuRoi - a.xiuRoi);
-    const blacklist = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi <= -MIN_ROI).sort((a, b) => b.taiRoi - a.taiRoi); // xếp theo ROI TÀI giảm dần
-    const gray = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi > -MIN_ROI && p.xiuRoi < MIN_ROI);
+    const blacklist = pairs.filter((p) => p.n >= MIN_N && p.taiRoi >= MIN_ROI).sort((a, b) => b.taiRoi - a.taiRoi);
+    const gray = pairs.filter((p) => p.n >= MIN_N && p.xiuRoi < MIN_ROI && p.taiRoi < MIN_ROI);
 
     const data = {
       ok: true,
