@@ -402,6 +402,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     if (!liveIdsKey) { setGoalLog([]); return; }
     let alive = true;
     const fetchGoals = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return; // tab ẩn → ngừng, tiết kiệm 3G
       try {
         const res = await fetch(`/api/gs-live-goals?events=${liveIdsKey}`, { cache: 'no-store' });
         const json = (await res.json()) as { ok: boolean; goals?: GoalEvent[] };
@@ -489,7 +490,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     return () => clearInterval(id);
   }, []);
 
-  // 2s poll for live matches
+  // Poll trận live mỗi POLL_MS (5s) — ngừng khi tab ẩn (trừ khi bật noti).
   useEffect(() => {
     let alive = true;
 
@@ -582,7 +583,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
 
     poll();
     // Poll 10s/lần (giảm tải call /api/gs-live).
-    const POLL_MS = 10_000;
+    const POLL_MS = 5_000;
     const id = setInterval(poll, POLL_MS);
     const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
     document.addEventListener('visibilitychange', onVis);
