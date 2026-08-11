@@ -65,6 +65,11 @@ function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; 
   return { lineVal: v, isQuarter: false, loLine: v, hiLine: v };
 }
 
+// Key cặp pair-WL/BL: bỏ tag " (V)"/" (S)" (feed live có, gs_teams.name không) rồi sort least|greatest
+// → khớp chuỗi "A|B" mà /api/gs-pair-whitelist|blacklist trả (giống cách route backtest dựng cặp).
+const stripTag = (s: string) => s.replace(/\s*\([^)]*\)\s*$/, '').trim();
+const pairBaseKey = (home: string, away: string) => [stripTag(home), stripTag(away)].sort().join('|');
+
 // ── OU line LIVE (dải 2 box trên card) ──────────────────────────────────────
 // over = giá cửa TÀI, under = giá cửa XỈU. Lấy .slice(0,2) mỗi mảng = 2 line.
 type OuLine = { line: string | null; over: string | null; under: string | null; suspended?: boolean };
@@ -360,6 +365,50 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
       })
       .catch(() => { /* giữ map rỗng khi lỗi — chỉ ẩn stat, không vỡ trang */ });
     return () => { alive = false; };
+  }, []);
+
+  // Cặp pair-WL (V.Bot 12, đánh Xỉu) / pair-BL (V.Bot 17, đánh Tài) — set từ trang Cặp WL/BL
+  // (đổi qua Telegram /setpairwl · /setpairbl). Key "A|B" baseName. Mount + refresh 5' để bám config bot.
+  const [pairWlSet, setPairWlSet] = useState<Set<string>>(new Set());
+  const [pairBlSet, setPairBlSet] = useState<Set<string>>(new Set());
+  // 2 list ĐỘNG của V.Bot 18 (job 3h sáng): rung-tai (cặp nổ chậm → TÀI) / rung-xiu (cặp tịt → XỈU). Key "A|B" baseName.
+  const [rungTaiSet, setRungTaiSet] = useState<Set<string>>(new Set());
+  const [rungXiuSet, setRungXiuSet] = useState<Set<string>>(new Set());
+  // Line CỐ ĐỊNH per cặp = avgLine ("Line vào") từ backtest trang Cặp WL/BL — KHÔNG phải line live của trận.
+  const [pairLineMap, setPairLineMap] = useState<Map<string, number>>(new Map());
+  // WR + ROI per cặp (backtest FT 28 ngày) — để hiện trên badge WL/BL.
+  const [pairStatsMap, setPairStatsMap] = useState<Map<string, { xiuWr: number; xiuRoi: number; taiWr: number; taiRoi: number }>>(new Map());
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const [w, b, bt, rw] = await Promise.all([
+          fetch('/api/gs-pair-whitelist', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+          fetch('/api/gs-pair-blacklist', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+          fetch('/api/gs-ft-backtest?days=28', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+          fetch('/api/gs-rung-wl', { cache: 'no-store' }).then((r) => r.json()).catch(() => ({})),
+        ]);
+        if (!alive) return;
+        if (w?.ok) setPairWlSet(new Set<string>(w.pairs));
+        if (b?.ok) setPairBlSet(new Set<string>(b.pairs));
+        if (rw?.ok) { setRungTaiSet(new Set<string>(rw.tai)); setRungXiuSet(new Set<string>(rw.xiu)); }
+        if (bt?.ok) {
+          const lm = new Map<string, number>();
+          const sm = new Map<string, { xiuWr: number; xiuRoi: number; taiWr: number; taiRoi: number }>();
+          for (const row of [...(bt.whitelist ?? []), ...(bt.blacklist ?? []), ...(bt.gray ?? [])]) {
+            if (row?.pair == null) continue;
+            if (row?.avgLine != null) lm.set(row.pair, Number(row.avgLine));
+            sm.set(row.pair, { xiuWr: Number(row.xiuWr), xiuRoi: Number(row.xiuRoi), taiWr: Number(row.taiWr), taiRoi: Number(row.taiRoi) });
+          }
+          setPairLineMap(lm);
+          setPairStatsMap(sm);
+        }
+      } catch { /* giữ set cũ khi lỗi mạng */ }
+    };
+    load();
+    const id = setInterval(load, 300_000);
+    return () => { alive = false; clearInterval(id); };
   }, []);
 
   // League priors (calibrated P(Tài) per leagueTag/h1Bucket/market) — mount + mỗi 10'.
@@ -720,6 +769,20 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     const lgKey = [m.homeTeam, m.awayTeam].sort().join('|');
     const lgH1 = lateGoalH1.get(lgKey);
     const lgH2 = lateGoalH2.get(lgKey);
+    // Cặp có nằm trong pair-WL (V.Bot 12 → Xỉu) / pair-BL (V.Bot 17 → Tài) không.
+    // Line hiển thị = line FT mở (cái bot vào đầu trận). Thiếu line → "—".
+    const pairKey = pairBaseKey(m.homeTeam, m.awayTeam);
+    // Badge CHỈ hiện ở giải 20p (V) — pair-WL/BL là của V.Bot 12/17 (chỉ đánh 20p V). Trận 16p (S) KHÔNG hiện.
+    const is20pV = m.matchType === '20p';
+    const inPairWl = is20pV && pairWlSet.has(pairKey);
+    const inPairBl = is20pV && pairBlSet.has(pairKey);
+    // V.Bot 18: cặp ∈ list TÀI nổ chậm / XỈU tịt (job 3h sáng). Chỉ 20p (V) — V.Bot 18 chỉ đánh 20p V.
+    const inRungTai = is20pV && rungTaiSet.has(pairKey);
+    const inRungXiu = is20pV && rungXiuSet.has(pairKey);
+    // Line CỐ ĐỊNH từ data trang Cặp WL/BL (avgLine backtest), KHÔNG chạy realtime theo trận.
+    const pairFixedLine = pairLineMap.get(pairKey);
+    const ftLineStr = pairFixedLine != null ? String(pairFixedLine) : null;
+    const pairStats = pairStatsMap.get(pairKey);   // WR/ROI 28 ngày (backtest FT) cho badge
     const halves = sp && meetings > 0
       ? [{ key: 'h2', label: 'Tỉ lệ Thắng Hiệp 2', s: sp.h2 }, { key: 'h1', label: 'Tỉ lệ Thắng H1', s: sp.h1 }]
       : [];
@@ -790,6 +853,75 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               {/* Nút mở drawer đã bỏ (user 2026-08-08) — drawer vẫn mở được qua deep-link Telegram ?match=. */}
             </div>
           </div>
+          {/* Badge cặp WL/BL — cặp nằm trong pair-whitelist (V.Bot 12 → Xỉu) / pair-blacklist (V.Bot 17 → Tài).
+              Chỉ hiện khi khớp; kèm line FT mở. Nguồn set từ trang Cặp WL/BL (/setpairwl · /setpairbl). */}
+          {(inPairWl || inPairBl) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {inPairWl && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#34d399]/60 bg-[#34d399]/15 px-2 py-1 text-[11px] md:text-[12px] font-bold tabular-nums text-[#a7f3d0] shadow-[0_0_10px_rgba(52,211,153,.35)]"
+                  title="Cặp nằm trong pair-whitelist (V.Bot 12) — bot đánh XỈU"
+                >
+                  <span className="rounded bg-[#22c55e] px-1.5 py-0.5 text-[10px] md:text-[11px] font-extrabold uppercase tracking-wide text-[#052e16]">XỈU</span>
+                  <span className="uppercase tracking-wide text-[#6ee7b7]">Whitelist</span>
+                  <span className="text-[#34d399]/50">·</span>
+                  <span>Line <span className="text-white">{ftLineStr ?? '—'}</span></span>
+                  {pairStats && Number.isFinite(pairStats.xiuWr) && (
+                    <>
+                      <span className="text-[#34d399]/50">·</span>
+                      <span title="Winrate & ROI Xỉu — backtest FT 28 ngày">
+                        WR <span className="text-white">{pairStats.xiuWr}%</span>
+                        {' · '}ROI <span className={pairStats.xiuRoi >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>{pairStats.xiuRoi > 0 ? '+' : ''}{pairStats.xiuRoi}%</span>
+                        <span className="text-[#34d399]/40"> (28n)</span>
+                      </span>
+                    </>
+                  )}
+                </span>
+              )}
+              {inPairBl && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#fb7185]/60 bg-[#fb7185]/15 px-2 py-1 text-[11px] md:text-[12px] font-bold tabular-nums text-[#fecdd3] shadow-[0_0_10px_rgba(251,113,133,.35)]"
+                  title="Cặp nằm trong pair-blacklist (V.Bot 17) — bot đánh TÀI"
+                >
+                  <span className="rounded bg-[#f43f5e] px-1.5 py-0.5 text-[10px] md:text-[11px] font-extrabold uppercase tracking-wide text-[#4c0519]">TÀI</span>
+                  <span className="uppercase tracking-wide text-[#fda4af]">Blacklist</span>
+                  <span className="text-[#fb7185]/50">·</span>
+                  <span>Line <span className="text-white">{ftLineStr ?? '—'}</span></span>
+                  {pairStats && Number.isFinite(pairStats.taiWr) && (
+                    <>
+                      <span className="text-[#fb7185]/50">·</span>
+                      <span title="Winrate & ROI Tài — backtest FT 28 ngày">
+                        WR <span className="text-white">{pairStats.taiWr}%</span>
+                        {' · '}ROI <span className={pairStats.taiRoi >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>{pairStats.taiRoi > 0 ? '+' : ''}{pairStats.taiRoi}%</span>
+                        <span className="text-[#fb7185]/40"> (28n)</span>
+                      </span>
+                    </>
+                  )}
+                </span>
+              )}
+            </div>
+          )}
+          {/* Label V.Bot 18 — cặp nằm trong list TÀI nổ chậm / XỈU tịt (job 3h sáng sinh). Chỉ text. */}
+          {(inRungTai || inRungXiu) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {inRungTai && (
+                <span
+                  className="inline-flex items-center rounded-md border border-[#fb7185]/50 bg-[#fb7185]/10 px-2 py-0.5 text-[11px] md:text-[12px] font-bold text-[#fda4af]"
+                  title="Cặp ∈ list TÀI nổ chậm (V.Bot 18) — đánh TÀI over 0.5 phút 34 khi 0-0"
+                >
+                  Tài H1 0-0
+                </span>
+              )}
+              {inRungXiu && (
+                <span
+                  className="inline-flex items-center rounded-md border border-[#34d399]/50 bg-[#34d399]/10 px-2 py-0.5 text-[11px] md:text-[12px] font-bold text-[#6ee7b7]"
+                  title="Cặp ∈ list XỈU tịt (V.Bot 18) — đánh XỈU under 0.5 phút 29 khi 0-0, under≥0,75"
+                >
+                  Xỉu H1 0-0
+                </span>
+              )}
+            </div>
+          )}
           {/* Bố cục 2 cột: TRÁI = Bàn muộn (trên) + Tỉ lệ thắng (dưới, giãn cao) · PHẢI = Chỉ số TB (giãn cao).
               items-stretch để 2 cột cùng chiều cao (cột phải cao nhất → box tỉ-lệ trái stretch theo). */}
           <div className="flex items-stretch gap-2 md:gap-2.5">
@@ -1197,7 +1329,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           <span className="text-[12px] md:text-[13px] font-semibold text-[#fbbf24]">{title}</span>
           <span className="text-[11px] text-[#555]">{items.length} trận</span>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 2xl:grid-cols-3 gap-3 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
           {items.map((m) => <MatchBox key={m.eventId} m={m} />)}
         </div>
       </div>
@@ -1205,7 +1337,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl">
+    <div className="mx-auto w-full max-w-[1800px]">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3 flex-wrap">
