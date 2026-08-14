@@ -12,14 +12,17 @@ export function TeamBadge({ name }: { name: string }) {
   );
 }
 
-export function TypeBadge({ type }: { type: '20p' | '16p' }) {
-  const cls =
-    type === '20p' ? 'bg-[#17a2b8] text-white' : 'bg-[#fd7e14] text-white';
+export function TypeBadge({ type }: { type: '20p' | '20p_intl' | '16p' }) {
+  const cls = type === '20p'
+    ? 'bg-[#17a2b8] text-white'
+    : type === '20p_intl'
+      ? 'bg-[#7c3aed] text-white'
+      : 'bg-[#fd7e14] text-white';
   return (
     <span
       className={`inline-block rounded-[3px] px-1.5 py-px text-[11px] font-bold ${cls}`}
     >
-      {type}
+      {type === '20p_intl' ? '20p QT' : type}
     </span>
   );
 }

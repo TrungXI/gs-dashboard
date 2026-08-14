@@ -23,7 +23,7 @@ import type { PairResult } from '../app/api/gs-h2h-splits/route';
 export interface GsLiveMatch {
   leagueId: number;
   leagueName: string;
-  matchType: '16p' | '20p' | '8p' | '12p';
+  matchType: '16p' | '20p' | '20p_intl' | '8p' | '12p';
   eventId: number;
   startTime: string;
   homeTeam: string;
@@ -46,8 +46,8 @@ export interface GsLiveMatch {
   malayAway: string | null;
   malayDraw: string | null;
   suspended: boolean;
-  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
-  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
+  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean; favoriteSide: 'home' | 'away' | null }[];
+  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean; favoriteSide: 'home' | 'away' | null }[];
   ouLines: { line: string | null; over: string | null; under: string | null; suspended?: boolean }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null; suspended?: boolean }[];
   yellowHome: number;
@@ -997,6 +997,7 @@ function LeagueSection({
             const refreshKey = refreshKeys.get(m.eventId) ?? 0;
             const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
             const isHT = m.period === 4;
+            const favoriteSide = m.hcLines[0]?.favoriteSide ?? null;
             // Accent line (1 line duy nhất, ưu tiên VÀNG > XANH):
             //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
             const hasStats = hasStatsSet.has(m.eventId);
@@ -1017,11 +1018,11 @@ function LeagueSection({
                   <span className="text-[11px] text-[#555] mt-0.5 w-4 flex-shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1">
-                      <span className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'}`}>{m.homeTeam}</span>
+                      <span title={favoriteSide === 'home' ? 'Đội chấp theo handicap live' : undefined} className={`text-[13px] font-semibold truncate ${isHT ? 'text-amber-300' : 'text-white'} ${favoriteSide === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.homeTeam}</span>
                       <CardBadges yellow={m.yellowHome} red={m.redHome} />
                     </div>
                     <div className="mt-0.5 flex items-center gap-1">
-                      <span className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`}>{m.awayTeam}</span>
+                      <span title={favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`text-[12px] truncate ${isHT ? 'text-amber-400' : 'text-[#888]'} ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
                       <CardBadges yellow={m.yellowAway} red={m.redAway} />
                     </div>
                   </div>
@@ -1134,6 +1135,7 @@ function LeagueSection({
                 const refreshKey = refreshKeys.get(m.eventId) ?? 0;
                 const videoUrl = `https://det.zenandfe.com/?token=${encodeURIComponent(activeToken)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${m.eventId}&brand=&muted=1`;
                 const isHT = m.period === 4;
+                const favoriteSide = m.hcLines[0]?.favoriteSide ?? null;
                 // Accent line (1 line duy nhất, ưu tiên VÀNG > XANH):
                 //   đã có chỉ số H1 (gs_ht_stats) → VÀNG; else đang Hiệp 2 → XANH; else không có.
                 const hasStats = hasStatsSet.has(m.eventId);
@@ -1159,11 +1161,11 @@ function LeagueSection({
                     {/* Trận đấu — 2 dòng, compact */}
                     <td className="border-b border-[#222] px-2 py-2 align-top w-[160px] max-w-[160px]">
                       <div className="flex items-center gap-1">
-                        <span className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'}`}>{m.homeTeam}</span>
+                        <span title={favoriteSide === 'home' ? 'Đội chấp theo handicap live' : undefined} className={`text-[12px] font-semibold leading-tight truncate ${isHT ? 'text-amber-300' : 'text-white'} ${favoriteSide === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.homeTeam}</span>
                         <CardBadges yellow={m.yellowHome} red={m.redHome} />
                       </div>
                       <div className="mt-1 flex items-center gap-1">
-                        <span className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'}`}>{m.awayTeam}</span>
+                        <span title={favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`text-[11px] leading-tight truncate ${isHT ? 'text-amber-400' : 'text-[#888]'} ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
                         <CardBadges yellow={m.yellowAway} red={m.redAway} />
                       </div>
                       {scored && <div className="mt-1 text-[10px] font-bold text-[#22c55e] animate-pulse">⚽ GÀN!</div>}
@@ -2418,4 +2420,3 @@ function KeoPanel({ loading, bets, homeName, awayName }: { loading: boolean; bet
     </div>
   );
 }
-

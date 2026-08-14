@@ -31,6 +31,13 @@ const NAME_MAP: Record<string, string> = {
   'gs-vbot11': 'V.Bot 11',
   'gs-tai-xiu-live': 'Tài Xỉu Live',
   'gs-tx-paper-v8-drift': 'TX v8.0 · lineDrift',
+  'gs-vbot21-qt-xiu': 'V.Bot 21 QT Xỉu',
+};
+
+// pm2 process → NHIỀU calc_version (1 process chạy nhiều model). gs-hcap-paper chạy cả 3
+// model handicap → 3 render key hcap:A/B/C (khớp `calcVersion` trong gs-bot-report BOTS).
+const MULTI_NAME_MAP: Record<string, string[]> = {
+  'gs-hcap-paper': ['hcap:A', 'hcap:B', 'hcap:C'],
 };
 
 interface Pm2Proc {
@@ -47,6 +54,12 @@ export async function GET() {
     const running = new Set<string>();
     for (const p of list) {
       if (p.pm2_env?.status !== 'online') continue;
+      // Multi-model process (gs-hcap-paper → 3 model): bỏ qua CALC_VERSION đơn của process.
+      const multi = MULTI_NAME_MAP[p.name];
+      if (multi) {
+        for (const cv of multi) running.add(cv);
+        continue;
+      }
       const cv = p.pm2_env?.CALC_VERSION || NAME_MAP[p.name];
       if (cv) running.add(cv);
     }

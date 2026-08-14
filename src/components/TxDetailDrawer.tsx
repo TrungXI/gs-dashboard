@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
-import type { TxReportRow, TxReportResponse, Arm29 } from '../app/api/gs-tx-report/route';
+import type { TxReportRow, TxReportResponse, Arm29, V21Entry } from '../app/api/gs-tx-report/route';
 
 // V.Bot 16 kèo rung 16p: 1 mốc OU (phút 25 / phút 32) — hiện line + Xỉu + Tài.
 function ArmLine({ label, color, arm }: { label: string; color: string; arm: Arm29 }) {
@@ -55,6 +55,26 @@ function Arm29Row({ arm29 }: { arm29: Arm29 }) {
             <span className="text-[#fca5a5]">Tài {o.tai ?? '—'}</span>
           </span>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// V.Bot 21 QT Xỉu: phút VÀO XỈU + OU line + giá Xỉu/Tài lúc vào (snapshot 'qtXiu_V21').
+function V21Row({ v21 }: { v21: V21Entry }) {
+  const half = v21.half === 'h1' ? 'H1' : v21.half === 'h2' ? 'H2' : '—';
+  return (
+    <div className="mt-1.5 rounded border border-[#38bdf8]/25 bg-[#38bdf8]/[.06] px-2 py-1 text-[11px] leading-relaxed text-[#9ca3af]">
+      <span className="text-[#7dd3fc]">
+        📍 Phút {v21.minute ?? '—'} — vào XỈU · hiệp {half}
+        {v21.score != null ? ` (tỉ số ${v21.score})` : ''}:
+      </span>
+      <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
+        <span>
+          <span className="text-[#bbb]">OU line {v21.line ?? '—'}</span>{' '}
+          <span className="text-[#86efac]">Xỉu {v21.under ?? '—'}</span>{' '}
+          <span className="text-[#fca5a5]">Tài {v21.over ?? '—'}</span>
+        </span>
       </div>
     </div>
   );
@@ -215,6 +235,13 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                           </td>
                         </tr>
                       )}
+                      {r.v21 && (
+                        <tr className="border-b border-[#222]">
+                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                            <V21Row v21={r.v21} />
+                          </td>
+                        </tr>
+                      )}
                       {(r.arm25 || r.arm32 || r.entryOdds) && (
                         <tr className="border-b border-[#222]">
                           <td colSpan={9} className="px-3 pb-2 pt-0">
@@ -254,6 +281,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                       </span>
                     </div>
                     {r.arm29 && <Arm29Row arm29={r.arm29} />}
+                    {r.v21 && <V21Row v21={r.v21} />}
                     <Vbot16Timeline r={r} />
                   </div>
                 ))}

@@ -42,6 +42,17 @@ export interface TxReportRow {
   arm32: Arm29 | null; // V.Bot 16: OU line lúc phút 32 (chốt cửa sổ, đếm bàn)
   entryOdds: EntryOdds | null; // V.Bot 16: giá lúc VÀO lệnh (line over + giá)
   entryMin: number | null; // V.Bot 16: phút (trong hiệp) lúc đặt lệnh
+  v21: V21Entry | null; // V.Bot 21 QT Xỉu: phút vào + OU line + giá Xỉu/Tài lúc vào (từ snapshot qtXiu_V21)
+}
+
+// V.Bot 21 QT Xỉu — snapshot lúc VÀO XỈU (strategy 'qtXiu_V21').
+export interface V21Entry {
+  minute: number | null;   // minuteAtBet — phút (trong hiệp) lúc vào
+  half: 'h1' | 'h2' | null; // hiệp đang đá
+  line: string | null;      // lineRaw — OU line lúc vào (H1 line H1, H2 line FT)
+  under: number | null;     // underAt29 — giá Xỉu (Malay) lúc vào
+  over: number | null;      // overAt29 — giá Tài (Malay) lúc vào
+  score: number | null;     // scoreAtBet — tổng bàn lúc vào
 }
 
 // Snapshot OU line lúc phút 29 (VBot14 kèo rung) — hiển thị chi tiết lệnh.
@@ -168,6 +179,12 @@ interface TxDbRow {
   arm32: Arm29 | null;
   entry_odds: EntryOdds | null;
   entry_min: string | number | null;
+  v21_strategy: string | null;   // snapshot->>'strategy' — 'qtXiu_V21' cho V.Bot 21
+  v21_half: string | null;       // snapshot->>'half'
+  v21_line: string | null;       // snapshot->>'lineRaw'
+  v21_under: string | number | null; // snapshot->>'underAt29'
+  v21_over: string | number | null;  // snapshot->>'overAt29'
+  v21_score: string | number | null; // snapshot->>'scoreAtBet'
 }
 
 function toRow(r: TxDbRow): TxReportRow {
@@ -198,6 +215,17 @@ function toRow(r: TxDbRow): TxReportRow {
     arm32: r.arm32 ?? null,
     entryOdds: r.entry_odds ?? null,
     entryMin: r.entry_min == null ? null : Number(r.entry_min),
+    v21:
+      r.v21_strategy === 'qtXiu_V21'
+        ? {
+            minute: r.entry_min == null ? null : Number(r.entry_min),
+            half: r.v21_half === 'h1' || r.v21_half === 'h2' ? r.v21_half : null,
+            line: r.v21_line ?? null,
+            under: r.v21_under == null || r.v21_under === '' ? null : Number(r.v21_under),
+            over: r.v21_over == null || r.v21_over === '' ? null : Number(r.v21_over),
+            score: r.v21_score == null || r.v21_score === '' ? null : Number(r.v21_score),
+          }
+        : null,
   };
 }
 
@@ -241,7 +269,10 @@ export async function GET(req: Request) {
                 score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl, snapshot->'arm29' AS arm29,
                 snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds,
-                snapshot->>'minuteAtBet' AS entry_min
+                snapshot->>'minuteAtBet' AS entry_min,
+                snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
+                snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
+                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -255,7 +286,10 @@ export async function GET(req: Request) {
                 score_home_at_entry, score_away_at_entry,
                 final_total, result, pnl, snapshot->'arm29' AS arm29,
                 snapshot->'arm25' AS arm25, snapshot->'arm32' AS arm32, snapshot->'entryOdds' AS entry_odds,
-                snapshot->>'minuteAtBet' AS entry_min
+                snapshot->>'minuteAtBet' AS entry_min,
+                snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
+                snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
+                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC

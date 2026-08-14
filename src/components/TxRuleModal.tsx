@@ -9,9 +9,12 @@ const PAIR_WL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Tr
 // Các con V.Bot 17 — đánh TÀI, CHỈ đánh cặp trong pair-blacklist (reload 5s). Hiện live danh sách cặp ở box 🎯.
 const PAIR_BL_VERSIONS = new Set(['V.Bot 17 Real', 'V.Bot 17 Real Kien', 'V.Bot 17 Test BlackList']);
 
-// Modal xem RULE của 1 bot (calc_version). Mở từ nút "📖 Rule" trong Báo cáo T/X.
-export default function TxRuleModal({ version, onClose }: { version: string; onClose: () => void }) {
+// Modal xem RULE của 1 bot (calc_version) hoặc 1 handicap model (key 'HCAP:A|B|C').
+// Mở từ nút "📖 Rule" trong Báo cáo T/X. `title` (nếu truyền) hiện ở header thay cho `version`
+// (handicap model dùng key 'HCAP:A' để tra rule nhưng header hiện "A · Trên tiếp H2 (16p)").
+export default function TxRuleModal({ version, title, onClose }: { version: string; title?: string; onClose: () => void }) {
   const r = getTxRule(version);
+  const headerTitle = title ?? version;
   const [wlPairs, setWlPairs] = useState<string[] | null>(null);
   const [blPairs, setBlPairs] = useState<string[] | null>(null);
   const isPairWl = PAIR_WL_VERSIONS.has(version);
@@ -73,7 +76,7 @@ export default function TxRuleModal({ version, onClose }: { version: string; onC
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[15px] font-bold text-white">
               <span>{r.emoji}</span>
-              <span className="truncate">{version}</span>
+              <span className="truncate">{headerTitle}</span>
             </div>
             <div className="mt-0.5 text-[13px] text-[#9ca3af]">{r.headline}</div>
           </div>

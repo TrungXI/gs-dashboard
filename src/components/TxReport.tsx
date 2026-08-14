@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Spinner } from './Spinner';
 import TxTimelineChart from './TxTimelineChart';
 import TxDetailDrawer from './TxDetailDrawer';
+import HcapDetailDrawer from './HcapDetailDrawer';
 import TxRuleModal from './TxRuleModal';
 import { getTxRule } from '../lib/txRules';
 
@@ -36,6 +37,13 @@ interface TxReportResponse {
   totalRows: number;               // tổng kèo (theo filter) → số trang
   summaryByVersion: TxVersionAgg[]; // GROUP BY calc_version — always ALL versions
 }
+
+// ── Handicap models (paper) — mirror /api/gs-hcap-report ────────────────────
+interface HcapAggLine { bets: number; win: number; halfWin: number; lose: number; halfLose: number; push: number; winRate: number | null; pnl: number; pending: number; }
+interface HcapTypeAgg extends HcapAggLine { matchType: string; }
+interface HcapLegAgg { leg: string; label: string; byType: HcapTypeAgg[]; total: HcapAggLine; }
+interface HcapModelAgg { model: string; label: string; byLeg: HcapLegAgg[]; total: HcapAggLine; }
+interface HcapReportResponse { ok: boolean; error?: string; models: HcapModelAgg[]; }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +78,10 @@ export default function TxReport() {
   const [running, setRunning] = useState<Set<string> | null>(null); // calc_version của bot đang chạy ngầm (pm2 online)
   const [showOff, setShowOff] = useState(false); // false = ẩn bot đã tắt; true = hiện full
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // section chủ ví đang thu gọn
+  const [hcap, setHcap] = useState<HcapModelAgg[] | null>(null); // 3 handicap models (paper)
+  const [hcapOpen, setHcapOpen] = useState(true); // section Handicap models mở/thu gọn
+  const [hcapDetail, setHcapDetail] = useState<{ model: string; label: string } | null>(null); // model đang mở drawer chi tiết
+  const [hcapRule, setHcapRule] = useState<{ model: string; label: string } | null>(null); // model đang mở modal rule
   const toggleSection = (name: string) => setCollapsed((prev) => {
     const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name);
     try { localStorage.setItem('tx-collapsed-sections', JSON.stringify([...n])); } catch { /* noop */ }
@@ -142,6 +154,23 @@ export default function TxReport() {
     };
   }, [selected, page]);
 
+  // Handicap models (paper) — fetch lúc mount + refresh cùng cadence 5s (silent).
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      try {
+        const res = await fetch('/api/gs-hcap-report', { cache: 'no-store' });
+        const json = (await res.json()) as HcapReportResponse;
+        if (!cancelled && json.ok) setHcap(json.models);
+      } catch { /* giữ data cũ */ }
+      if (cancelled) return;
+      timer = setTimeout(tick, AUTO_MS);
+    };
+    tick();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, []);
+
   const onSelect = (v: string) => {
     setSelected(v);
     setPage(0);
@@ -208,6 +237,7 @@ export default function TxReport() {
                     'V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Nam', 'V.Bot 12 Trong', // V.Bot 12 real 4 ví (Nam/Kien/Trong KHÔNG có chữ "Real")
                     'V.Bot 14 Real', 'V.Bot 14 Real Kien', 'V.Bot 14 Real Nam', 'V.Bot 14 Real Trong',
                     'V.Bot 17 Real', 'V.Bot 17 Real Kien', 'V.Bot 17 Real Nam', 'V.Bot 17 Real Trong',
+                    'V.Bot 18 Real', // dual kèo rung cặp (group Real VBot18) — ví Chính
                   ]);
                   const owner = (v: string): string => (/ Kien$/.test(v) ? 'Kiên' : / Nam$/.test(v) ? 'Nam' : / Trong$/.test(v) ? 'Trọng' : 'Chính');
                   const SECTION_ORDER = ['Chính', 'Kiên', 'Nam', 'Trọng'];
@@ -327,6 +357,105 @@ export default function TxReport() {
                     </>
                   );
                 })()}
+                {/* 🎯 Handicap models (paper) — nằm TRONG list cuộn cùng section ví (Chính/Kiên/Nam/Trọng) */}
+                {hcap && (
+                  <div className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setHcapOpen((o) => !o)}
+                      title={hcapOpen ? 'Bấm để thu gọn' : 'Bấm để mở rộng'}
+                      className="flex w-full items-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2.5 py-1.5 text-left transition hover:bg-white/[.04] active:scale-[.99]"
+                    >
+                      <span className="w-3 shrink-0 text-[10px] text-[#888]">{hcapOpen ? '▾' : '▸'}</span>
+                      <span className="text-[12px] font-bold text-[#e5c07b]">🎯 Handicap models (paper)</span>
+                      <span className="rounded bg-white/[.06] px-1.5 py-0.5 text-[10px] font-semibold text-[#999]">{hcap.length} model</span>
+                    </button>
+                    {hcapOpen && (
+                      <div className="mt-2 ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                        {hcap.map((m) => {
+                    const hasData = m.total.bets > 0 || m.total.pending > 0;
+                    return (
+                      <div key={m.model} className="rounded-lg border border-[#2a2a2a] bg-[#141414] px-3 py-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="min-w-0 truncate text-[13px] font-semibold text-white">{m.model} · {m.label}</span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {hasData && (
+                              <span className="text-[13px] font-semibold tabular-nums" style={{ color: pnlColor(m.total.pnl) }}>{pnlStr(m.total.pnl)}</span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); setHcapDetail({ model: m.model, label: m.label }); }}
+                              title="Xem chi tiết kèo (drawer)"
+                              aria-label="Xem chi tiết kèo"
+                              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#38bdf8]/45 bg-[#38bdf8]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#7dd3fc] shadow-sm transition hover:bg-[#38bdf8]/30 hover:text-white active:scale-95"
+                            >
+                              📋 Chi tiết
+                            </button>
+                          </div>
+                        </div>
+                        {/* Nút Xem Rule — mở modal rule của handicap model này (key HCAP:A|B|C). */}
+                        <div className="mt-1.5 flex justify-end">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setHcapRule({ model: m.model, label: m.label }); }}
+                            title="Xem rule / chiến lược model này"
+                            aria-label="Xem rule model"
+                            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-[#fbbf24]/45 bg-[#fbbf24]/15 px-2 py-1 text-[12px] font-semibold leading-none text-[#fcd34d] shadow-sm transition hover:bg-[#fbbf24]/30 hover:text-white active:scale-95"
+                          >
+                            📖 Xem Rule
+                          </button>
+                        </div>
+                        {!hasData ? (
+                          <div className="mt-0.5 text-[11px] text-[#666]">chưa có kèo</div>
+                        ) : (
+                          <>
+                            {/* Tổng model */}
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-[#888] tabular-nums">
+                              <span>{m.total.bets} kèo</span>
+                              <span className="text-[#444]">·</span>
+                              <span>WR {winRatePct(m.total.winRate)}</span>
+                              <span className="text-[#444]">·</span>
+                              <span>{wlp(m.total)}</span>
+                              {m.total.pending > 0 && (
+                                <span className="ml-auto inline-flex items-center gap-1 text-[#4ade80]" title={`${m.total.pending} kèo chưa chấm`}>
+                                  <span className="tx-open-dot" />chờ chấm
+                                </span>
+                              )}
+                            </div>
+                            {/* Từng leg (Model B: Kèo dưới + Tài) · tách theo match_type */}
+                            {m.byLeg.map((lg) => (
+                              <div key={lg.leg} className="mt-1.5 border-t border-[#242424] pt-1.5">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] tabular-nums">
+                                  <span className="font-semibold text-[#bdbdbd]">{lg.label}</span>
+                                  <span className="text-[#888]">{lg.total.bets} kèo</span>
+                                  <span className="text-[#444]">·</span>
+                                  <span className="text-[#888]">WR {winRatePct(lg.total.winRate)}</span>
+                                  <span className="text-[#444]">·</span>
+                                  <span className="text-[#888]">{wlp(lg.total)}</span>
+                                  <span className="ml-auto font-semibold tabular-nums" style={{ color: pnlColor(lg.total.pnl) }}>{pnlStr(lg.total.pnl)}</span>
+                                </div>
+                                {lg.byType.length > 1 && lg.byType.map((t) => (
+                                  <div key={t.matchType} className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-3 text-[10px] text-[#777] tabular-nums">
+                                    <span className="text-[#8a8a8a]">{t.matchType}</span>
+                                    <span>{t.bets} kèo</span>
+                                    <span className="text-[#444]">·</span>
+                                    <span>WR {winRatePct(t.winRate)}</span>
+                                    <span className="text-[#444]">·</span>
+                                    <span>{wlp(t)}</span>
+                                    <span className="ml-auto tabular-nums" style={{ color: pnlColor(t.pnl) }}>{pnlStr(t.pnl)}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
               </div>
             </div>
 
@@ -343,6 +472,18 @@ export default function TxReport() {
 
       {/* Modal Xem Rule — rule/chiến lược của bot đang chọn */}
       {ruleVersion && <TxRuleModal version={ruleVersion} onClose={() => setRuleVersion(null)} />}
+
+      {/* Drawer chi tiết handicap model (A/B/C) — đọc /api/gs-hcap-detail */}
+      {hcapDetail && <HcapDetailDrawer model={hcapDetail.model} label={hcapDetail.label} onClose={() => setHcapDetail(null)} />}
+
+      {/* Modal Xem Rule handicap model — tra rule qua key HCAP:<model>, header hiện "<model> · <label>" */}
+      {hcapRule && (
+        <TxRuleModal
+          version={`HCAP:${hcapRule.model}`}
+          title={`${hcapRule.model} · ${hcapRule.label}`}
+          onClose={() => setHcapRule(null)}
+        />
+      )}
     </div>
   );
 }

@@ -14,12 +14,26 @@ function getPool(): Pool | null {
 }
 
 // ── Config ────────────────────────────────────────────────────────────────────
-// `calc_version` is the DB key; `label` is what the UI shows.
-const BOTS: { calcVersion: string; label: string; side: 'xiu' | 'tai' }[] = [
+// `calcVersion` is the stable UI/render key; `label` is what the UI shows.
+// `source` picks the table: 'tx' → gs_tx_paper by calc_version, 'hcap' → gs_hcap_paper by model.
+// `dbKey` is the value matched in the source table (calc_version for tx, model for hcap);
+// defaults to `calcVersion` when omitted (all existing tx bots).
+const BOTS: {
+  calcVersion: string;
+  label: string;
+  side: 'xiu' | 'tai';
+  source?: 'tx' | 'hcap';
+  dbKey?: string;
+}[] = [
   { calcVersion: 'V.Bot 14', label: 'TÀI / V.Bot14', side: 'tai' },
   { calcVersion: 'V.Bot 12 Test Full', label: 'XỈU / Test Full', side: 'xiu' },
   { calcVersion: 'V.Bot 12 Test Whitelist', label: 'XỈU / Test Whitelist', side: 'xiu' },
   { calcVersion: 'V.Bot 17 Test BlackList', label: 'TÀI / Test BlackList', side: 'tai' },
+  { calcVersion: 'V.Bot 21 QT Xỉu', label: 'V21 QT Xỉu', side: 'xiu' },
+  // 3 handicap models — same output shape, sourced from gs_hcap_paper by `model`.
+  { calcVersion: 'hcap:A', dbKey: 'A', label: 'HC-A · Trên tiếp', side: 'tai', source: 'hcap' },
+  { calcVersion: 'hcap:B', dbKey: 'B', label: 'HC-B · Ngược dưới+Tài', side: 'tai', source: 'hcap' },
+  { calcVersion: 'hcap:C', dbKey: 'C', label: 'HC-C · Thua ít', side: 'tai', source: 'hcap' },
 ];
 
 // 8 time buckets (VN / Asia/Bangkok), hour // 3.
@@ -122,26 +136,73 @@ export async function GET() {
   if (!pool) return Response.json(EMPTY_RESPONSE satisfies BotReportResponse);
 
   try {
-    const calcVersions = BOTS.map((b) => b.calcVersion);
+    // Split bots by source table. tx → gs_tx_paper (by calc_version); hcap → gs_hcap_paper (by model).
+    // Each source is keyed by its own db value (`dbKey ?? calcVersion`); we remap the result
+    // rows back to the bot's render `calcVersion` so all downstream indexing stays identical.
+    const dbKeyOf = (b: (typeof BOTS)[number]) => b.dbKey ?? b.calcVersion;
+    const txKeyToRk = new Map<string, string>(); // gs_tx_paper.calc_version → render calcVersion
+    const hcapKeyToRk = new Map<string, string>(); // gs_hcap_paper.model     → render calcVersion
+    for (const b of BOTS) {
+      if (b.source === 'hcap') hcapKeyToRk.set(dbKeyOf(b), b.calcVersion);
+      else txKeyToRk.set(dbKeyOf(b), b.calcVersion);
+    }
 
-    // Single scan: aggregate wins / losses / net per (bot, local-day, 3h-bucket).
+    // Normalized aggregate rows tagged by render calcVersion (rk) — union of both tables.
+    const aggRows: { rk: string; d: string; bucket: number; w: number; l: number; net: number }[] = [];
+
+    // gs_tx_paper scan: aggregate wins / losses / net per (bot, local-day, 3h-bucket).
     // win + half-win → w ; lose + half-lose → l ; push / null excluded from all.
-    const aggRes = await pool.query<AggDbRow>(
-      `SELECT calc_version,
-              to_char((entry_at AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') AS d,
-              (EXTRACT(HOUR FROM entry_at AT TIME ZONE 'Asia/Bangkok')::int / 3)  AS bucket,
-              COUNT(*) FILTER (WHERE result IN ('win', 'half-win'))   AS w,
-              COUNT(*) FILTER (WHERE result IN ('lose', 'half-lose')) AS l,
-              COALESCE(SUM(pnl) FILTER (WHERE result IS NOT NULL), 0) AS net
-         FROM gs_tx_paper
-        WHERE calc_version = ANY($1)
-        GROUP BY 1, 2, 3`,
-      [calcVersions],
-    );
+    if (txKeyToRk.size > 0) {
+      const txRes = await pool.query<AggDbRow>(
+        `SELECT calc_version,
+                to_char((entry_at AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') AS d,
+                (EXTRACT(HOUR FROM entry_at AT TIME ZONE 'Asia/Bangkok')::int / 3)  AS bucket,
+                COUNT(*) FILTER (WHERE result IN ('win', 'half-win'))   AS w,
+                COUNT(*) FILTER (WHERE result IN ('lose', 'half-lose')) AS l,
+                COALESCE(SUM(pnl) FILTER (WHERE result IS NOT NULL), 0) AS net
+           FROM gs_tx_paper
+          WHERE calc_version = ANY($1)
+          GROUP BY 1, 2, 3`,
+        [[...txKeyToRk.keys()]],
+      );
+      for (const r of txRes.rows) {
+        const rk = txKeyToRk.get(r.calc_version);
+        if (rk) aggRows.push({ rk, d: r.d, bucket: num(r.bucket), w: num(r.w), l: num(r.l), net: num(r.net) });
+      }
+    }
 
-    // Distinct days (ascending) across both bots — shared column axis.
+    // gs_hcap_paper scan: same output shape, grouped by (model, local-day, 3h-bucket) via
+    // requested_at. Only settled paper signals. win/half-win → w ; lose/half-lose → l ;
+    // net = sum(cash_pnl) over graded legs (push/null excluded, mirroring the tx aggregation).
+    if (hcapKeyToRk.size > 0) {
+      const hcapRes = await pool.query<{
+        model: string;
+        d: string;
+        bucket: number | string;
+        w: number | string;
+        l: number | string;
+        net: number | string | null;
+      }>(
+        `SELECT model,
+                to_char((requested_at AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') AS d,
+                (EXTRACT(HOUR FROM requested_at AT TIME ZONE 'Asia/Bangkok')::int / 3)   AS bucket,
+                COUNT(*) FILTER (WHERE result IN ('win', 'half-win'))   AS w,
+                COUNT(*) FILTER (WHERE result IN ('lose', 'half-lose')) AS l,
+                COALESCE(SUM(cash_pnl) FILTER (WHERE result IS NOT NULL), 0) AS net
+           FROM gs_hcap_paper
+          WHERE status = 'paper_signal' AND result IS NOT NULL AND model = ANY($1)
+          GROUP BY 1, 2, 3`,
+        [[...hcapKeyToRk.keys()]],
+      );
+      for (const r of hcapRes.rows) {
+        const rk = hcapKeyToRk.get(r.model);
+        if (rk) aggRows.push({ rk, d: r.d, bucket: num(r.bucket), w: num(r.w), l: num(r.l), net: num(r.net) });
+      }
+    }
+
+    // Distinct days (ascending) across ALL bots — shared column axis.
     const daySet = new Set<string>();
-    for (const r of aggRes.rows) daySet.add(r.d);
+    for (const r of aggRows) daySet.add(r.d);
     const days = [...daySet].sort();
     const dayIdx = new Map(days.map((d, i) => [d, i]));
     const recentDays = days.slice(-RECENT_DAYS);
@@ -156,13 +217,13 @@ export async function GET() {
         Array.from({ length: BUCKET_COUNT }, () => days.map(() => ({ w: 0, l: 0, net: 0 }))),
       );
     }
-    for (const r of aggRes.rows) {
-      const buckets = agg.get(r.calc_version);
+    for (const r of aggRows) {
+      const buckets = agg.get(r.rk);
       if (!buckets) continue;
-      const bi = num(r.bucket);
+      const bi = r.bucket;
       const di = dayIdx.get(r.d);
       if (bi < 0 || bi >= BUCKET_COUNT || di == null) continue;
-      buckets[bi][di] = { w: num(r.w), l: num(r.l), net: num(r.net) };
+      buckets[bi][di] = { w: r.w, l: r.l, net: r.net };
     }
 
     const bots: BotReport[] = BOTS.map((b) => {

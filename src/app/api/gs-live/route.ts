@@ -46,14 +46,16 @@ function normalizeTeam(name: string): string {
   return ((VN_TO_EN[base] ?? base) + suffix).trim();
 }
 
-// 2140 = GS Ảo 16p, 2125 = GS Ảo 20p
-const GS_LEAGUE_IDS = new Set([2140, 2125]);
+// 2140 = GS Asian 16p, 2125 = GS Asian 20p, 1485 = GS International 20p.
+// 1485 is display/research-only; this route is separate from the bot feed.
+const GS_LEAGUE_IDS = new Set([2140, 2125, 1485]);
 
-type MatchType = '16p' | '20p' | '8p' | '12p';
+type MatchType = '16p' | '20p' | '20p_intl' | '8p' | '12p';
 
 const MATCH_TYPE: Record<number, MatchType> = {
   2140: '16p',
   2125: '20p',
+  1485: '20p_intl',
 };
 
 
@@ -79,8 +81,8 @@ export interface GsLiveMatch {
   oddsDraw: number | null;
   // Kèo Chấp (Asian Handicap) — market '5' TT, '15' H1. 2 lines. Values in Malay format.
   // homeGives=true → home team gives handicap (line shown in home row); false → away gives.
-  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
-  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean }[];
+  hcLines: { line: string | null; home: string | null; away: string | null; homeGives: boolean; favoriteSide: 'home' | 'away' | null }[];
+  hcH1Lines: { line: string | null; home: string | null; away: string | null; homeGives: boolean; favoriteSide: 'home' | 'away' | null }[];
   // Tài Xỉu (Over/Under) — market '3' TT, '13' H1. 2 lines. Values in Malay format.
   ouLines: { line: string | null; over: string | null; under: string | null; suspended: boolean }[];
   ouH1Lines: { line: string | null; over: string | null; under: string | null; suspended: boolean }[];
@@ -170,7 +172,7 @@ function parseAsianEntry(raw: string): {
 function parseAsianMarket(
   market7: unknown,
   key: string,
-): { line: string | null; home: string | null; away: string | null; suspended: boolean; homeGives: boolean }[] {
+): { line: string | null; home: string | null; away: string | null; suspended: boolean; homeGives: boolean; favoriteSide: 'home' | 'away' | null }[] {
   if (!market7 || typeof market7 !== 'object') return [];
   const raw = (market7 as Record<string, unknown>)[key];
   if (raw == null) return [];
@@ -180,7 +182,10 @@ function parseAsianMarket(
     const { line, h, a, suspended, indicator } = parseAsianEntry(e);
     // indicator 'h' = home gives, 'a' = away gives. Fall back to positive-line = home gives.
     const homeGives = indicator != null ? indicator === 'h' : (line == null || parseFloat(line) >= 0);
-    return { line, home: h, away: a, suspended, homeGives };
+    // Chỉ underline khi feed có indicator tường minh; tuyệt đối không dùng
+    // fallback sign của line, vì nó có thể tô đỏ sai khi book không đánh dấu cửa trên.
+    const favoriteSide = indicator === 'h' ? 'home' : indicator === 'a' ? 'away' : null;
+    return { line, home: h, away: a, suspended, homeGives, favoriteSide };
   });
 }
 
@@ -233,8 +238,8 @@ function buildMatch(
     oddsHome: odds.home,
     oddsAway: odds.away,
     oddsDraw: odds.draw,
-    hcLines: hcRaw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
-    hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives }) => ({ line, home, away, homeGives })),
+    hcLines: hcRaw.map(({ line, home, away, homeGives, favoriteSide }) => ({ line, home, away, homeGives, favoriteSide })),
+    hcH1Lines: hcH1Raw.map(({ line, home, away, homeGives, favoriteSide }) => ({ line, home, away, homeGives, favoriteSide })),
     ouLines: ouRaw.map((r) => ({ line: r.line, over: r.home, under: r.away, suspended: r.suspended })),
     ouH1Lines: ouH1Raw.map((r) => ({ line: r.line, over: r.home, under: r.away, suspended: r.suspended })),
     yellowHome,

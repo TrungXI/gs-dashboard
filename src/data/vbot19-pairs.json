@@ -1,0 +1,24 @@
+{
+  "_comment": "V.Bot 19 — tín hiệu Tài/Xỉu cho giải 16p (S). pairKey = 'BaseA|BaseB' sort alphabet (đã bỏ tag). side='tai' đánh TÀI, 'xiu' đánh XỈU. n=số trận backtest, roi=%ROI. Build Map<pairKey,{side,n,roi}> ở RankingLive.tsx.",
+  "pairs": [
+    { "pairKey": "China|Myanmar", "side": "tai", "n": 19, "roi": 30.1 },
+    { "pairKey": "Philippines|Singapore", "side": "tai", "n": 22, "roi": 17.9 },
+    { "pairKey": "Myanmar|Saudi Arabia", "side": "tai", "n": 18, "roi": 11.9 },
+    { "pairKey": "Cambodia|Indonesia", "side": "tai", "n": 21, "roi": 10.3 },
+    { "pairKey": "Cambodia|Vietnam", "side": "tai", "n": 20, "roi": 7.9 },
+    { "pairKey": "China|Indonesia", "side": "tai", "n": 26, "roi": 7.3 },
+    { "pairKey": "Myanmar|Thailand", "side": "tai", "n": 20, "roi": 2.8 },
+    { "pairKey": "Indonesia|Malaysia", "side": "xiu", "n": 22, "roi": 29.3 },
+    { "pairKey": "Myanmar|Philippines", "side": "xiu", "n": 21, "roi": 28.3 },
+    { "pairKey": "Indonesia|Laos", "side": "xiu", "n": 21, "roi": 27.3 },
+    { "pairKey": "Thailand|Vietnam", "side": "xiu", "n": 23, "roi": 26.7 },
+    { "pairKey": "Brunei|Laos", "side": "xiu", "n": 18, "roi": 26.4 },
+    { "pairKey": "Australia|Saudi Arabia", "side": "xiu", "n": 23, "roi": 23.8 },
+    { "pairKey": "Indonesia|Saudi Arabia", "side": "xiu", "n": 19, "roi": 22.9 },
+    { "pairKey": "Australia|Vietnam", "side": "xiu", "n": 18, "roi": 19.8 },
+    { "pairKey": "China|Japan", "side": "xiu", "n": 19, "roi": 13.2 },
+    { "pairKey": "Korea Republic|Qatar", "side": "xiu", "n": 19, "roi": 10.9 },
+    { "pairKey": "Indonesia|Philippines", "side": "xiu", "n": 19, "roi": 9.5 },
+    { "pairKey": "Brunei|Cambodia", "side": "xiu", "n": 20, "roi": 6.4 }
+  ]
+}

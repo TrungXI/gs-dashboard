@@ -8,6 +8,7 @@ import { pct } from './H2HMatrix';
 import MatchDetailDrawer from './MatchDetailDrawer';
 import { Spinner } from './Spinner';
 import { notiOnce } from '../lib/notiDedup';
+import vbot19PairsRaw from '../data/vbot19-pairs.json';
 
 // Kết quả fetch /api/gs-h2h-pair cho 1 trận. 'loading' | 'error' | dữ liệu H2H.
 type PairState =
@@ -19,6 +20,7 @@ const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 
 const LEAGUE_16P = 2140;
 const LEAGUE_20P = 2125;
+const LEAGUE_20P_INTL = 1485;
 
 // ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
@@ -69,6 +71,15 @@ function parseLine(raw?: string | null): { lineVal: number; isQuarter: boolean; 
 // → khớp chuỗi "A|B" mà /api/gs-pair-whitelist|blacklist trả (giống cách route backtest dựng cặp).
 const stripTag = (s: string) => s.replace(/\s*\([^)]*\)\s*$/, '').trim();
 const pairBaseKey = (home: string, away: string) => [stripTag(home), stripTag(away)].sort().join('|');
+
+// V.Bot 19 — tín hiệu Tài/Xỉu CỐ ĐỊNH per cặp cho giải 16p (S). Map<pairKey,{side,n,roi}> dựng 1 lần (module-level).
+// pairKey khớp pairBaseKey ("A|B" sort, bỏ tag). Chỉ hiện badge ở trận 16p — V.Bot 19 chỉ đánh 16p.
+type Vbot19Sig = { side: 'tai' | 'xiu'; n: number; roi: number };
+const VBOT19_PAIRS = new Map<string, Vbot19Sig>(
+  (vbot19PairsRaw.pairs as { pairKey: string; side: 'tai' | 'xiu'; n: number; roi: number }[]).map(
+    (p) => [p.pairKey, { side: p.side, n: p.n, roi: p.roi }] as const,
+  ),
+);
 
 // ── OU line LIVE (dải 2 box trên card) ──────────────────────────────────────
 // over = giá cửa TÀI, under = giá cửa XỈU. Lấy .slice(0,2) mỗi mảng = 2 line.
@@ -470,8 +481,8 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const [toastOn, setToastOn] = useState(true);
   const toastOnRef = useRef(true);
   // Lọc theo loại trận (16p / 20p / tất cả). Ref để effect noti (poll) đọc giá trị mới nhất.
-  const [typeFilter, setTypeFilter] = useState<'all' | '16p' | '20p'>('all');
-  const typeFilterRef = useRef<'all' | '16p' | '20p'>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | '16p' | '20p' | '20p_intl'>('all');
+  const typeFilterRef = useRef<'all' | '16p' | '20p' | '20p_intl'>('all');
 
   useEffect(() => {
     const g = localStorage.getItem('gs_os_noti_goal') === '1';
@@ -481,7 +492,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     const t = localStorage.getItem('gs_toast_rank') !== '0';
     setToastOn(t); toastOnRef.current = t;
     const tf = localStorage.getItem('gs_tx_type_filter');
-    if (tf === '16p' || tf === '20p' || tf === 'all') { setTypeFilter(tf); typeFilterRef.current = tf; }
+    if (tf === '16p' || tf === '20p' || tf === '20p_intl' || tf === 'all') { setTypeFilter(tf); typeFilterRef.current = tf; }
   }, []);
   useEffect(() => { osNotiGoalRef.current = osNotiGoal; }, [osNotiGoal]);
   useEffect(() => { osNotiHTRef.current = osNotiHT; }, [osNotiHT]);
@@ -542,11 +553,14 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   // Poll trận live mỗi POLL_MS (10s) — ngừng khi tab ẩn (trừ khi bật noti).
   useEffect(() => {
     let alive = true;
+    let inflight = false;
 
     async function poll() {
       // 4G: ngừng poll khi tab ẩn / màn tắt — TRỪ khi user đã bật noti (ghi bàn / hết H1):
       // noti chỉ bắn TRONG poll, nên tab ẩn mà vẫn muốn noti thì buộc phải poll nền (chấp nhận tốn pin).
       if (typeof document !== 'undefined' && document.hidden && !osNotiGoalRef.current && !osNotiHTRef.current) return;
+      if (inflight) return; // request trước chưa xong → bỏ nhịp này, tránh chồng khi API chậm
+      inflight = true;
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(GS_STREAM_TOKEN)}`, {
           cache: 'no-store',
@@ -627,12 +641,14 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         }
       } catch (e) {
         if (alive) setError(String(e));
+      } finally {
+        inflight = false;
       }
     }
 
     poll();
-    // Poll 10s/lần (giảm tải call /api/gs-live).
-    const POLL_MS = 10_000;
+    // Poll 2s/lần — live cập nhật nhanh; inflight guard ở trên chặn chồng request khi /api/gs-live chậm.
+    const POLL_MS = 2_000;
     const id = setInterval(poll, POLL_MS);
     const onVis = () => { if (!document.hidden) poll(); }; // quay lại tab → refresh ngay
     document.addEventListener('visibilitychange', onVis);
@@ -645,7 +661,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
 
   // H2H splits — keyed by stable pair set, refresh every 5 min.
   // 4G: CHỈ tải mức đang chọn (không prefetch cả 20/50/100). Đổi filter → effect chạy lại tải mức mới (lazy).
-  const pairsKey = Array.from(new Set(matches.map((m) => `${m.homeTeam}|${m.awayTeam}`))).sort().join(',');
+  // International 20p_intl giờ CŨNG fetch H2H (data đã tích luỹ trong gs_matches_history);
+  // H2H khớp theo TÊN đội, cặp thiếu lịch sử thì PairH2HRow tự ẩn.
+  const pairsKey = Array.from(new Set(matches
+    .map((m) => `${m.homeTeam}|${m.awayTeam}`))).sort().join(',');
   useEffect(() => {
     if (!pairsKey) { setH2hByLimit(new Map()); return; }
     let alive = true;
@@ -677,7 +696,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
 
   const liveMatches = matches.filter(
-    (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P,
+    (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P || m.leagueId === LEAGUE_20P_INTL,
   );
 
   const sorted = [...liveMatches].sort((a, b) => a.eventId - b.eventId);
@@ -689,26 +708,31 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   useEffect(() => {
     // Fetch cái CHƯA có + retry cái đang 'error' (mỗi nhịp pairRetryTick) — đừng để kẹt lỗi.
     const toFetch = sorted
-      .map((m) => m.eventId)
-      .filter((id) => {
-        const s = pairByEventRef.current.get(id);
+      .filter((m) => {
+        const s = pairByEventRef.current.get(m.eventId);
         return !s || s.status === 'error';
       });
     if (toFetch.length === 0) return;
     // KHÔNG cleanup hủy fetch: dùng mountedRef nên fetch sống qua các lần retry re-run (không kẹt 'loading').
     // Chỉ set 'loading' cho cái CHƯA có (giữ text lỗi khi retry 'error', không nháy spinner).
-    const fresh = toFetch.filter((id) => !pairByEventRef.current.has(id));
+    const fresh = toFetch.filter((m) => !pairByEventRef.current.has(m.eventId));
     if (fresh.length > 0) {
       setPairByEvent((prev) => {
         const next = new Map(prev);
-        for (const id of fresh) next.set(id, { status: 'loading' });
+        for (const m of fresh) next.set(m.eventId, { status: 'loading' });
         return next;
       });
     }
-    for (const id of toFetch) {
+    for (const m of toFetch) {
+      const id = m.eventId;
       const ctrl = new AbortController();
       const to = setTimeout(() => ctrl.abort(), 12000); // treo >12s → abort → 'error' → retry nhịp sau
-      fetch(`/api/gs-h2h-pair?eventId=${id}`, { cache: 'no-store', signal: ctrl.signal })
+      // International không có match_odds_log, nên dùng API lịch sử theo đúng cặp tên đội.
+      // 16p/20p vẫn giữ API cũ để có luôn chỉ số Tài/Xỉu đã chấm theo opening line.
+      const endpoint = m.matchType === '20p_intl'
+        ? `/api/gs-h2h-recent?matchType=20p_intl&homeTeam=${encodeURIComponent(m.homeTeam)}&awayTeam=${encodeURIComponent(m.awayTeam)}`
+        : `/api/gs-h2h-pair?eventId=${id}`;
+      fetch(endpoint, { cache: 'no-store', signal: ctrl.signal })
         .then(async (r) => {
           clearTimeout(to);
           const json = (await r.json()) as { ok: boolean } & Partial<H2HPair>;
@@ -736,9 +760,11 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const shownMatches = liveMatches.filter((m) => typeFilter === 'all' || m.matchType === typeFilter);
   const group16 = shownMatches.filter((m) => m.leagueId === LEAGUE_16P);
   const group20 = shownMatches.filter((m) => m.leagueId === LEAGUE_20P);
+  const group20Intl = shownMatches.filter((m) => m.leagueId === LEAGUE_20P_INTL);
 
   const leagueName16 = group16[0]?.leagueName ?? '16 Phút';
   const leagueName20 = group20[0]?.leagueName ?? '20 Phút';
+  const leagueName20Intl = `${group20Intl[0]?.leagueName ?? '🌍 Giao Hữu Quốc Tế 20p'} · research/paper only`;
 
   // Badge thẻ đỏ — hiện ô đỏ + số lượng khi đội có ≥1 thẻ đỏ, ẩn khi 0.
   function RedCardBadge({ n }: { n: number }) {
@@ -760,6 +786,8 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     // (H1 đã xong, không hiện box H1 nữa mà hiện H2/FT chuẩn bị hiệp 2).
     const activeHalf = isHT ? 'h2' : phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'h2' : null;
     const activeMarket = isHT ? 'ft' : phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'ft' : null;
+    // Theo marker handicap tường minh từ feed, không suy đoán từ tên đội/line.
+    const favoriteSide = m.hcLines[0]?.favoriteSide ?? null;
     // H2H theo hiệp: LUÔN hiện cả 2 box (H2 + H1) ở vị trí cố định, bất kể phase —
     // không collapse còn 1 box khi sang H2 (tránh layout nhảy/lệch). Ở H2, box H1
     // vẫn hiện % đối đầu H1 (sp.h1); cột odds/Tài-Xỉu H1 tự về "—" vì market đã đóng.
@@ -779,6 +807,8 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     // V.Bot 18: cặp ∈ list TÀI nổ chậm / XỈU tịt (job 3h sáng). Chỉ 20p (V) — V.Bot 18 chỉ đánh 20p V.
     const inRungTai = is20pV && rungTaiSet.has(pairKey);
     const inRungXiu = is20pV && rungXiuSet.has(pairKey);
+    // V.Bot 19: tín hiệu Tài/Xỉu CỐ ĐỊNH per cặp — CHỈ giải 16p (S). Cặp ∈ list → badge V19.
+    const vbot19Sig = m.matchType === '16p' ? VBOT19_PAIRS.get(pairKey) : undefined;
     // Line CỐ ĐỊNH từ data trang Cặp WL/BL (avgLine backtest), KHÔNG chạy realtime theo trận.
     const pairFixedLine = pairLineMap.get(pairKey);
     const ftLineStr = pairFixedLine != null ? String(pairFixedLine) : null;
@@ -818,10 +848,10 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
             <div className="min-w-0 flex-1 flex items-center gap-2 md:gap-3">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 text-[13px] md:text-[14px] font-semibold leading-tight">
-                  <span className="truncate text-[#4ade80]">{m.homeTeam}</span>
+                  <span title={favoriteSide === 'home' ? 'Đội chấp theo handicap live' : undefined} className={`truncate text-[#4ade80] ${favoriteSide === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.homeTeam}</span>
                   <RedCardBadge n={m.redHome} />
                   <span className="shrink-0 font-normal text-[#888]">vs</span>
-                  <span className="truncate text-[#fb7185]">{m.awayTeam}</span>
+                  <span title={favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`truncate text-[#fb7185] ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
                   <RedCardBadge n={m.redAway} />
                   {/* 7+ bàn: số trận lịch sử của cặp có ≥7 bàn — chỉ hiện khi >0. */}
                   {(high7Map.get(lgKey) ?? 0) > 0 && (
@@ -850,7 +880,16 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               {phase.small && (
                 <div className="text-[12px] md:text-[13px] font-semibold text-[#aaa] mt-1">{phase.small}</div>
               )}
-              {/* Nút mở drawer đã bỏ (user 2026-08-08) — drawer vẫn mở được qua deep-link Telegram ?match=. */}
+              {/* Nút mở drawer đối đầu (mở lại 2026-08-13) — gọi cùng setSelected như deep-link Telegram ?match=. */}
+              <button
+                type="button"
+                onClick={() => setSelected(m)}
+                title="Xem chi tiết đối đầu 10 trận gần nhất"
+                className="mt-1.5 inline-flex items-center gap-1 rounded border border-[#3a3a3a] bg-[#1c1c1c] px-1.5 py-0.5 text-[10px] md:text-[11px] font-semibold text-[#bbb] transition-colors hover:border-[#4ade80]/60 hover:text-[#4ade80]"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+                Chi tiết
+              </button>
             </div>
           </div>
           {/* Badge cặp WL/BL — cặp nằm trong pair-whitelist (V.Bot 12 → Xỉu) / pair-blacklist (V.Bot 17 → Tài).
@@ -922,6 +961,33 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               )}
             </div>
           )}
+          {/* Badge V.Bot 19 — tín hiệu Tài/Xỉu CỐ ĐỊNH per cặp, CHỈ giải 16p (S). TÀI = đỏ · XỈU = xanh (đồng bộ 20p), kèm n · ROI.
+              Nhãn "V19" để không lẫn với badge V.Bot 12/17/18 (chỉ hiện ở 20p). Nguồn: src/data/vbot19-pairs.json. */}
+          {vbot19Sig && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {vbot19Sig.side === 'tai' ? (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#fb7185]/60 bg-[#fb7185]/15 px-2 py-1 text-[11px] md:text-[12px] font-bold tabular-nums text-[#fecdd3] shadow-[0_0_10px_rgba(251,113,133,.35)]"
+                  title="Cặp ∈ list V.Bot 19 (giải 16p) — tín hiệu đánh TÀI"
+                >
+                  <span className="rounded bg-[#f43f5e] px-1.5 py-0.5 text-[10px] md:text-[11px] font-extrabold uppercase tracking-wide text-[#4c0519]">🔴 V19 TÀI</span>
+                  <span>n=<span className="text-white">{vbot19Sig.n}</span></span>
+                  <span className="text-[#fb7185]/50">·</span>
+                  <span>ROI <span className={vbot19Sig.roi >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>{vbot19Sig.roi > 0 ? '+' : ''}{vbot19Sig.roi}%</span></span>
+                </span>
+              ) : (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-md border border-[#34d399]/60 bg-[#34d399]/15 px-2 py-1 text-[11px] md:text-[12px] font-bold tabular-nums text-[#a7f3d0] shadow-[0_0_10px_rgba(52,211,153,.35)]"
+                  title="Cặp ∈ list V.Bot 19 (giải 16p) — tín hiệu đánh XỈU"
+                >
+                  <span className="rounded bg-[#22c55e] px-1.5 py-0.5 text-[10px] md:text-[11px] font-extrabold uppercase tracking-wide text-[#052e16]">🟢 V19 XỈU</span>
+                  <span>n=<span className="text-white">{vbot19Sig.n}</span></span>
+                  <span className="text-[#34d399]/50">·</span>
+                  <span>ROI <span className={vbot19Sig.roi >= 0 ? 'text-[#4ade80]' : 'text-[#f87171]'}>{vbot19Sig.roi > 0 ? '+' : ''}{vbot19Sig.roi}%</span></span>
+                </span>
+              )}
+            </div>
+          )}
           {/* Bố cục 2 cột: TRÁI = Bàn muộn (trên) + Tỉ lệ thắng (dưới, giãn cao) · PHẢI = Chỉ số TB (giãn cao).
               items-stretch để 2 cột cùng chiều cao (cột phải cao nhất → box tỉ-lệ trái stretch theo). */}
           <div className="flex items-stretch gap-2 md:gap-2.5">
@@ -954,9 +1020,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
                 );
               })()}
               {/* TỈ LỆ THẮNG: 1 box (hiệp đang đá) + %đối đầu — giãn cao (flex-1) để khớp cột phải. */}
-              {halves.length === 0 ? (
-                <span className="flex flex-1 items-center text-[11px] text-[#555]">ĐĐ —</span>
-              ) : (
+              {halves.length === 0 ? null : (
                 halves.filter((h) => h.key === activeHalf || activeHalf === null).map((h) => {
                   const active = h.key === activeHalf;
                   return (
@@ -1000,12 +1064,13 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
               <OuLiveBox title="⚽ Hiệp 2 / cả trận" lines={m.ouLines} active={activeMarket === 'ft'} />
             </div>
           </div>
-          {/* Timeline GHI BÀN của trận này (suy từ match_odds_log) — thanh H1|H2, mốc bàn theo phút. */}
+          {/* Timeline ghi bàn: ưu tiên tick logger (có cả International 20p), fallback log cũ. */}
           {(() => {
             const goals = goalLog.filter((g) => g.e === m.eventId);
             if (goals.length === 0) return null;
             const HOME = '#38bdf8', AWAY = '#fb7185';   // nhà = cyan, khách = hồng
-            const HALF_MAX = 45;                        // phút mô phỏng mỗi hiệp ~0-45
+            // Feed 20p (Asian lẫn International) chạy tới khoảng phút 50 mỗi hiệp.
+            const HALF_MAX = (m.matchType === '20p' || m.matchType === '20p_intl') ? 50 : 45;
             const posOf = (g: GoalEvent) => {
               const mm = Math.min(Math.max(g.m, 0), HALF_MAX);
               return g.h2 ? 50 + (mm / HALF_MAX) * 50 : (mm / HALF_MAX) * 50;
@@ -1147,20 +1212,9 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
 
   function PairH2HRow({ eventId, activeMarket, ftLine, h1Line }: { eventId: number; activeMarket: 'ft' | 'h1' | null; ftLine?: string | null; h1Line?: string | null }) {
     const st = pairByEvent.get(eventId);
-    if (!st || st.status === 'loading') {
-      return (
-        <div className="flex min-h-[64px] w-full flex-1 items-center justify-center gap-2 rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#17a2b8]">
-          <Spinner size={13} /> Đang tải đối đầu…
-        </div>
-      );
-    }
-    if (st.status === 'error') {
-      return (
-        <div className="flex min-h-[64px] w-full flex-1 items-center justify-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] py-3 text-[11px] text-[#777]">
-          Không tải được đối đầu
-        </div>
-      );
-    }
+    // Chưa có / đang tải / lỗi → ẨN hẳn (không loading spinner, không empty placeholder).
+    // Cặp thiếu lịch sử đối đầu (vd International cặp mới) → st chưa có → ẩn; đủ data thì hiện 10 trận gần nhất.
+    if (!st || st.status === 'loading' || st.status === 'error') return null;
     // CHỈ hiện box của market ĐANG đá (giảm info): H1 → box H1; H2 → box FT. Null → cả 2.
     return (
       <div className="flex w-full flex-1 gap-2.5">
@@ -1380,7 +1434,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         </button>
         {/* Lọc loại trận: Tất cả / 16p / 20p — lọc cả danh sách hiển thị lẫn noti/toast. */}
         <div className="flex items-center gap-1">
-          {([['all', 'Tất cả'], ['16p', '16p'], ['20p', '20p']] as const).map(([val, label]) => {
+          {([['all', 'Tất cả'], ['16p', '16p'], ['20p', '20p Asian'], ['20p_intl', '20p Quốc tế']] as const).map(([val, label]) => {
             const active = typeFilter === val;
             return (
               <button
@@ -1406,7 +1460,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         </div>
       )}
 
-      {group16.length === 0 && group20.length === 0 ? (
+      {group16.length === 0 && group20.length === 0 && group20Intl.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
           <div className="mb-3 text-4xl">⏳</div>
           <div className="text-[14px] text-[#888]">Chưa có trận live. Đang chờ dữ liệu…</div>
@@ -1415,12 +1469,12 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         <>
           <LeagueGroup title={leagueName16} items={group16} />
           <LeagueGroup title={leagueName20} items={group20} />
+          <LeagueGroup title={leagueName20Intl} items={group20Intl} />
         </>
       )}
-
       {selected && (() => {
-        // Danh sách phẳng theo đúng thứ tự hiển thị (group16 rồi group20).
-        const flat = [...group16, ...group20];
+        // Danh sách phẳng theo đúng thứ tự hiển thị.
+        const flat = [...group16, ...group20, ...group20Intl];
         const n = flat.length;
         const idx = flat.findIndex((m) => m.eventId === selected.eventId);
         // Vòng lặp vô hạn: cuối → về đầu, đầu → về cuối (chỉ cần >1 trận).

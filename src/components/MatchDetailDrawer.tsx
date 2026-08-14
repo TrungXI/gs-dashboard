@@ -6,6 +6,7 @@ import H1StatsPanel from './H1StatsPanel';
 import MatchAnalysis from './MatchAnalysis';
 import MatchupView from './MatchupView';
 import DrawerOuPanel from './DrawerOuPanel';
+import LiveOddsTimeline from './LiveOddsTimeline';
 import type { GsBetsResponse, GsBetPick, GsBetStats } from '../app/api/gs-bets/route';
 
 function parseScore(s: string | null): [number, number] | null {
@@ -43,7 +44,7 @@ export default function MatchDetailDrawer({
   home: string;
   away: string;
   onClose: () => void;
-  initialTab?: 'h1' | 'h2h' | 'matchup' | 'ou';
+  initialTab?: 'h1' | 'h2h' | 'matchup' | 'ou' | 'odds';
   // Market đang chạy (đồng bộ Kiểu 2 list): 'h1'→thẻ H1 xanh, 'ft'→thẻ FT xanh, null→không.
   activeMarket?: 'ft' | 'h1' | null;
   onPrev?: () => void;
@@ -55,7 +56,7 @@ export default function MatchDetailDrawer({
   const [error, setError] = useState<string | null>(null);
   const [pick, setPick] = useState<GsBetPick | null>(null);
   const [stats, setStats] = useState<GsBetStats | null>(null);
-  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup' | 'ou'>(initialTab ?? 'h1');
+  const [tab, setTab] = useState<'h1' | 'h2h' | 'matchup' | 'ou' | 'odds'>(initialTab ?? 'h1');
 
   // ESC đóng drawer · ← / → sang trận trước / kế (giữ nguyên tab đang xem)
   useEffect(() => {
@@ -111,6 +112,7 @@ export default function MatchDetailDrawer({
     ['matchup', '🔥 Diễn biến'],
     ['h2h', '⚔️ Đối Kháng'],
     ['ou', '🎯 Tài/Xỉu'],
+    ['odds', '📈 Odds live'],
   ];
 
   return (
@@ -230,6 +232,8 @@ export default function MatchDetailDrawer({
 
           {/* Tab — Tài/Xỉu (đối đầu H2H Tài/Xỉu của đúng cặp trận live này) */}
           {tab === 'ou' && <DrawerOuPanel eventId={eventId} activeMarket={activeMarket} />}
+
+          {tab === 'odds' && <LiveOddsTimeline eventId={eventId} activeMarket={activeMarket} />}
         </div>
       </div>
     </>

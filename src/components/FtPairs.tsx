@@ -18,6 +18,7 @@ export default function FtPairs() {
   const [selBl, setSelBl] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
   const [active, setActive] = useState<Set<string>>(new Set(['28'])); // filter đang bật; ≥2 → chế độ so sánh
+  const [minWr, setMinWr] = useState(50); // lọc cặp có winrate cửa chính ≥ ngưỡng (đổi được, default 50%)
 
   const loadCurrent = useCallback(async () => {
     const [w, b] = await Promise.all([
@@ -77,8 +78,10 @@ export default function FtPairs() {
       .sort((a, b) => b.minRoi - a.minRoi);
   }, [activeList, store]);
 
-  const wlRows = useMemo(() => build('wl'), [build]);
-  const blRows = useMemo(() => build('bl'), [build]);
+  // lọc theo winrate cửa chính (Xỉu cho WL, Tài cho BL). Compare mode → lấy WR nhỏ nhất trong các mốc đang bật.
+  const rowWr = useCallback((r: { perWr: Record<string, number> }) => Math.min(...activeList.map((v) => r.perWr[v] ?? 0)), [activeList]);
+  const wlRows = useMemo(() => build('wl').filter((r) => rowWr(r) >= minWr), [build, rowWr, minWr]);
+  const blRows = useMemo(() => build('bl').filter((r) => rowWr(r) >= minWr), [build, rowWr, minWr]);
 
   // đổi filter → mặc định tick lại theo list đang hiện
   useEffect(() => {
@@ -184,7 +187,7 @@ export default function FtPairs() {
               })}
               {rows.length === 0 && (
                 <tr><td colSpan={activeList.length + 3 + (compareMode ? 0 : 3)} className="px-2 py-6 text-center text-[#666]">
-                  {compareMode ? `Không cặp nào có mặt ở CẢ ${activeList.join(' + ')} ngày` : 'Chưa đủ data (n≥25)'}
+                  {compareMode ? `Không cặp nào có mặt ở CẢ ${activeList.join(' + ')} ngày` : 'Chưa đủ data (n≥25)'} · hoặc không cặp nào WR ≥ {minWr}%
                 </td></tr>
               )}
             </tbody>
@@ -216,6 +219,13 @@ export default function FtPairs() {
               🔀 SO SÁNH · giao {activeList.join(' ∩ ')} = cặp mốc nào cũng nằm list
             </span>
           )}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-[#888]">Lọc winrate ≥</span>
+          <input type="number" min={0} max={100} step={1} value={minWr}
+            onChange={(e) => setMinWr(Math.max(0, Math.min(100, Number(e.target.value) || 0)))}
+            className="w-16 rounded-md border border-[#2a2a2a] bg-[#141414] px-2 py-1 text-[12px] font-semibold text-white outline-none focus:border-[#38bdf8]/60" />
+          <span className="text-[11px] text-[#888]">% (cửa chính{compareMode ? ', lấy mốc thấp nhất' : ''})</span>
         </div>
         {msg && <div className="mt-2 rounded-md border border-[#2a2a2a] bg-[#141414] px-3 py-1.5 text-[12px] text-[#d4d4d4]">{msg}</div>}
       </div>
