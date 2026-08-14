@@ -17,8 +17,9 @@ import RankingLive from './RankingLive';
 import TxReport from './TxReport';
 import BotReport from './BotReport';
 import FtPairs from './FtPairs';
+import GoalTimeline from './GoalTimeline';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'monitor';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -256,6 +257,7 @@ export default function Dashboard({
     ['tx-report', '💰', 'Báo cáo TX'],
     ['bot-report', '🤖', 'Bot Report'],
     ['ft-pairs', '📈', 'Cặp WL/BL'],
+    ['goal-timeline', '⏱️', 'Timeline Ghi Bàn'],
     ['monitor', '🖥️', 'Monitor'],
   ];
 
@@ -451,6 +453,8 @@ export default function Dashboard({
           <BotReport />
         ) : view === 'ft-pairs' ? (
           <FtPairs />
+        ) : view === 'goal-timeline' ? (
+          <GoalTimeline />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}

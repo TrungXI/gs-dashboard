@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "tx:test": "node --test 'tx-lab/test/*.test.mjs'",
-    "tx:run": "node tx-lab/run.mjs"
+    "tx:run": "node tx-lab/run.mjs",
+    "gtl:test": "node --test scripts/goalTimeline.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.111.0",
