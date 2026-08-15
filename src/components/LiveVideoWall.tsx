@@ -6,6 +6,18 @@ import type { GsLiveMatch } from '../app/api/gs-live/route';
 const LS_TOKEN = 'gs_video_wall_token';
 const REFRESH_MS = 15_000;
 
+// Cho phép dán nguyên link (vd https://m.zenandfe.com/?token=69-xxx&agentId=69&…)
+// → tự bóc query param `token`. Nếu không phải URL thì coi input là token thô.
+function extractToken(input: string): string {
+  const v = input.trim();
+  if (!v) return '';
+  if (v.includes('token=')) {
+    const m = v.match(/[?&]token=([^&#\s]+)/);
+    if (m) { try { return decodeURIComponent(m[1]); } catch { return m[1]; } }
+  }
+  return v;
+}
+
 // iframe render width (matches GSLive VideoCell); scaled down to fit the grid cell.
 const CONTENT_W = 1440;
 // ~500:320 aspect from GSLive desktop video.
@@ -100,8 +112,9 @@ export default function LiveVideoWall() {
     } catch { /* ignore */ }
   }, []);
   const onTokenChange = (v: string) => {
-    setToken(v);
-    try { localStorage.setItem(LS_TOKEN, v); } catch { /* ignore */ }
+    const t = extractToken(v);
+    setToken(t);
+    try { localStorage.setItem(LS_TOKEN, t); } catch { /* ignore */ }
   };
   const agentId = token.split('-')[0] || '69';
 
@@ -184,7 +197,7 @@ export default function LiveVideoWall() {
           type="text"
           value={token}
           onChange={(e) => onTokenChange(e.target.value)}
-          placeholder="Dán token sb21 vào đây…"
+          placeholder="Dán token hoặc nguyên link (tự bóc token)…"
           className="w-full max-w-xl rounded-lg bg-white/[.07] px-3 py-2 text-sm text-white placeholder:text-[#666] outline-none border border-[#2a2a2a] focus:border-[#17a2b8]"
         />
       </div>
