@@ -95,8 +95,14 @@ function buildWhere(q: MatchQuery): { where: string; params: unknown[] } {
   const params: unknown[] = [];
 
   if (q.type && q.type !== 'all') {
-    params.push(q.type);
-    clauses.push(`mh.match_type = $${params.length}`);
+    // '20p' folds in the International 20p league (match_type '20p_intl'), a
+    // variant of the same 20-minute format — otherwise equality drops it.
+    if (q.type === '20p') {
+      clauses.push(`mh.match_type IN ('20p', '20p_intl')`);
+    } else {
+      params.push(q.type);
+      clauses.push(`mh.match_type = $${params.length}`);
+    }
   }
   if (q.date && q.date !== 'all') {
     params.push(q.date);
@@ -179,7 +185,7 @@ export async function fetchMatchFilterOptions(): Promise<FilterOptions> {
   const countsSql = `
     SELECT
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE mh.match_type = '20p')::int AS c20,
+      COUNT(*) FILTER (WHERE mh.match_type IN ('20p', '20p_intl'))::int AS c20,
       COUNT(*) FILTER (WHERE mh.match_type = '16p')::int AS c16
     ${FROM_JOINS}
   `;

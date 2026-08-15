@@ -82,11 +82,7 @@ export default function SearchDropdown({
             {filtered.map((o) => (
               <div
                 key={o.value}
-                className={`cursor-pointer px-3 py-2 text-xs transition-colors ${
-                  o.value === value
-                    ? 'bg-[#17a2b8] text-white'
-                    : 'text-white/75 hover:bg-white/10 hover:text-white'
-                }`}
+                className="cursor-pointer px-3 py-2 text-xs text-white/75 transition-colors hover:bg-white/10 hover:text-white"
                 onClick={() => pick(o.value)}
               >
                 {o.label}

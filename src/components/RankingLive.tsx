@@ -862,6 +862,23 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
                       7+ n={high7Map.get(lgKey)}
                     </span>
                   )}
+                  {/* Mở lịch sử đối đầu 2 đội này trong GS Dữ liệu (tab mới, filter sẵn giải + cặp) */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const t = m.matchType === '16p' ? '16p' : '20p';
+                      const url =
+                        `/?view=data&type=${t}` +
+                        `&team=${encodeURIComponent(m.homeTeam)}` +
+                        `&team2=${encodeURIComponent(m.awayTeam)}`;
+                      window.open(url, '_blank', 'noopener');
+                    }}
+                    title="Mở lịch sử đối đầu 2 đội trong GS Dữ liệu (tab mới)"
+                    className="shrink-0 rounded border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-1.5 py-0.5 text-[10px] md:text-[11px] font-semibold text-[#7dd3fc] hover:bg-[#38bdf8]/20"
+                  >
+                    📋 Dữ liệu
+                  </button>
                 </div>
               </div>
               <div className="shrink-0">
