@@ -103,12 +103,6 @@ const LEAGUES: [League, string][] = [
 const DAYS_OPTS = [7, 14];
 const BIN_OPTS = [5, 10];
 
-const LS_LEAGUE = 'gs_gtl_league';
-
-function isLeague(v: string | null): v is League {
-  return v === '16p' || v === '20p_asian' || v === '20p_intl';
-}
-
 function pct(v: number): string {
   return `${(v * 100).toFixed(0)}%`;
 }
@@ -707,16 +701,6 @@ export default function GoalTimeline() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Restore persisted league on mount.
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem(LS_LEAGUE);
-      if (isLeague(v)) setLeague(v);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   const load = useCallback(async (lg: League, d: number, b: number) => {
     setLoading(true);
     setError(null);
@@ -739,11 +723,6 @@ export default function GoalTimeline() {
 
   const chooseLeague = (lg: League) => {
     setLeague(lg);
-    try {
-      localStorage.setItem(LS_LEAGUE, lg);
-    } catch {
-      /* ignore */
-    }
   };
 
   const pill = (active: boolean) =>

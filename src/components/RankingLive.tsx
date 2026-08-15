@@ -491,8 +491,6 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
     setOsNotiHT(h);   osNotiHTRef.current = h;
     const t = localStorage.getItem('gs_toast_rank') !== '0';
     setToastOn(t); toastOnRef.current = t;
-    const tf = localStorage.getItem('gs_tx_type_filter');
-    if (tf === '16p' || tf === '20p' || tf === '20p_intl' || tf === 'all') { setTypeFilter(tf); typeFilterRef.current = tf; }
   }, []);
   useEffect(() => { osNotiGoalRef.current = osNotiGoal; }, [osNotiGoal]);
   useEffect(() => { osNotiHTRef.current = osNotiHT; }, [osNotiHT]);
@@ -1459,7 +1457,6 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
                 type="button"
                 onClick={() => {
                   setTypeFilter(val); typeFilterRef.current = val;
-                  localStorage.setItem('gs_tx_type_filter', val);
                 }}
                 className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${active ? 'border-[#38bdf8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
                 title={`Lọc trận ${label}`}

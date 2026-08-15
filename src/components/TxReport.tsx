@@ -107,10 +107,9 @@ export default function TxReport() {
     }
   }, []);
 
-  // Initial load — khôi phục version đã xem trước đó (localStorage) → F5 không mất context.
+  // Initial load — mặc định mở V.Bot 14 (không nhớ version đã chọn qua reload).
   useEffect(() => {
-    const saved = typeof window !== 'undefined' ? localStorage.getItem('tx-selected-version') : null;
-    const initial = saved || 'V.Bot 14 Real'; // mặc định mở V.Bot 14 (nếu chưa từng chọn bot khác)
+    const initial = 'V.Bot 14 Real';
     setSelected(initial);
     load(initial, 0);
     try { setShowOff(localStorage.getItem('tx-show-off') === '1'); } catch { /* noop */ }
@@ -174,7 +173,6 @@ export default function TxReport() {
   const onSelect = (v: string) => {
     setSelected(v);
     setPage(0);
-    try { localStorage.setItem('tx-selected-version', v); } catch { /* noop */ } // nhớ bot đang xem qua F5
     load(v, 0); // đổi version → về trang đầu
   };
 

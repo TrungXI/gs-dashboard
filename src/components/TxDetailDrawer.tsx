@@ -82,10 +82,11 @@ function V21Row({ v21 }: { v21: V21Entry }) {
 
 // ── Helpers (giống bảng chi tiết cũ trong TxReport) ──────────────────────────
 
-// entryAt ISO → giờ VN (UTC+7) "HH:mm".
+// entryAt ISO → giờ VN (UTC+7) "DD/MM/YYYY HH:mm" (user 2026-08-15: hiện đủ ngày+giờ VN).
 function vnTime(iso: string): string {
   const d = new Date(new Date(iso).getTime() + 7 * 60 * 60 * 1000);
-  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`;
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
 const entryScore = (r: { scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null }): string =>
   r.scoreHomeAtEntry == null || r.scoreAwayAtEntry == null ? '- -' : `${r.scoreHomeAtEntry}-${r.scoreAwayAtEntry}`;

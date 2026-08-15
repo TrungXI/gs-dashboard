@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import type { Match } from '../types/match';
 import type { FilterOptions } from '../lib/gsMatchesDb';
@@ -23,17 +24,38 @@ import LiveVideoWall from './LiveVideoWall';
 type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor' | 'video';
 type FType = 'all' | '20p' | '16p';
 
-const LS_UI = 'gs_ui_state';
+// ── URL routing: view ↔ slug (single source of truth) ─────────────────────
+// Mỗi View có 1 slug canonical dùng làm ?view=<slug>. Slug trùng tên view cho
+// dễ đọc/chia sẻ. Đây là nguồn duy nhất để build link và parse URL.
+const VIEW_TO_SLUG: Record<View, string> = {
+  'data': 'data',
+  'gs-live': 'gs-live',
+  'report': 'report',
+  'match-analysis': 'match-analysis',
+  'bet-stats': 'bet-stats',
+  'bet-table': 'bet-table',
+  'h2h-matrix': 'h2h-matrix',
+  'team-form': 'team-form',
+  'tx-report': 'tx-report',
+  'bot-report': 'bot-report',
+  'ft-pairs': 'ft-pairs',
+  'goal-timeline': 'goal-timeline',
+  'monitor': 'monitor',
+  'video': 'video',
+};
 
-function loadUiState() {
-  try {
-    const s = localStorage.getItem(LS_UI);
-    if (!s) return null;
-    return JSON.parse(s) as {
-      view?: View; fType?: FType; fDate?: string; fTeam?: string; fTeam2?: string;
-    };
-  } catch { return null; }
-}
+// Slug (kể cả alias cũ) → View. Alias legacy giữ cho link chia sẻ cũ còn chạy;
+// URL phát ra về sau luôn dùng slug canonical ở VIEW_TO_SLUG.
+const SLUG_TO_VIEW: Record<string, View> = {
+  ...Object.fromEntries(Object.entries(VIEW_TO_SLUG).map(([v, s]) => [s, v as View])),
+  // Alias INPUT cũ (một chiều):
+  'live': 'gs-live',
+  'keo': 'bet-stats',
+  'tx': 'report',
+};
+
+// URL hiển thị + dùng cho <Link href>. Guard SSR.
+const slugHref = (v: View) => `/?view=${VIEW_TO_SLUG[v]}`;
 
 const EMPTY_OPTIONS: FilterOptions = { dates: [], teams: [], count20: 0, count16: 0, total: 0 };
 
@@ -83,10 +105,11 @@ export default function Dashboard({
     document.documentElement.setAttribute('data-theme', 'dark');
   }, []);
 
-  // ── Deep-link (?view=live|keo&match=<eventId>) ──────────────────────────
-  // Runs once on mount, BEFORE the localStorage UI-restore effect, so a shared
-  // link wins over the persisted view. After consuming, strip the query params
-  // so the URL is clean ("/") — F5 won't re-open the drawer.
+  // ── Deep-link (?view=<slug>&match=<eventId>&type&team&team2) ─────────────
+  // Runs once on mount, BEFORE the localStorage UI-restore effect, so một link
+  // chia sẻ thắng view đã lưu. ?view=<slug> là PERSISTENT (giữ lại trên URL để
+  // ctrl-click/F5 vẫn ở đúng trang); các param còn lại (match/type/team/team2)
+  // là ONE-SHOT — tiêu thụ đúng 1 lần rồi bóc khỏi URL.
   useEffect(() => {
     if (deepLinkConsumed.current) return;
     const params = new URLSearchParams(window.location.search);
@@ -98,8 +121,8 @@ export default function Dashboard({
     if (!vParam && !mParam && !typeParam && !teamParam && !team2Param) return;
     deepLinkConsumed.current = true;
 
-    const targetView: View | null =
-      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : vParam === 'tx' ? 'report' : vParam === 'data' ? 'data' : null;
+    // ?view=<slug> qua SLUG_TO_VIEW (bao gồm alias legacy live/keo/tx).
+    const targetView: View | undefined = vParam ? SLUG_TO_VIEW[vParam] : undefined;
     if (targetView) setView(targetView);
 
     const eventId = mParam ? Number(mParam) : NaN;
@@ -110,21 +133,28 @@ export default function Dashboard({
     if (teamParam) { setFTeam(teamParam); deepLinkFilterPending.current = true; }
     if (team2Param) { setFTeam2(team2Param); deepLinkFilterPending.current = true; }
 
-    // Clean the URL back to "/" — consume the deep-link exactly once.
-    window.history.replaceState(null, '', window.location.pathname);
+    // Bóc CHỈ các one-shot param; giữ lại ?view=<slug canonical> nếu có view hợp lệ.
+    // (URL-sync effect theo `view` cũng sẽ chuẩn hoá về slug canonical ngay sau.)
+    window.history.replaceState(
+      null, '',
+      targetView ? slugHref(targetView) : window.location.pathname,
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Persist UI state
-  const lsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // ── Đồng bộ URL theo view ────────────────────────────────────────────────
+  // Mọi thay đổi view (nav click, openPairInBetTable, deep-link) đều phản chiếu
+  // lên URL dạng /?view=<slug> qua replaceState (không đẩy history, không spam).
+  // Đồng thời cập nhật chỉ báo pathname hiển thị ở đầu <main>. Guard SSR.
+  const [urlLabel, setUrlLabel] = useState('');
   useEffect(() => {
-    if (!uiRestored.current) return;
-    if (lsTimer.current) clearTimeout(lsTimer.current);
-    lsTimer.current = setTimeout(() => {
-      localStorage.setItem(LS_UI, JSON.stringify({ view, fType, fDate, fTeam, fTeam2 }));
-    }, 300);
-    return () => { if (lsTimer.current) clearTimeout(lsTimer.current); };
-  }, [view, fType, fDate, fTeam, fTeam2]);
+    if (typeof window === 'undefined') return;
+    window.history.replaceState(null, '', slugHref(view));
+    setUrlLabel(window.location.pathname + window.location.search);
+  }, [view]);
+
+  // (Bỏ persist UI state vào localStorage — user 2026-08-15: KHÔNG lưu filter/view nữa.
+  //  View lấy từ URL ?view=; filter type/date/2 đội luôn về 'all' mặc định mỗi lần vào.)
 
   // Vào trang GS Dữ liệu (mount hoặc nhấn tab) → luôn reset filter 2 đội về 'all', không nhớ lựa chọn trước.
   useEffect(() => {
@@ -173,40 +203,24 @@ export default function Dashboard({
   const didInitialFetch = useRef(false);
 
   useEffect(() => {
-    const ui = loadUiState();
-    if (ui) {
-      // A deep-link view (set above) takes precedence over the persisted view.
-      if (ui.view && !deepLinkConsumed.current) setView(ui.view);
-      // A deep-link (pair filter) sets fType authoritatively — don't clobber it.
-      if (ui.fType && !deepLinkConsumed.current) setFType(ui.fType);
-      if (ui.fDate) setFDate(ui.fDate);
-      // KHÔNG khôi phục fTeam/fTeam2 — filter 2 đội luôn reset về 'all' mỗi lần vào trang (user 2026-08-08).
-    }
     uiRestored.current = true;
 
-    // If SSR gave us no data (DB was down at request time) OR the restored
-    // filters are still the defaults, kick the initial page fetch here — the
-    // filter-change effect below only fires *after* a filter actually changes.
-    const rType = ui?.fType ?? 'all';
-    const rDate = ui?.fDate ?? 'all';
-    const rTeam = 'all'; // team filter không khôi phục → luôn 'all' lúc vào
-    const rTeam2 = 'all';
-    const isDefault = rType === 'all' && rDate === 'all' && rTeam === 'all' && rTeam2 === 'all';
+    // KHÔNG khôi phục filter/view từ localStorage nữa (user 2026-08-15). View đã do URL
+    // ?view= quyết định; filter type/date/2 đội luôn ở mặc định 'all'. Nên chỉ cần lo
+    // initial-fetch: nếu SSR có data thì dùng luôn, không thì fetch page 0 filter mặc định.
     const ssrOk = initialMatches.length > 0 || !!initialOptions;
-    if (isDefault && !ssrOk) {
-      // Default filters but SSR failed → fetch page 0 now.
+    if (!ssrOk) {
       loadPageWith('all', 'all', 'all', 'all', 0, true);
-    } else if (isDefault && ssrOk) {
-      // Default filters and SSR succeeded → SSR page 0 is already correct,
-      // just mark the initial fetch as done so the filter effect doesn't skip
-      // a legitimate later change.
+    } else {
+      // SSR page 0 (filter mặc định) đã đúng → đánh dấu để filter-effect không skip nhầm.
       didInitialFetch.current = true;
     }
-    // If restored filters are non-default, the setFType/… above schedule a
-    // re-render; the filter-change effect then fires and fetches with them.
 
-    // Clear dead keys from old versions
-    ['gs_matches', 'gs_updated_at', 'volta_matches', 'volta_updated_at', 'gs_data_version'].forEach(k => localStorage.removeItem(k));
+    // Dọn key localStorage cũ/không còn dùng (filter data + goal log + version + rác cũ).
+    ['gs_ui_state', 'gs_live_goallog', 'gs-video-league-filter', 'gs_gtl_league',
+     'gs_tx_type_filter', 'tx-selected-version',
+     'gs_matches', 'gs_updated_at', 'volta_matches', 'volta_updated_at', 'gs_data_version']
+      .forEach(k => localStorage.removeItem(k));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -297,9 +311,10 @@ export default function Dashboard({
         {sidebarCollapsed ? (
           <div className="flex flex-col h-full items-center py-2 gap-0.5">
             {navItems.map(([v, icon, label]) => (
-              <button
+              <Link
                 key={v}
-                onClick={() => setView(v)}
+                href={slugHref(v)}
+                onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; setView(v); }}
                 title={label}
                 className={`w-10 h-10 rounded-lg flex items-center justify-center text-lg transition-all ${
                   view === v
@@ -308,7 +323,7 @@ export default function Dashboard({
                 }`}
               >
                 {icon}
-              </button>
+              </Link>
             ))}
             <div className="flex-1" />
           </div>
@@ -328,9 +343,10 @@ export default function Dashboard({
             {/* Nav */}
             <nav className="flex flex-col">
               {navItems.map(([v, icon, label]) => (
-                <div
+                <Link
                   key={v}
-                  onClick={() => setView(v)}
+                  href={slugHref(v)}
+                  onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; setView(v); }}
                   className={`flex cursor-pointer items-center gap-2 border-l-[3px] px-5 py-2.5 text-[13px] font-semibold transition-all ${
                     view === v
                       ? 'border-[#17a2b8] bg-white/[.12] text-white'
@@ -338,7 +354,7 @@ export default function Dashboard({
                   }`}
                 >
                   <span>{icon}</span> {label}
-                </div>
+                </Link>
               ))}
             </nav>
 
@@ -348,7 +364,13 @@ export default function Dashboard({
       </aside>
 
       {/* Main */}
-      <main className="gs-main flex-1 overflow-y-auto p-3 pb-[72px] md:p-6 md:pb-6 bg-[#0d0d0d]">
+      <main className={`gs-main flex-1 overflow-y-auto pb-[72px] md:pb-6 bg-[#0d0d0d] ${view === 'video' ? '' : 'p-3 md:p-6'}`}>
+        {/* Chỉ báo URL hiện tại — hiển thị trên MỌI view (guard SSR qua urlLabel state). */}
+        {urlLabel && (
+          <div className={`mb-2 font-mono text-[11px] text-white/35 ${view === 'video' ? 'px-3 pt-3' : ''}`}>
+            {urlLabel}
+          </div>
+        )}
         {view === 'data' ? (
           <>
             <div className="mb-4 flex flex-wrap items-center gap-2.5 max-md:sticky max-md:top-0 max-md:z-30 max-md:-mx-3 max-md:px-3 max-md:py-2 max-md:bg-[#0d0d0d]/95 max-md:backdrop-blur max-md:border-b max-md:border-[#2a2a2a]">
@@ -379,29 +401,33 @@ export default function Dashboard({
                   </option>
                 ))}
               </select>
-              <div className="w-full md:w-52">
-                <SearchDropdown
-                  options={dataTeamOptions}
-                  value={fTeam}
-                  onChange={setFTeam}
-                  placeholder="-- Tất cả đội --"
-                />
-              </div>
-              <span className="text-xs font-semibold text-white/40">vs</span>
-              <div className="w-full md:w-52">
-                <SearchDropdown
-                  options={dataTeam2Options}
-                  value={fTeam2}
-                  onChange={setFTeam2}
-                  placeholder="-- Đội đối đầu --"
-                />
-              </div>
-              <span className="text-xs text-white/50 ml-auto flex items-center gap-1.5">
-                {dataLoading && <Spinner size={13} />}
-                <span>
-                  <span className="mr-1 text-base font-bold text-white">{dataTotal}</span>trận
+              {/* Mobile: gộp [đội] vs [đội đối đầu] + tổng trận vào 1 dòng riêng (w-full đẩy
+                  xuống hàng dưới, bên trong 2 dropdown chia đều flex-1). Desktop giữ inline md:w-52. */}
+              <div className="flex w-full items-center gap-2 md:w-auto md:flex-1">
+                <div className="min-w-0 flex-1 md:w-52 md:flex-none">
+                  <SearchDropdown
+                    options={dataTeamOptions}
+                    value={fTeam}
+                    onChange={setFTeam}
+                    placeholder="-- Tất cả đội --"
+                  />
+                </div>
+                <span className="shrink-0 text-xs font-semibold text-white/40">vs</span>
+                <div className="min-w-0 flex-1 md:w-52 md:flex-none">
+                  <SearchDropdown
+                    options={dataTeam2Options}
+                    value={fTeam2}
+                    onChange={setFTeam2}
+                    placeholder="-- Đội đối đầu --"
+                  />
+                </div>
+                <span className="shrink-0 flex items-center gap-1.5 text-xs text-white/50 md:ml-auto">
+                  {dataLoading && <Spinner size={13} />}
+                  <span>
+                    <span className="mr-1 text-base font-bold text-white">{dataTotal}</span>trận
+                  </span>
                 </span>
-              </span>
+              </div>
             </div>
             <div className="mb-5 flex items-baseline gap-3">
               <h1 className="text-xl font-bold text-white">Kết quả trận đấu</h1>
@@ -484,17 +510,17 @@ export default function Dashboard({
       {/* Bottom nav — mobile only */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 md:hidden border-t border-[#2a2a2a] bg-[#111]">
         {navItems.filter(([v]) => v !== 'video').map(([v, icon, label]) => (
-          <button
+          <Link
             key={v}
-            type="button"
-            onClick={() => setView(v)}
+            href={slugHref(v)}
+            onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return; setView(v); }}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 text-[16px] transition-colors ${
               view === v ? 'text-[#17a2b8]' : 'text-white/50'
             }`}
           >
             <span className="leading-none">{icon}</span>
             <span className="text-[9px] font-semibold leading-none">{label}</span>
-          </button>
+          </Link>
         ))}
       </nav>
     </div>
