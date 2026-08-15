@@ -4,94 +4,32 @@ import { useEffect, useRef, useState } from 'react';
 import type { GsLiveMatch } from '../app/api/gs-live/route';
 
 const LS_TOKEN = 'gs_video_wall_token';
-const REFRESH_MS = 15_000;
+const REFRESH_MS = 2_000;
 
-// Stream chia sẻ màn hình dùng chung (module-level) — chỉ xin quyền 1 lần rồi
-// tái sử dụng cho mọi lần chụp. Khi user dừng chia sẻ → track 'ended' → xoá cache.
-let cachedShareStream: MediaStream | null = null;
-async function getShareStream(): Promise<MediaStream> {
-  const cur = cachedShareStream?.getVideoTracks()[0];
-  if (cachedShareStream && cur && cur.readyState === 'live') return cachedShareStream;
-  // preferCurrentTab không có trong TS lib types → cast as any.
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { displaySurface: 'browser' },
-    audio: false,
-    preferCurrentTab: true,
-  } as any);
-  cachedShareStream = stream;
-  const track = stream.getVideoTracks()[0];
-  track.onended = () => { cachedShareStream = null; };
-  return stream;
-}
-
-// Chụp ảnh video phía CLIENT bằng getDisplayMedia + crop theo hộp video, rồi
-// POST blob (multipart) lên /api/video-snapshot để route gửi thẳng vào Telegram.
-async function captureAndSend(match: GsLiveMatch): Promise<void> {
-  let stream: MediaStream;
-  try {
-    stream = await getShareStream();
-  } catch (e) {
-    throw new Error(`Không chụp được: ${e instanceof Error ? e.message : String(e)}`);
-  }
-
-  const boxEl = document.querySelector<HTMLElement>(`[data-cap-event="${match.eventId}"]`);
-  if (!boxEl) throw new Error('Không tìm thấy khung video');
-
-  const v = document.createElement('video');
-  v.muted = true;
-  v.playsInline = true;
-  v.srcObject = stream;
-  await v.play();
-  // Đợi 1 frame để video có nội dung trước khi drawImage.
-  if ('requestVideoFrameCallback' in v) {
-    await new Promise<void>((r) => (v as any).requestVideoFrameCallback(() => r()));
-  } else {
-    await new Promise((r) => setTimeout(r, 250));
-  }
-
-  try {
-    const t = stream.getVideoTracks()[0].getSettings();
-    const tw = t.width ?? window.innerWidth;
-    const th = t.height ?? window.innerHeight;
-    const sx = tw / window.innerWidth;
-    const sy = th / window.innerHeight;
-
-    const rect = boxEl.getBoundingClientRect();
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(rect.width);
-    canvas.height = Math.round(rect.height);
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('Không tạo được canvas');
-    ctx.drawImage(
-      v,
-      rect.left * sx, rect.top * sy, rect.width * sx, rect.height * sy,
-      0, 0, canvas.width, canvas.height,
-    );
-
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.9),
-    );
-    if (!blob) throw new Error('Không tạo được ảnh');
-
-    const isHT = match.period === 4;
-    const phase = isHT ? 'HT' : match.isH2 ? 'H2' : 'H1';
-    const fd = new FormData();
-    fd.append('image', blob, 'shot.jpg');
-    fd.append('eventId', String(match.eventId));
-    fd.append('homeTeam', match.homeTeam);
-    fd.append('awayTeam', match.awayTeam);
-    fd.append('h1Home', String(match.h1Home));
-    fd.append('h1Away', String(match.h1Away));
-    fd.append('leagueName', match.leagueName || '');
-    fd.append('phase', phase);
-
-    const res = await fetch('/api/video-snapshot', { method: 'POST', body: fd });
-    const json = (await res.json()) as { ok: boolean; error?: string };
-    if (!json.ok) throw new Error(json.error || 'gửi thất bại');
-  } finally {
-    // Không stop track của stream dùng chung — chỉ ngắt khỏi video tạm.
-    v.srcObject = null;
-  }
+// Chụp ảnh phía SERVER: POST JSON lên /api/video-snapshot → route forward sang
+// microservice capture (headful Chrome/Xvfb) tự chụp + gửi Telegram. Mất ~30s.
+async function captureAndSend(match: GsLiveMatch, token: string): Promise<void> {
+  const isHT = match.period === 4;
+  const phase = isHT ? 'HT' : match.isH2 ? 'H2' : 'H1';
+  const res = await fetch('/api/video-snapshot', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      eventId: match.eventId,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      h1Home: match.h1Home,
+      h1Away: match.h1Away,
+      leagueName: match.leagueName || '',
+      phase,
+      token,
+    }),
+  });
+  const json = (await res.json().catch(() => ({ ok: false, error: 'lỗi phản hồi' }))) as {
+    ok: boolean;
+    error?: string;
+  };
+  if (!json.ok) throw new Error(json.error || 'gửi thất bại');
 }
 
 // Cho phép dán nguyên link (vd https://m.zenandfe.com/?token=69-xxx&agentId=69&…)
@@ -173,26 +111,22 @@ function OuLiveRow({
   );
 }
 
-// Hộp kèo dưới video: Chấp (2 line) + Tài Xỉu (2 line), cả trận (FT).
-// Khi nhà cái khoá kèo (match.suspended) → phủ mờ + ổ khoá CHỈ trên hộp này,
-// video phía trên KHÔNG bị ảnh hưởng. Style ổ khoá mirror RankingLive (amber #fbbf24).
-function OddsBox({ match }: { match: GsLiveMatch }) {
-  const hcRows: (GsLiveMatch['hcLines'][number] | null)[] = [match.hcLines[0] ?? null, match.hcLines[1] ?? null];
-  const ouRows: (GsLiveMatch['ouLines'][number] | null)[] = [match.ouLines[0] ?? null, match.ouLines[1] ?? null];
+// Một nhóm kèo (Chấp + Tài Xỉu) cho MỘT hiệp: nhãn hiệp + 2 cột x 2 line.
+// hcLines/ouLines rỗng (vd đã sang H2 nên không còn kèo H1) → render 2 dòng "—".
+function OddsHalf({
+  label,
+  hcLines,
+  ouLines,
+}: {
+  label: string;
+  hcLines: GsLiveMatch['hcLines'];
+  ouLines: GsLiveMatch['ouLines'];
+}) {
+  const hcRows: (GsLiveMatch['hcLines'][number] | null)[] = [hcLines[0] ?? null, hcLines[1] ?? null];
+  const ouRows: (GsLiveMatch['ouLines'][number] | null)[] = [ouLines[0] ?? null, ouLines[1] ?? null];
   return (
-    <div className="relative border-t border-[#222] px-3 py-2">
-      {/* Khoá kèo: phủ mờ + ổ khoá CHỈ hộp odds, không đụng video */}
-      {match.suspended && (
-        <>
-          <div className="pointer-events-none absolute inset-0 z-10 bg-[#0d0d0d]/60" />
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-            <div className="flex items-center gap-1.5 rounded-md border border-[#fbbf24]/50 bg-black/80 px-2.5 py-1 text-[11px] font-semibold text-[#fbbf24] shadow-lg">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-              Nhà cái đang khoá kèo
-            </div>
-          </div>
-        </>
-      )}
+    <div className="flex flex-col gap-0.5">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-[#8ecbd6]">{label}</div>
       <div className="flex gap-2">
         {/* Chấp */}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -212,6 +146,33 @@ function OddsBox({ match }: { match: GsLiveMatch }) {
             ))}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Hộp kèo dưới video: HAI nhóm — "H1" (hcH1Lines/ouH1Lines) + "Cả trận" (hcLines/ouLines).
+// Khi nhà cái khoá kèo (match.suspended) → phủ mờ + ổ khoá CHỈ trên hộp này (cả 2 hiệp),
+// video phía trên KHÔNG bị ảnh hưởng. Style ổ khoá mirror RankingLive (amber #fbbf24).
+function OddsBox({ match }: { match: GsLiveMatch }) {
+  return (
+    <div className="relative border-t border-[#222] px-3 py-2">
+      {/* Khoá kèo: phủ mờ + ổ khoá CHỈ hộp odds, không đụng video */}
+      {match.suspended && (
+        <>
+          <div className="pointer-events-none absolute inset-0 z-10 bg-[#0d0d0d]/60" />
+          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+            <div className="flex items-center gap-1.5 rounded-md border border-[#fbbf24]/50 bg-black/80 px-2.5 py-1 text-[11px] font-semibold text-[#fbbf24] shadow-lg">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              Nhà cái đang khoá kèo
+            </div>
+          </div>
+        </>
+      )}
+      <div className="flex flex-col gap-2">
+        <OddsHalf label="H1" hcLines={match.hcH1Lines} ouLines={match.ouH1Lines} />
+        <div className="border-t border-[#222]" />
+        <OddsHalf label="Cả trận" hcLines={match.hcLines} ouLines={match.ouLines} />
       </div>
     </div>
   );
@@ -240,13 +201,13 @@ function VideoCell({
   const src = `https://det.zenandfe.com/?token=${encodeURIComponent(token)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${match.eventId}&brand=&muted=1`;
   const isHT = match.period === 4;
 
-  // 📸 chụp: capture phía client (getDisplayMedia + crop) rồi gửi Telegram.
+  // 📸 chụp: POST JSON lên /api/video-snapshot → microservice chụp headless + gửi Telegram (~30s).
   const onSnapshot = async () => {
     if (shooting) return;
     setShooting(true);
     onToast('Đang chụp…', true);
     try {
-      await captureAndSend(match);
+      await captureAndSend(match, token);
       onToast('Đã gửi ảnh vào Tele', true);
     } catch (e) {
       onToast(e instanceof Error ? e.message : String(e), false);
@@ -257,7 +218,7 @@ function VideoCell({
 
   return (
     <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
-      {/* Header: teams + score + phase */}
+      {/* Header: teams + score + phase + 📸 chụp */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222]">
         <div className="flex-1 min-w-0 text-[13px] font-semibold text-white truncate">
           {match.homeTeam} <span className="text-[#555]">vs</span> {match.awayTeam}
@@ -269,20 +230,20 @@ function VideoCell({
           {isHT ? 'HT' : match.isH2 ? 'H2' : 'H1'}
           {match.minuteElapsed != null ? ` ${match.minuteElapsed}'` : ''}
         </span>
-      </div>
-
-      {/* Video box */}
-      <div className="relative bg-black overflow-hidden" style={{ width: displayW, height: displayH }} data-cap-event={match.eventId}>
-        {/* 📸 chụp video góc trên-phải, nổi trên iframe */}
+        {/* 📸 chụp — bên phải badge hiệp; gọi microservice, KHÔNG chụp phía client */}
         <button
           type="button"
           onClick={onSnapshot}
           disabled={shooting}
           title="Chụp ảnh video gửi Telegram"
-          className="absolute right-1 top-1 z-10 rounded border border-[#444]/50 bg-black/70 px-1.5 py-0.5 text-[10px] text-[#aaa] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {shooting ? '⏳' : '📸'}
+          {shooting ? '⏳ Đang chụp…' : '📸'}
         </button>
+      </div>
+
+      {/* Video box */}
+      <div className="relative bg-black overflow-hidden" style={{ width: displayW, height: displayH }}>
         {loaded ? (
           <iframe
             src={src}
