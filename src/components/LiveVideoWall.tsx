@@ -2,34 +2,106 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GsLiveMatch } from '../app/api/gs-live/route';
+import { notiOnce } from '../lib/notiDedup';
 
 const LS_TOKEN = 'gs_video_wall_token';
 const REFRESH_MS = 2_000;
 
-// Chụp ảnh phía SERVER: POST JSON lên /api/video-snapshot → route forward sang
-// microservice capture (headful Chrome/Xvfb) tự chụp + gửi Telegram. Mất ~30s.
-async function captureAndSend(match: GsLiveMatch, token: string): Promise<void> {
+// Stream chia sẻ màn hình dùng chung cả session — xin quyền getDisplayMedia CHỈ 1 LẦN.
+// Track chết (user stop share / tab đóng) → xoá cache để lần sau xin lại.
+let sharedStream: MediaStream | null = null;
+async function getShareStream(): Promise<MediaStream> {
+  const track = sharedStream?.getVideoTracks()[0];
+  if (track && track.readyState === 'live') return sharedStream!;
+  const stream = await navigator.mediaDevices.getDisplayMedia({
+    video: { displaySurface: 'browser' },
+    audio: false,
+    preferCurrentTab: true,
+  } as MediaStreamConstraints);
+  sharedStream = stream;
+  const vt = stream.getVideoTracks()[0];
+  if (vt) vt.onended = () => { sharedStream = null; };
+  return stream;
+}
+
+// Chụp ảnh CLIENT-SIDE (getDisplayMedia) tức thì: cắt đúng khung video đang phát
+// (ô data-cap-event) rồi POST multipart lên /api/video-snapshot → gửi Telegram.
+async function captureAndSend(
+  match: GsLiveMatch,
+  _token: string,
+  score: { home: number; away: number },
+): Promise<void> {
   const isHT = match.period === 4;
   const phase = isHT ? 'HT' : match.isH2 ? 'H2' : 'H1';
-  const res = await fetch('/api/video-snapshot', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      eventId: match.eventId,
-      homeTeam: match.homeTeam,
-      awayTeam: match.awayTeam,
-      h1Home: match.h1Home,
-      h1Away: match.h1Away,
-      leagueName: match.leagueName || '',
-      phase,
-      token,
-    }),
+
+  const stream = await getShareStream();
+
+  // <video> ẩn để lấy frame từ stream.
+  const v = document.createElement('video');
+  v.muted = true;
+  v.playsInline = true;
+  v.srcObject = stream;
+  await v.play();
+  // Chờ đúng 1 frame render xong trước khi vẽ canvas.
+  await new Promise<void>((resolve) => {
+    const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => void }).requestVideoFrameCallback;
+    if (rvfc) rvfc.call(v, () => resolve());
+    else setTimeout(resolve, 120);
   });
-  const json = (await res.json().catch(() => ({ ok: false, error: 'lỗi phản hồi' }))) as {
-    ok: boolean;
-    error?: string;
-  };
-  if (!json.ok) throw new Error(json.error || 'gửi thất bại');
+
+  try {
+    const settings = stream.getVideoTracks()[0].getSettings();
+    const tw = settings.width!;
+    const th = settings.height!;
+    // Stream chụp cả tab/màn hình theo pixel; toạ độ DOM theo CSS px → cần scale.
+    const sx = tw / window.innerWidth;
+    const sy = th / window.innerHeight;
+
+    const el = document.querySelector(`[data-cap-event="${match.eventId}"]`);
+    if (!el) throw new Error('không thấy khung video');
+    const box = el.getBoundingClientRect();
+
+    const clamp = (n: number, max: number) => Math.max(0, Math.min(n, max));
+    // Nguồn crop trong stream — kẹp trong [0..tw]/[0..th] tránh tràn ngoài frame.
+    const rawL = box.left * sx;
+    const rawT = box.top * sy;
+    const srcL = clamp(rawL, tw);
+    const srcT = clamp(rawT, th);
+    const srcW = clamp(box.width * sx, tw - srcL);
+    const srcH = clamp(box.height * sy, th - srcT);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(box.width);
+    canvas.height = Math.round(box.height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('không tạo được canvas');
+    ctx.drawImage(v, srcL, srcT, srcW, srcH, 0, 0, canvas.width, canvas.height);
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92),
+    );
+    if (!blob) throw new Error('không tạo được ảnh');
+
+    const fd = new FormData();
+    fd.append('image', blob, 'shot.jpg');
+    fd.append('eventId', String(match.eventId));
+    fd.append('homeTeam', match.homeTeam);
+    fd.append('awayTeam', match.awayTeam);
+    fd.append('h1Home', String(score.home));
+    fd.append('h1Away', String(score.away));
+    fd.append('leagueName', match.leagueName || '');
+    fd.append('phase', phase);
+
+    const res = await fetch('/api/video-snapshot', { method: 'POST', body: fd });
+    const json = (await res.json().catch(() => ({ ok: false, error: 'lỗi phản hồi' }))) as {
+      ok: boolean;
+      error?: string;
+    };
+    if (!json.ok) throw new Error(json.error || 'gửi thất bại');
+  } finally {
+    // Chỉ nhả <video>, KHÔNG stop track chung để lần sau khỏi xin quyền lại.
+    v.srcObject = null;
+  }
 }
 
 // Cho phép dán nguyên link (vd https://m.zenandfe.com/?token=69-xxx&agentId=69&…)
@@ -70,6 +142,23 @@ const ASPECT = 320 / 500;
 // Fallback cell width before the grid column is measured on first paint.
 const FALLBACK_W = 440;
 
+// Màu giá Malay theo DẤU: dương → trắng, âm → đỏ. (Bên nhà/khách·tài/xỉu phân biệt bằng vị trí trái/phải.)
+function priceCls(v: string | null | undefined): string {
+  const n = parseFloat(String(v ?? ''));
+  return !Number.isNaN(n) && n < 0 ? 'text-[#fb7185]' : 'text-white';
+}
+
+// Thẻ đỏ — ô đỏ nhỏ (+ số lượng nếu ≥2) cạnh tên đội, ẩn khi 0 (mirror RankingLive).
+function RedCard({ n }: { n: number }) {
+  if (!n || n <= 0) return null;
+  return (
+    <span className="ml-1 inline-flex shrink-0 items-center gap-0.5 align-middle" title={`${n} thẻ đỏ`}>
+      <span className="inline-block h-[11px] w-[8px] rounded-[2px] bg-[#ef4444]" />
+      {n > 1 && <span className="text-[9px] font-bold text-[#ef4444]">×{n}</span>}
+    </span>
+  );
+}
+
 // Kèo Chấp (handicap) live — line + giá nhà/khách (Malay). Đội chấp gạch chân đỏ,
 // đồng bộ cách RankingLive đánh dấu favoriteSide. Đội nhà xanh · khách đỏ.
 function HcLiveRow({
@@ -80,13 +169,12 @@ function HcLiveRow({
   divider: boolean;
 }) {
   const dead = !row;
-  const fav = row?.favoriteSide ?? null;
   return (
     <div className={`flex items-center gap-1 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
       <span className="w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
-      <span className={`min-w-0 flex-1 truncate text-[#4ade80] ${fav === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-2' : ''}`}>Nhà <span className="font-semibold">{dead ? '—' : row!.home ?? '—'}</span></span>
+      <span className={`min-w-0 flex-1 truncate text-right font-semibold ${dead ? 'text-[#555]' : priceCls(row!.home)}`}>{dead ? '—' : row!.home ?? '—'}</span>
       <span className="shrink-0 text-[#555]">·</span>
-      <span className={`min-w-0 flex-1 truncate text-[#fb7185] ${fav === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-2' : ''}`}>Khách <span className="font-semibold">{dead ? '—' : row!.away ?? '—'}</span></span>
+      <span className={`min-w-0 flex-1 truncate font-semibold ${dead ? 'text-[#555]' : priceCls(row!.away)}`}>{dead ? '—' : row!.away ?? '—'}</span>
     </div>
   );
 }
@@ -104,9 +192,9 @@ function OuLiveRow({
   return (
     <div className={`flex items-center gap-1 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
       <span className="w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
-      <span className="min-w-0 flex-1 truncate text-[#4ade80]">Tài <span className="font-semibold">{dead ? '—' : row!.over ?? '—'}</span></span>
+      <span className={`min-w-0 flex-1 truncate text-right font-semibold ${dead ? 'text-[#555]' : priceCls(row!.over)}`}>{dead ? '—' : row!.over ?? '—'}</span>
       <span className="shrink-0 text-[#555]">·</span>
-      <span className="min-w-0 flex-1 truncate text-[#fb7185]">Xỉu <span className="font-semibold">{dead ? '—' : row!.under ?? '—'}</span></span>
+      <span className={`min-w-0 flex-1 truncate font-semibold ${dead ? 'text-[#555]' : priceCls(row!.under)}`}>{dead ? '—' : row!.under ?? '—'}</span>
     </div>
   );
 }
@@ -125,26 +213,20 @@ function OddsHalf({
   const hcRows: (GsLiveMatch['hcLines'][number] | null)[] = [hcLines[0] ?? null, hcLines[1] ?? null];
   const ouRows: (GsLiveMatch['ouLines'][number] | null)[] = [ouLines[0] ?? null, ouLines[1] ?? null];
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <div className="text-[9px] font-bold uppercase tracking-wider text-[#8ecbd6]">{label}</div>
       <div className="flex gap-2">
-        {/* Chấp */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#777]">Chấp</div>
-          <div className="flex flex-col gap-0.5">
-            {hcRows.map((row, idx) => (
-              <HcLiveRow key={idx} row={row} divider={idx > 0} />
-            ))}
-          </div>
+        {/* Chấp (trái) — line + nhà · khách */}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {hcRows.map((row, idx) => (
+            <HcLiveRow key={idx} row={row} divider={idx > 0} />
+          ))}
         </div>
-        {/* Tài Xỉu */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="mb-0.5 text-[9px] font-semibold uppercase tracking-wider text-[#777]">Tài Xỉu</div>
-          <div className="flex flex-col gap-0.5">
-            {ouRows.map((row, idx) => (
-              <OuLiveRow key={idx} row={row} divider={idx > 0} />
-            ))}
-          </div>
+        {/* Tài Xỉu (phải) — line + tài · xỉu */}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          {ouRows.map((row, idx) => (
+            <OuLiveRow key={idx} row={row} divider={idx > 0} />
+          ))}
         </div>
       </div>
     </div>
@@ -155,10 +237,17 @@ function OddsHalf({
 // Khi nhà cái khoá kèo (match.suspended) → phủ mờ + ổ khoá CHỈ trên hộp này (cả 2 hiệp),
 // video phía trên KHÔNG bị ảnh hưởng. Style ổ khoá mirror RankingLive (amber #fbbf24).
 function OddsBox({ match }: { match: GsLiveMatch }) {
+  // Khoá kèo per-match — mirror RankingLive (Tài Xỉu Live): đóng cược HOẶC O/U (cả trận / H1)
+  // bị suspend, KHÔNG chỉ dựa kèo chấp (match.suspended). Nhà cái hay khoá riêng O/U.
+  const locked =
+    match.bettingOpen === false ||
+    !!match.ouLines?.[0]?.suspended ||
+    !!match.ouH1Lines?.[0]?.suspended ||
+    match.suspended;
   return (
     <div className="relative border-t border-[#222] px-3 py-2">
       {/* Khoá kèo: phủ mờ + ổ khoá CHỈ hộp odds, không đụng video */}
-      {match.suspended && (
+      {locked && (
         <>
           <div className="pointer-events-none absolute inset-0 z-10 bg-[#0d0d0d]/60" />
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
@@ -169,10 +258,10 @@ function OddsBox({ match }: { match: GsLiveMatch }) {
           </div>
         </>
       )}
-      <div className="flex flex-col gap-2">
-        <OddsHalf label="H1" hcLines={match.hcH1Lines} ouLines={match.ouH1Lines} />
-        <div className="border-t border-[#222]" />
+      <div className="flex gap-3">
         <OddsHalf label="Cả trận" hcLines={match.hcLines} ouLines={match.ouLines} />
+        <div className="w-px shrink-0 self-stretch bg-[#222]" />
+        <OddsHalf label="H1" hcLines={match.hcH1Lines} ouLines={match.ouH1Lines} />
       </div>
     </div>
   );
@@ -186,31 +275,44 @@ function VideoCell({
   match,
   displayW,
   onToast,
+  bulk,
+  h1Remembered,
 }: {
   token: string;
   agentId: string;
   match: GsLiveMatch;
   displayW: number;
   onToast: (msg: string, ok: boolean) => void;
+  bulk: { on: boolean; n: number } | null;
+  h1Remembered: { home: number; away: number } | undefined;
 }) {
   const [loaded, setLoaded] = useState(false);
+  // "Bật hết / Tắt hết" từ parent → set loaded theo tín hiệu bulk. Ô mới mount cũng
+  // theo trạng thái bulk mới nhất. Iframe đã keyed theo eventId nên khi loaded=true
+  // rồi cuộn khuất/đổi tab KHÔNG remount → video WebRTC vẫn chạy tiếp.
+  useEffect(() => { if (bulk) setLoaded(bulk.on); }, [bulk]);
   const [shooting, setShooting] = useState(false);
   const displayH = Math.round(displayW * ASPECT);
   const scale = displayW / CONTENT_W;
   const iframeH = Math.round(displayH / scale);
   const src = `https://det.zenandfe.com/?token=${encodeURIComponent(token)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${match.eventId}&brand=&muted=1`;
   const isHT = match.period === 4;
+  // Đội chấp (favorite) → tô đỏ tên ở title. Ưu tiên kèo cả trận, fallback H1.
+  const favSide = match.hcLines?.[0]?.favoriteSide ?? match.hcH1Lines?.[0]?.favoriteSide ?? null;
 
-  // 📸 chụp: POST JSON lên /api/video-snapshot → microservice chụp headless + gửi Telegram (~30s).
+  // 📸 chụp CLIENT-SIDE tức thì (getDisplayMedia) → cắt khung video → gửi Telegram.
   const onSnapshot = async () => {
     if (shooting) return;
     setShooting(true);
-    onToast('Đang chụp…', true);
     try {
-      await captureAndSend(match, token);
+      const useRemembered = match.h1Home === 0 && match.h1Away === 0 && !!h1Remembered;
+      const score = useRemembered
+        ? { home: h1Remembered!.home, away: h1Remembered!.away }
+        : { home: match.h1Home, away: match.h1Away };
+      await captureAndSend(match, token, score);
       onToast('Đã gửi ảnh vào Tele', true);
     } catch (e) {
-      onToast(e instanceof Error ? e.message : String(e), false);
+      onToast('Không chụp được: ' + (e instanceof Error ? e.message : String(e)), false);
     } finally {
       setShooting(false);
     }
@@ -220,17 +322,27 @@ function VideoCell({
     <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
       {/* Header: teams + score + phase + 📸 chụp */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222]">
-        <div className="flex-1 min-w-0 text-[13px] font-semibold text-white truncate">
-          {match.homeTeam} <span className="text-[#555]">vs</span> {match.awayTeam}
+        <div className="flex-1 min-w-0 text-[13px] font-semibold truncate">
+          <span className={favSide === 'home' ? 'text-[#fb7185]' : 'text-white'}>{match.homeTeam}</span>
+          <RedCard n={match.redHome} />
+          <span className="text-[#555]"> vs </span>
+          <span className={favSide === 'away' ? 'text-[#fb7185]' : 'text-white'}>{match.awayTeam}</span>
+          <RedCard n={match.redAway} />
         </div>
         <div className="shrink-0 text-[14px] font-bold tabular-nums text-white">
-          {match.h1Home} - {match.h1Away}
+          {/* Tỉ số: nếu live mất H1 (0-0) mà đã nhớ giá trị cũ thì hiện giá trị đã nhớ. */}
+          {(() => {
+            const useRemembered = match.h1Home === 0 && match.h1Away === 0 && !!h1Remembered;
+            const home = useRemembered ? h1Remembered!.home : match.h1Home;
+            const away = useRemembered ? h1Remembered!.away : match.h1Away;
+            return `${home} - ${away}`;
+          })()}
         </div>
         <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold text-[#aaa] bg-white/[.06] border border-[#2a2a2a]">
           {isHT ? 'HT' : match.isH2 ? 'H2' : 'H1'}
           {match.minuteElapsed != null ? ` ${match.minuteElapsed}'` : ''}
         </span>
-        {/* 📸 chụp — bên phải badge hiệp; gọi microservice, KHÔNG chụp phía client */}
+        {/* 📸 chụp — bên phải badge hiệp; chụp phía CLIENT tức thì rồi gửi Telegram */}
         <button
           type="button"
           onClick={onSnapshot}
@@ -238,12 +350,12 @@ function VideoCell({
           title="Chụp ảnh video gửi Telegram"
           className="shrink-0 rounded px-1.5 py-0.5 text-[10px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {shooting ? '⏳ Đang chụp…' : '📸'}
+          {shooting ? '⏳' : '📸'}
         </button>
       </div>
 
-      {/* Video box */}
-      <div className="relative bg-black overflow-hidden" style={{ width: displayW, height: displayH }}>
+      {/* Video box — data-cap-event: 📸 crop đúng ô này (chỉ vùng iframe, không cả màn hình) */}
+      <div data-cap-event={match.eventId} className="relative bg-black overflow-hidden" style={{ width: displayW, height: displayH }}>
         {loaded ? (
           <iframe
             src={src}
@@ -277,16 +389,6 @@ function VideoCell({
 }
 
 export default function LiveVideoWall() {
-  // Desktop check — cổng JS boolean; iframe KHÔNG bao giờ mount trên mobile.
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 768px)');
-    const update = () => setIsDesktop(mq.matches);
-    update();
-    mq.addEventListener('change', update);
-    return () => mq.removeEventListener('change', update);
-  }, []);
-
   // Token — nhập tay ở top bar, lưu localStorage, prefill lúc mount.
   const [token, setToken] = useState('');
   useEffect(() => {
@@ -302,24 +404,75 @@ export default function LiveVideoWall() {
   };
   const agentId = token.split('-')[0] || '69';
 
-  // Toast chụp ảnh — 1 thông báo fixed góc dưới-phải, tự ẩn sau 3s.
+  // Toast — 1 thông báo fixed góc dưới-phải, tự ẩn sau 3s. Nhiều sự kiện trong 1 tick
+  // (2 bàn cùng lúc, hết trận + ghi bàn…) nên dùng HÀNG ĐỢI: mỗi msg hiện tuần tự ~3s.
   const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
+  const toastQueue = useRef<{ msg: string; ok: boolean }[]>([]);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const showToast = (msg: string, ok: boolean) => {
-    setToast({ msg, ok });
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  // Rút msg kế tiếp khỏi hàng đợi; hết thì ẩn toast. Tự gọi lại sau 3s.
+  const drainToast = () => {
+    const next = toastQueue.current.shift();
+    if (!next) { setToast(null); toastTimer.current = null; return; }
+    setToast(next);
+    toastTimer.current = setTimeout(drainToast, 3000);
   };
+  // Đẩy 1 msg vào hàng đợi; nếu chưa có toast nào đang chạy thì khởi động vòng rút.
+  const showToast = (msg: string, ok: boolean) => {
+    toastQueue.current.push({ msg, ok });
+    if (!toastTimer.current) drainToast();
+  };
+
+  // Noti OS/browser (ra Macbook) + toast in-app — bật/tắt ĐỘC LẬP với trang Ranking
+  // (dùng key localStorage riêng cho video-wall). OS noti mặc định TẮT; toast mặc định BẬT.
+  // Ref mirror để vòng poll (async) đọc giá trị mới nhất.
+  const [osNotiGoal, setOsNotiGoal] = useState(false);
+  const [osNotiHT, setOsNotiHT] = useState(false);
+  const osNotiGoalRef = useRef(false);
+  const osNotiHTRef = useRef(false);
+  const [toastOn, setToastOn] = useState(true);
+  const toastOnRef = useRef(true);
+  useEffect(() => {
+    const g = localStorage.getItem('gs_video_os_noti_goal') === '1';
+    const h = localStorage.getItem('gs_video_os_noti_ht') === '1';
+    setOsNotiGoal(g); osNotiGoalRef.current = g;
+    setOsNotiHT(h);   osNotiHTRef.current = h;
+    const t = localStorage.getItem('gs_video_toast') !== '0'; // chỉ '0' mới tắt
+    setToastOn(t); toastOnRef.current = t;
+  }, []);
+
+  async function requestAndSet(
+    key: string,
+    setter: (v: boolean) => void,
+    ref: { current: boolean },
+  ) {
+    if (typeof Notification === 'undefined') return;
+    if (Notification.permission !== 'granted') {
+      const p = await Notification.requestPermission();
+      if (p !== 'granted') return;
+    }
+    setter(true); ref.current = true;
+    localStorage.setItem(key, '1');
+  }
+
+  function notifyOS(kind: 'goal' | 'ht', title: string, body: string, eventId?: number) {
+    const allowed = kind === 'goal' ? osNotiGoalRef.current : osNotiHTRef.current;
+    if (!allowed) return;
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (eventId != null && !notiOnce(`${kind}:${eventId}:${body.split('\n')[0]}`)) return; // chống noti trùng (nhiều nguồn/race)
+    new Notification(title, { body, silent: false });
+  }
 
   // Grid column width — đo cột thực bằng ResizeObserver để lưới 3 cột fill ngang.
   const gridRef = useRef<HTMLDivElement>(null);
   const [cellW, setCellW] = useState(FALLBACK_W);
   useEffect(() => {
-    if (!isDesktop) return;
     const el = gridRef.current;
     if (!el) return;
     const measure = () => {
-      const cols = 3;
+      // Số cột theo breakpoint Tailwind của lưới (lg:3 · sm:2 · mobile:1) — phải khớp
+      // grid-cols để cellW = bề rộng cột thật, iframe scale đúng.
+      const iw = window.innerWidth;
+      const cols = iw >= 1024 ? 3 : iw >= 640 ? 2 : 1;
       const gap = 12; // gap-3 = 0.75rem = 12px
       const total = el.clientWidth;
       const w = Math.floor((total - gap * (cols - 1)) / cols);
@@ -328,17 +481,46 @@ export default function LiveVideoWall() {
     measure();
     const obs = new ResizeObserver(measure);
     obs.observe(el);
-    return () => obs.disconnect();
-  }, [isDesktop]);
+    // window resize cũng đo lại: vượt breakpoint / xoay ngang màn hình.
+    window.addEventListener('resize', measure);
+    return () => { obs.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  // Lọc giải — Set các key giải ĐANG BẬT. Giải mới xuất hiện coi như BẬT mặc định
+  // (chỉ ẩn giải user chủ động tắt). Không nhớ qua reload — mặc định BẬT hết mỗi lần load.
+  const [disabledLeagues, setDisabledLeagues] = useState<Set<string>>(new Set());
+  const toggleLeague = (key: string) => {
+    setDisabledLeagues((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // Snapshot trận ở tick TRƯỚC (keyed eventId) để diff sự kiện: tổng bàn, phase, còn-live.
+  // primedRef=false ở lần fetch đầu → chỉ lập baseline, KHÔNG bắn toast.
+  const prevSnapshotRef = useRef<Map<number, { total: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string }>>(new Map());
+  const primedRef = useRef(false);
+
+  // Nhớ tỉ số H1 per-eventId (mirror RankingLive h1FinalRef/h1Finals): live API hay
+  // NGỪNG gửi tỉ số H1 khi trận sang H2 → header về 0-0. Ghi lại khi h1Home/h1Away > 0
+  // (và chốt lúc H1→H2), sau đó render giá trị đã nhớ để không mất tỉ số.
+  const h1FinalRef = useRef<Map<number, { home: number; away: number }>>(new Map());
+  const [h1Finals, setH1Finals] = useState<Map<number, { home: number; away: number }>>(new Map());
 
   // Match list — fetch /api/gs-live, refresh mỗi 15s, refetch khi token đổi.
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [loading, setLoading] = useState(false);
+  // Bật/tắt HẾT video: mỗi lần bấm đổi `n` để mọi VideoCell re-apply (kể cả ô mới mount).
+  const [bulkLoad, setBulkLoad] = useState<{ on: boolean; n: number } | null>(null);
+  const bulkN = useRef(0);
+  // KHÔNG remount iframe khi đổi/quay lại tab (user 2026-08-15: giữ video chạy, đừng reload).
+  // iframe không có key động + không unmount → luồng WebRTC tự resume khi quay lại, khỏi load lại.
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
 
   useEffect(() => {
-    if (!isDesktop || !token) return;
+    if (!token) return;
     let cancelled = false;
 
     const fetchMatches = async () => {
@@ -349,7 +531,56 @@ export default function LiveVideoWall() {
         const json = (await res.json()) as { ok: boolean; matches?: GsLiveMatch[]; error?: string };
         if (cancelled) return;
         if (!json.ok) throw new Error(json.error || 'Lỗi tải trận');
-        setMatches((json.matches ?? []).filter((m) => m.isLive));
+        const live = (json.matches ?? []).filter((m) => m.isLive);
+
+        // Diff sự kiện so với snapshot tick trước — bỏ qua lần đầu (chỉ lập baseline).
+        const next = new Map<number, { total: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string }>();
+        for (const m of live) {
+          const phase: 'H1' | 'HT' | 'H2' = m.period === 4 ? 'HT' : m.isH2 ? 'H2' : 'H1';
+          next.set(m.eventId, { total: m.h1Home + m.h1Away, phase, homeTeam: m.homeTeam, awayTeam: m.awayTeam });
+        }
+        if (primedRef.current) {
+          const prev = prevSnapshotRef.current;
+          for (const m of live) {
+            const before = prev.get(m.eventId);
+            if (!before) continue; // trận mới xuất hiện — không có gì để so
+            const nowTotal = m.h1Home + m.h1Away;
+            // Ghi bàn: tổng bàn tăng → toast (nếu bật) + noti OS
+            if (nowTotal > before.total) {
+              if (toastOnRef.current) showToast(`⚽ ${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, true);
+              notifyOS('goal', `⚽ ${m.homeTeam} vs ${m.awayTeam} ghi bàn!`, `${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, m.eventId);
+            }
+            // Hết hiệp 1: phase trước là H1, giờ sang HT (period=4) → toast (nếu bật) + noti OS
+            if (before.phase === 'H1' && m.period === 4) {
+              if (toastOnRef.current) showToast(`⏸️ Hết hiệp 1 · ${m.homeTeam} vs ${m.awayTeam}`, true);
+              notifyOS('ht', '🔔 Hết Hiệp 1', `${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, m.eventId);
+            }
+          }
+          // Hết trận: eventId có ở snapshot trước nhưng biến mất khỏi list live hiện tại (chỉ toast in-app)
+          for (const [eid, before] of prev) {
+            if (!next.has(eid)) {
+              if (toastOnRef.current) showToast(`🏁 Hết trận · ${before.homeTeam} vs ${before.awayTeam}`, true);
+            }
+          }
+        }
+        // Nhớ tỉ số H1: ghi khi thấy giá trị > 0 (mirror RankingLive — chốt H1 khi còn
+        // đọc được). Khi API sau đó ngừng gửi (0-0/blank) thì giữ nguyên giá trị đã nhớ.
+        let h1Changed = false;
+        for (const m of live) {
+          if (m.h1Home > 0 || m.h1Away > 0) {
+            const prev = h1FinalRef.current.get(m.eventId);
+            if (!prev || prev.home !== m.h1Home || prev.away !== m.h1Away) {
+              h1FinalRef.current.set(m.eventId, { home: m.h1Home, away: m.h1Away });
+              h1Changed = true;
+            }
+          }
+        }
+        if (h1Changed) setH1Finals(new Map(h1FinalRef.current));
+
+        prevSnapshotRef.current = next;
+        primedRef.current = true;
+
+        setMatches(live);
         setLastFetch(new Date());
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -361,37 +592,78 @@ export default function LiveVideoWall() {
     fetchMatches();
     const id = setInterval(fetchMatches, REFRESH_MS);
     return () => { cancelled = true; clearInterval(id); };
-  }, [isDesktop, token]);
-
-  // Mobile: chỉ hiện thông báo, KHÔNG render lưới/iframe.
-  if (!isDesktop) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center px-6 text-center">
-        <div className="text-[14px] text-[#aaa]">
-          Trang này chỉ hỗ trợ trên máy tính (desktop)
-        </div>
-      </div>
-    );
-  }
+  }, [token]);
 
   return (
-    <div className="p-6">
+    <div className="p-5">
       {/* Top section: title + token input + refresh status */}
-      <div className="mb-5">
-        <div className="mb-3 flex items-baseline gap-3">
-          <h1 className="text-xl font-bold text-white">Video Live — Tất cả trận</h1>
-          <span className="text-xs text-[#666]">
-            {matches.length} trận live
-            {lastFetch && ` · cập nhật ${lastFetch.toLocaleTimeString('vi-VN')}`}
-            {loading && ' · đang tải…'}
+      <div className="mb-2">
+        {/* Header gọn: tiêu đề + trạng thái + toggle noti + bật/tắt hết trên CÙNG 1 hàng wrap */}
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <h1 className="text-base font-bold text-white whitespace-nowrap">Video Live</h1>
+          <span className="text-[11px] text-[#666]">
+            {matches.length} trận{lastFetch && ` · ${lastFetch.toLocaleTimeString('vi-VN')}`}
           </span>
+          <button
+            type="button"
+            onClick={() => {
+              if (osNotiGoal) { setOsNotiGoal(false); osNotiGoalRef.current = false; localStorage.setItem('gs_video_os_noti_goal', '0'); }
+              else requestAndSet('gs_video_os_noti_goal', setOsNotiGoal, osNotiGoalRef);
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            title={osNotiGoal ? 'Tắt noti ghi bàn' : 'Bật noti ghi bàn ra Macbook'}
+          >
+            {osNotiGoal ? '⚽ Ghi bàn ON' : '⚽ Ghi bàn OFF'}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (osNotiHT) { setOsNotiHT(false); osNotiHTRef.current = false; localStorage.setItem('gs_video_os_noti_ht', '0'); }
+              else requestAndSet('gs_video_os_noti_ht', setOsNotiHT, osNotiHTRef);
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            title={osNotiHT ? 'Tắt noti hết H1' : 'Bật noti hết H1 ra Macbook'}
+          >
+            {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
+          </button>
+          {/* Bật/tắt toast popup trong app */}
+          <button
+            type="button"
+            onClick={() => {
+              const next = !toastOn;
+              setToastOn(next); toastOnRef.current = next;
+              localStorage.setItem('gs_video_toast', next ? '1' : '0');
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${toastOn ? 'border-[#17a2b8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            title={toastOn ? 'Tắt toast popup trong app' : 'Bật toast popup trong app'}
+          >
+            {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
+          </button>
+          {/* Bật/tắt TẤT CẢ video 1 lần (n đổi mỗi lần bấm để re-fire kể cả bấm lại) */}
+          <span className="mx-0.5 h-4 w-px bg-[#2a2a2a]" />
+          <button
+            type="button"
+            onClick={() => setBulkLoad({ on: true, n: ++bulkN.current })}
+            className="rounded px-2 py-0.5 text-[11px] border border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20 transition-colors"
+            title="Mở tất cả video cùng lúc"
+          >
+            ▶ Bật hết
+          </button>
+          <button
+            type="button"
+            onClick={() => setBulkLoad({ on: false, n: ++bulkN.current })}
+            className="rounded px-2 py-0.5 text-[11px] border border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444] transition-colors"
+            title="Tắt tất cả video cùng lúc"
+          >
+            ⏹ Tắt hết
+          </button>
         </div>
         <input
           type="text"
           value={token}
           onChange={(e) => onTokenChange(e.target.value)}
-          placeholder="Dán token hoặc nguyên link (tự bóc token)…"
-          className="w-full max-w-xl rounded-lg bg-white/[.07] px-3 py-2 text-sm text-white placeholder:text-[#666] outline-none border border-[#2a2a2a] focus:border-[#17a2b8]"
+          placeholder="Dán token hoặc nguyên link…"
+          className="w-full max-w-[260px] rounded-lg bg-white/[.07] px-2.5 py-1 text-xs text-white placeholder:text-[#666] outline-none border border-[#2a2a2a] focus:border-[#17a2b8]"
         />
       </div>
 
@@ -412,8 +684,30 @@ export default function LiveVideoWall() {
           <div className="text-[14px] text-[#888]">Không có trận nào đang live</div>
         </div>
       ) : (
-        <div className="flex flex-col gap-6">
-          {groupByLeague(matches).map((section, si) => (
+        <div className="flex flex-col gap-4">
+          {/* Lọc giải đấu — chip toggle mỗi giải đang live; mặc định BẬT, TẮT thì mờ. */}
+          <div className="flex flex-wrap gap-1.5">
+            {groupByLeague(matches).map((section) => {
+              const on = !disabledLeagues.has(section.key);
+              return (
+                <button
+                  key={section.key}
+                  type="button"
+                  onClick={() => toggleLeague(section.key)}
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold border transition-colors ${
+                    on
+                      ? 'border-[#17a2b8] bg-[#17a2b8]/15 text-[#8ee]'
+                      : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#666] hover:text-[#999]'
+                  }`}
+                >
+                  {section.name}
+                  <span className="ml-1 text-[9px] opacity-70">{section.matches.length}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {groupByLeague(matches).filter((section) => !disabledLeagues.has(section.key)).map((section, si) => (
             <section key={section.key}>
               {/* Header giải: tên giải + badge số trận */}
               <div className="mb-2 flex items-center gap-2 border-b border-[#222] pb-1.5">
@@ -422,9 +716,9 @@ export default function LiveVideoWall() {
                   {section.matches.length} trận
                 </span>
               </div>
-              <div ref={si === 0 ? gridRef : undefined} className="grid grid-cols-3 gap-3">
+              <div ref={si === 0 ? gridRef : undefined} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {section.matches.map((m) => (
-                  <VideoCell key={m.eventId} token={token} agentId={agentId} match={m} displayW={cellW} onToast={showToast} />
+                  <VideoCell key={m.eventId} token={token} agentId={agentId} match={m} displayW={cellW} onToast={showToast} bulk={bulkLoad} h1Remembered={h1Finals.get(m.eventId)} />
                 ))}
               </div>
             </section>
