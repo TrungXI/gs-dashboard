@@ -18,8 +18,9 @@ import TxReport from './TxReport';
 import BotReport from './BotReport';
 import FtPairs from './FtPairs';
 import GoalTimeline from './GoalTimeline';
+import LiveVideoWall from './LiveVideoWall';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor' | 'video';
 type FType = 'all' | '20p' | '16p';
 
 const LS_UI = 'gs_ui_state';
@@ -59,6 +60,10 @@ export default function Dashboard({
   // Deep-link: eventId to auto-open in the routed view's drawer (consumed once).
   const [deepLinkMatch, setDeepLinkMatch] = useState<number | null>(null);
   const deepLinkConsumed = useRef(false);
+  // Filter deep-link (from Tài Xỉu Live → open a pair in GS Dữ liệu). When set,
+  // the "reset teams on entering data view" effect skips once so the linked pair
+  // survives the mount.
+  const deepLinkFilterPending = useRef(false);
   // Preset carried from the H2H matrix → bet-table (league + team pair). Keyed so
   // a fresh click always remounts BetStatsTable with the new pair.
   const [betTablePreset, setBetTablePreset] = useState<{ key: number; type: FType; team: string; team2: string } | null>(null);
@@ -87,15 +92,23 @@ export default function Dashboard({
     const params = new URLSearchParams(window.location.search);
     const vParam = params.get('view');
     const mParam = params.get('match');
-    if (!vParam && !mParam) return;
+    const typeParam = params.get('type');
+    const teamParam = params.get('team');
+    const team2Param = params.get('team2');
+    if (!vParam && !mParam && !typeParam && !teamParam && !team2Param) return;
     deepLinkConsumed.current = true;
 
     const targetView: View | null =
-      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : vParam === 'tx' ? 'report' : null;
+      vParam === 'live' ? 'gs-live' : vParam === 'keo' ? 'bet-stats' : vParam === 'tx' ? 'report' : vParam === 'data' ? 'data' : null;
     if (targetView) setView(targetView);
 
     const eventId = mParam ? Number(mParam) : NaN;
     if (Number.isFinite(eventId)) setDeepLinkMatch(eventId);
+
+    // Pair deep-link → GS Dữ liệu pre-filtered by tournament + both teams.
+    if (typeParam === '20p' || typeParam === '16p' || typeParam === 'all') setFType(typeParam);
+    if (teamParam) { setFTeam(teamParam); deepLinkFilterPending.current = true; }
+    if (team2Param) { setFTeam2(team2Param); deepLinkFilterPending.current = true; }
 
     // Clean the URL back to "/" — consume the deep-link exactly once.
     window.history.replaceState(null, '', window.location.pathname);
@@ -115,7 +128,11 @@ export default function Dashboard({
 
   // Vào trang GS Dữ liệu (mount hoặc nhấn tab) → luôn reset filter 2 đội về 'all', không nhớ lựa chọn trước.
   useEffect(() => {
-    if (view === 'data') { setFTeam('all'); setFTeam2('all'); }
+    if (view === 'data') {
+      // A pair deep-link just set the teams — let it survive this one mount.
+      if (deepLinkFilterPending.current) { deepLinkFilterPending.current = false; return; }
+      setFTeam('all'); setFTeam2('all');
+    }
   }, [view]);
 
   // ── Fetch a server-filtered page. offset 0 replaces, >0 appends. ────────
@@ -160,7 +177,8 @@ export default function Dashboard({
     if (ui) {
       // A deep-link view (set above) takes precedence over the persisted view.
       if (ui.view && !deepLinkConsumed.current) setView(ui.view);
-      if (ui.fType) setFType(ui.fType);
+      // A deep-link (pair filter) sets fType authoritatively — don't clobber it.
+      if (ui.fType && !deepLinkConsumed.current) setFType(ui.fType);
       if (ui.fDate) setFDate(ui.fDate);
       // KHÔNG khôi phục fTeam/fTeam2 — filter 2 đội luôn reset về 'all' mỗi lần vào trang (user 2026-08-08).
     }
@@ -249,6 +267,7 @@ export default function Dashboard({
     ['data', '📋', 'GS Dữ liệu'],
     // ['gs-live', '🔴', 'GS Live'], // hidden from nav
     ['report', '🎯', 'Tài Xỉu Live'],
+    ['video', '📺', 'Video'],
     // ['match-analysis', '📈', 'Phân Tích Kèo'], // hidden from nav
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)
@@ -256,8 +275,8 @@ export default function Dashboard({
     // ['team-form', '🔄', 'Quy luật phong độ'], // hidden from nav
     ['tx-report', '💰', 'Báo cáo TX'],
     ['bot-report', '🤖', 'Bot Report'],
-    ['ft-pairs', '📈', 'Cặp WL/BL'],
-    ['goal-timeline', '⏱️', 'Timeline Ghi Bàn'],
+    // ['ft-pairs', '📈', 'Cặp WL/BL'], // hidden from nav
+    // ['goal-timeline', '⏱️', 'Timeline Ghi Bàn'], // hidden from nav
     ['monitor', '🖥️', 'Monitor'],
   ];
 
@@ -360,7 +379,7 @@ export default function Dashboard({
                   </option>
                 ))}
               </select>
-              <div className="w-52">
+              <div className="w-full md:w-52">
                 <SearchDropdown
                   options={dataTeamOptions}
                   value={fTeam}
@@ -369,7 +388,7 @@ export default function Dashboard({
                 />
               </div>
               <span className="text-xs font-semibold text-white/40">vs</span>
-              <div className="w-52">
+              <div className="w-full md:w-52">
                 <SearchDropdown
                   options={dataTeam2Options}
                   value={fTeam2}
@@ -455,6 +474,8 @@ export default function Dashboard({
           <FtPairs />
         ) : view === 'goal-timeline' ? (
           <GoalTimeline />
+        ) : view === 'video' ? (
+          <LiveVideoWall />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
