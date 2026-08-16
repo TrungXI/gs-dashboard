@@ -224,15 +224,8 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
   const activeMarket = isHT ? 'ft' : phase.big === 'H1' ? 'h1' : phase.big === 'H2' ? 'ft' : null;
   // Đội chấp (favorite) theo marker handicap tường minh từ feed.
   const favoriteSide = m.hcLines[0]?.favoriteSide ?? m.hcH1Lines[0]?.favoriteSide ?? null;
-  const unmapped = m.mappedHome === false || m.mappedAway === false;
   // Nhà cái KHOÁ kèo trận NÀY: đóng cược hoặc kèo O/U bị suspend.
   const locked = !!m.isLive && (m.bettingOpen === false || m.ouLines?.[0]?.suspended || m.ouH1Lines?.[0]?.suspended);
-  // 1X2 hiển thị: ưu tiên giá Malay verbatim; nếu chỉ có decimal thì hiện decimal.
-  const cell1x2 = (malay: string | null, dec: number | null): string => {
-    if (malay != null && malay !== '') return malay;
-    if (dec != null) return dec.toFixed(2);
-    return '—';
-  };
 
   return (
     <div
@@ -263,15 +256,6 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
               <span title={m.mappedAway === false ? `Chưa map: ${m.awayTeamRaw}` : favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`truncate text-[#fb7185] ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
               {m.goalTeam === 'away' && <span className="shrink-0 text-[11px] opacity-80" title="Đội khách vừa ghi bàn">⚽</span>}
               <RedCardBadge n={m.awayRed} />
-              {/* Cờ "chưa map" — làm backlog mapping thủ công hiện rõ trên trang */}
-              {unmapped && (
-                <span
-                  className="shrink-0 rounded border border-[#f59e0b]/50 bg-[#f59e0b]/15 px-1.5 py-0.5 text-[10px] md:text-[11px] font-semibold text-[#fcd34d]"
-                  title={`Chưa map sang tên GS: ${m.homeTeamRaw} vs ${m.awayTeamRaw}`}
-                >
-                  ⚠ chưa map
-                </span>
-              )}
             </div>
           </div>
           <div className="shrink-0 text-right">
@@ -304,21 +288,6 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
               📺 Video
             </button>
           )}
-        </div>
-      </div>
-      {/* 1X2 — nhà · hoà · khách (Malay verbatim, fallback decimal) */}
-      <div className="flex items-stretch gap-1.5 md:gap-2 text-[11px] md:text-[12px] tabular-nums">
-        <div className="flex min-w-0 flex-1 flex-col items-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2 py-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">1</span>
-          <span className={`font-semibold ${priceCls(m.malayHome)}`}>{cell1x2(m.malayHome, m.oddsHome)}</span>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col items-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2 py-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">X</span>
-          <span className={`font-semibold ${priceCls(m.malayDraw)}`}>{cell1x2(m.malayDraw, m.oddsDraw)}</span>
-        </div>
-        <div className="flex min-w-0 flex-1 flex-col items-center rounded-md border border-[#2a2a2a] bg-[#1c1c1c] px-2 py-1">
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-[#777]">2</span>
-          <span className={`font-semibold ${priceCls(m.malayAway)}`}>{cell1x2(m.malayAway, m.oddsAway)}</span>
         </div>
       </div>
       {/* Chấp (HDP) — 2 box: H1 + Hiệp 2 / cả trận */}
