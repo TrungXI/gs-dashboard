@@ -27,6 +27,13 @@ module.exports = {
       env: {
         DATABASE_URL: 'postgresql://gs_user:Gs2024VPS@localhost:5432/gs_db',
       }
+    },
+    {
+      name: 'gs-saba-feed',
+      script: 'saba-feed.mjs',
+      env: {
+        DATABASE_URL: 'postgresql://gs_user:Gs2024VPS@localhost:5432/gs_db',
+      }
     }
   ]
 }

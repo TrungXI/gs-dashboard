@@ -600,7 +600,7 @@ export default function LiveVideoWall() {
       <div className="mb-2">
         {/* Header gọn: tiêu đề + trạng thái + toggle noti + bật/tắt hết trên CÙNG 1 hàng wrap */}
         <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          <h1 className="text-base font-bold text-white whitespace-nowrap">Video Live</h1>
+          <h1 className="text-base font-bold text-white whitespace-nowrap">GS Video</h1>
           <span className="text-[11px] text-[#666]">
             {matches.length} trận{lastFetch && ` · ${lastFetch.toLocaleTimeString('vi-VN')}`}
           </span>
