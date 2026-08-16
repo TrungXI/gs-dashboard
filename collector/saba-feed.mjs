@@ -139,17 +139,10 @@ function upsertStreaming(attrs) {
   dirty.add(matchId);
 }
 
-// Buffer one firehose row (no filter/dedup). Stored verbatim in saba_feed_raw.
-function bufferRaw(bucket, evtType, decodedOrTuple) {
-  const a = decodedOrTuple && !Array.isArray(decodedOrTuple) ? decodedOrTuple : null;
-  rawBuffer.push({
-    bucket,
-    evtType,
-    matchId: a ? num(a.matchid) : null,
-    oddsId: a ? num(a.oddsid) : null,
-    bettype: a ? num(a.bettype) : null,
-    raw: decodedOrTuple,
-  });
+// Firehose DISABLED — saba_feed_raw ghi ~60GB/ngày, đầy đĩa VPS. saba_odds (tick)
+// đã giữ toàn bộ lịch sử odds cần cho backtest, nên bỏ hẳn firehose. No-op.
+function bufferRaw(_bucket, _evtType, _decodedOrTuple) {
+  return;
 }
 
 // ─── Frame processing ─────────────────────────────────────────────────────────
