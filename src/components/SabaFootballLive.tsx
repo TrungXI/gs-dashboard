@@ -46,7 +46,7 @@ export interface SabaLiveMatch {
   h1Away: number;
   homeRed: number;               // thẻ đỏ đội nhà (0 → không hiện badge)
   awayRed: number;               // thẻ đỏ đội khách
-  goalTeam: 'home' | 'away' | null; // đội vừa ghi bàn gần nhất (⚽ mờ); null → không hiện
+  goalTeam: string | null; // đội vừa ghi bàn gần nhất: 'home'/'h' | 'away'/'a'; null/'' → không hiện
   penStatus: string | null;      // trạng thái loạt penalty (giải PENALTY SHOOTOUTS); null → ẩn
   minuteElapsed: number | null;
   period: number;
@@ -146,11 +146,11 @@ function RedCardBadge({ n }: { n: number }) {
 function OuLiveRow({ row, divider }: { row: OuLine | null; divider: boolean }) {
   const dead = !row || row.suspended;
   return (
-    <div className={`flex items-center gap-1 text-[10px] md:text-[11px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
-      <span className="w-[26px] md:w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
-      <span className="min-w-0 flex-1 truncate text-[#4ade80]">Tài <span className="font-semibold">{dead ? '—' : row!.over ?? '—'}</span></span>
+    <div className={`flex items-center gap-0.5 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
+      <span className="w-[24px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
+      <span className="min-w-0 flex-1 truncate text-[#4ade80]">T <span className="font-semibold">{dead ? '—' : row!.over ?? '—'}</span></span>
       <span className="shrink-0 text-[#555]">·</span>
-      <span className="min-w-0 flex-1 truncate text-[#fb7185]">Xỉu <span className="font-semibold">{dead ? '—' : row!.under ?? '—'}</span></span>
+      <span className="min-w-0 flex-1 truncate text-[#fb7185]">X <span className="font-semibold">{dead ? '—' : row!.under ?? '—'}</span></span>
     </div>
   );
 }
@@ -162,7 +162,7 @@ function OuLiveBox({ title, lines, active = false }: { title: string; lines?: Ou
   const rows: (OuLine | null)[] = [src[0] ?? null, src[1] ?? null];
   return (
     <div
-      className={`flex min-w-0 flex-1 flex-col rounded-md border px-2 py-1.5 ${
+      className={`flex min-w-0 flex-1 flex-col rounded-md border px-1.5 py-1 ${
         active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/15' : 'border-[#2a2a2a] bg-[#1c1c1c]'
       }`}
     >
@@ -187,8 +187,8 @@ function priceCls(v: string | null | undefined): string {
 function HcRow({ row, divider }: { row: HcLine | null; divider: boolean }) {
   const dead = !row;
   return (
-    <div className={`flex items-center gap-1 text-[10px] md:text-[11px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
-      <span className="w-[26px] md:w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
+    <div className={`flex items-center gap-0.5 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
+      <span className="w-[24px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
       <span className={`min-w-0 flex-1 truncate text-right font-semibold ${dead ? 'text-[#555]' : priceCls(row!.home)}`}>{dead ? '—' : row!.home ?? '—'}</span>
       <span className="shrink-0 text-[#555]">·</span>
       <span className={`min-w-0 flex-1 truncate font-semibold ${dead ? 'text-[#555]' : priceCls(row!.away)}`}>{dead ? '—' : row!.away ?? '—'}</span>
@@ -202,7 +202,7 @@ function HcBox({ title, lines, active = false }: { title: string; lines?: HcLine
   const rows: (HcLine | null)[] = [src[0] ?? null, src[1] ?? null];
   return (
     <div
-      className={`flex min-w-0 flex-1 flex-col rounded-md border px-2 py-1.5 ${
+      className={`flex min-w-0 flex-1 flex-col rounded-md border px-1.5 py-1 ${
         active ? 'border-[#38bdf8]/50 bg-[#38bdf8]/15' : 'border-[#2a2a2a] bg-[#1c1c1c]'
       }`}
     >
@@ -230,52 +230,54 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
   return (
     <div
       data-event-id={m.eventId}
-      className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-3 w-full min-w-0 h-full relative flex flex-col gap-2"
+      className="rounded-lg border border-[#2a2a2a] bg-[#141414] p-2 w-full min-w-0 h-full relative flex flex-col gap-1.5"
     >
       {/* Khoá kèo: phủ mờ CẢ box + ổ khoá nổi lên */}
       {locked && (
         <>
           <div className="pointer-events-none absolute inset-0 z-10 rounded-lg bg-[#0d0d0d]/60" />
           <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-            <div className="flex items-center gap-1.5 rounded-md border border-[#fbbf24]/50 bg-black/80 px-3 py-1.5 text-[12px] font-semibold text-[#fbbf24] shadow-lg">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+            <div className="flex items-center gap-1 rounded-md border border-[#fbbf24]/50 bg-black/80 px-2 py-1 text-[11px] font-semibold text-[#fbbf24] shadow-lg">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
               Nhà cái khoá kèo
             </div>
           </div>
         </>
       )}
-      {/* Dòng 1: tên đội + tỉ số (trái) · phase (phải) */}
-      <div className="flex items-center justify-between gap-2 md:gap-3">
-        <div className="min-w-0 flex-1 flex items-center gap-2 md:gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-1.5 text-[13px] md:text-[14px] font-semibold leading-tight">
-              <span title={m.mappedHome === false ? `Chưa map: ${m.homeTeamRaw}` : favoriteSide === 'home' ? 'Đội chấp theo handicap live' : undefined} className={`truncate text-[#4ade80] ${favoriteSide === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.homeTeam}</span>
-              {m.goalTeam === 'home' && <span className="shrink-0 text-[11px] opacity-80" title="Đội nhà vừa ghi bàn">⚽</span>}
+      {/* Dòng 1: tên 2 đội xếp dọc + tỉ số (trái) · phase (phải) — gọn cho 4 cột */}
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="min-w-0 flex-1 flex items-center gap-1.5">
+          <div className="min-w-0 flex-1 flex flex-col gap-0.5 text-[12px] md:text-[13px] font-semibold leading-tight">
+            <div className="flex min-w-0 items-center gap-1">
+              <span title={m.mappedHome === false ? `Chưa map: ${m.homeTeamRaw}` : favoriteSide === 'home' ? 'Đội chấp theo handicap live' : undefined} className={`min-w-0 truncate text-[#4ade80] ${favoriteSide === 'home' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.homeTeam}</span>
+              {(m.goalTeam === 'home' || m.goalTeam === 'h') && <span className="shrink-0 text-[10px] opacity-80" title="Đội nhà vừa ghi bàn">⚽</span>}
               <RedCardBadge n={m.homeRed} />
-              <span className="shrink-0 font-normal text-[#888]">vs</span>
-              <span title={m.mappedAway === false ? `Chưa map: ${m.awayTeamRaw}` : favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`truncate text-[#fb7185] ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
-              {m.goalTeam === 'away' && <span className="shrink-0 text-[11px] opacity-80" title="Đội khách vừa ghi bàn">⚽</span>}
+            </div>
+            <div className="flex min-w-0 items-center gap-1">
+              <span title={m.mappedAway === false ? `Chưa map: ${m.awayTeamRaw}` : favoriteSide === 'away' ? 'Đội chấp theo handicap live' : undefined} className={`min-w-0 truncate text-[#fb7185] ${favoriteSide === 'away' ? 'underline decoration-[#ef4444] decoration-2 underline-offset-4' : ''}`}>{m.awayTeam}</span>
+              {(m.goalTeam === 'away' || m.goalTeam === 'a') && <span className="shrink-0 text-[10px] opacity-80" title="Đội khách vừa ghi bàn">⚽</span>}
               <RedCardBadge n={m.awayRed} />
             </div>
           </div>
           <div className="shrink-0 text-right">
-            <div className="text-[18px] md:text-[20px] font-bold leading-none text-[#fbbf24]">
-              {m.h1Home} - {m.h1Away}
+            <div className="text-[17px] md:text-[18px] font-bold leading-none text-[#fbbf24] tabular-nums">
+              {m.h1Home}-{m.h1Away}
             </div>
-            {/* Trạng thái loạt luân lưu (giải PENALTY SHOOTOUTS) — chỉ hiện khi có. */}
-            {m.penStatus && (
-              <div className="mt-0.5 text-[9px] md:text-[10px] font-semibold uppercase tracking-wide text-[#c084fc]" title="Trạng thái loạt luân lưu">
-                ⚽ {m.penStatus}
+            {/* Tỉ số loạt luân lưu (giải PENALTY SHOOTOUTS) — chỉ hiện khi là tỉ số N-N
+                thật; field sabapenst đôi khi là timestamp rác nên lọc bằng regex. */}
+            {m.penStatus && /^\d+-\d+$/.test(m.penStatus) && (
+              <div className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-[#c084fc]" title="Tỉ số loạt luân lưu (penalty)">
+                Luân lưu {m.penStatus}
               </div>
             )}
           </div>
         </div>
-        <div className="flex w-[52px] md:w-[60px] flex-col items-center justify-center text-center shrink-0 border-l border-[#222] pl-2 md:pl-3">
-          <div className="text-[26px] md:text-[30px] font-extrabold leading-none" style={{ color: phase.color }}>
+        <div className="flex w-[46px] flex-col items-center justify-center text-center shrink-0 border-l border-[#222] pl-1.5">
+          <div className="text-[22px] md:text-[24px] font-extrabold leading-none" style={{ color: phase.color }}>
             {phase.big}
           </div>
           {phase.small && (
-            <div className="text-[12px] md:text-[13px] font-semibold text-[#aaa] mt-1">{phase.small}</div>
+            <div className="text-[11px] font-semibold text-[#aaa] mt-0.5 tabular-nums">{phase.small}</div>
           )}
           {/* Watch link → chuyển sang tab SABA Video, deep-link matchId */}
           {m.hasStreaming && (
@@ -283,27 +285,27 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
               type="button"
               onClick={() => onWatch(m.matchId)}
               title="Xem video trực tiếp trận này"
-              className="mt-1.5 inline-flex items-center gap-1 rounded border border-[#3a3a3a] bg-[#1c1c1c] px-1.5 py-0.5 text-[10px] md:text-[11px] font-semibold text-[#bbb] transition-colors hover:border-[#38bdf8]/60 hover:text-[#7dd3fc]"
+              className="mt-1 inline-flex items-center gap-0.5 rounded border border-[#3a3a3a] bg-[#1c1c1c] px-1 py-0.5 text-[10px] font-semibold text-[#bbb] transition-colors hover:border-[#38bdf8]/60 hover:text-[#7dd3fc]"
             >
-              📺 Video
+              📺
             </button>
           )}
         </div>
       </div>
-      {/* Chấp (HDP) — 2 box: H1 + Hiệp 2 / cả trận */}
-      <div className="mt-1.5 border-t border-[#222] pt-1.5">
-        <div className="mb-1 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">🎯 Chấp (live)</div>
-        <div className="flex gap-1.5 md:gap-2">
-          <HcBox title="🕐 Hiệp 1" lines={m.hcH1Lines} active={activeMarket === 'h1'} />
-          <HcBox title="⚽ Hiệp 2 / cả trận" lines={m.hcLines} active={activeMarket === 'ft'} />
+      {/* Chấp (HDP) — 2 box: H1 + FT (Hiệp 2 / cả trận) */}
+      <div className="mt-1 border-t border-[#222] pt-1">
+        <div className="mb-0.5 text-[9px] uppercase tracking-wide text-[#666]">🎯 Chấp (live)</div>
+        <div className="flex gap-1.5">
+          <HcBox title="🕐 H1" lines={m.hcH1Lines} active={activeMarket === 'h1'} />
+          <HcBox title="⚽ FT" lines={m.hcLines} active={activeMarket === 'ft'} />
         </div>
       </div>
-      {/* OU line LIVE — 2 box: H1 + Hiệp 2 / cả trận */}
-      <div className="mt-1.5 border-t border-[#222] pt-1.5">
-        <div className="mb-1 text-[9px] md:text-[10px] uppercase tracking-wide text-[#666]">📊 Tài Xỉu (live)</div>
-        <div className="flex gap-1.5 md:gap-2">
-          <OuLiveBox title="🕐 Hiệp 1" lines={m.ouH1Lines} active={activeMarket === 'h1'} />
-          <OuLiveBox title="⚽ Hiệp 2 / cả trận" lines={m.ouLines} active={activeMarket === 'ft'} />
+      {/* OU line LIVE — 2 box: H1 + FT (Hiệp 2 / cả trận) */}
+      <div className="mt-1 border-t border-[#222] pt-1">
+        <div className="mb-0.5 text-[9px] uppercase tracking-wide text-[#666]">📊 Tài Xỉu (live)</div>
+        <div className="flex gap-1.5">
+          <OuLiveBox title="🕐 H1" lines={m.ouH1Lines} active={activeMarket === 'h1'} />
+          <OuLiveBox title="⚽ FT" lines={m.ouLines} active={activeMarket === 'ft'} />
         </div>
       </div>
     </div>
@@ -506,7 +508,7 @@ export default function SabaFootballLive({ initialMatch = null }: { initialMatch
                   {s.matches.length} trận
                 </span>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                 {s.matches.map((m) => (
                   <MatchBox key={m.eventId} m={m} onWatch={goToVideo} />
                 ))}

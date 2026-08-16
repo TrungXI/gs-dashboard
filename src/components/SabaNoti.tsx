@@ -25,7 +25,7 @@ export interface SabaNotiMatch {
   scoreAway: number;
   period: number | null;    // null khi API không trả (trang Video) → bỏ qua phát hiện HT
   minute: number | null;
-  goalTeam?: 'home' | 'away' | null; // nếu API có: dùng để đặt tên đội vừa ghi bàn
+  goalTeam?: string | null; // nếu API có: 'home'/'h' | 'away'/'a' → đặt tên đội vừa ghi bàn
 }
 
 // ── Hook: trạng thái toggle + showToast + notifyOS + detect ──────────────────
@@ -115,7 +115,7 @@ export function useSabaNoti() {
         const matchTime = m.minute != null ? `${m.minute}'` : '';
         // GOAL — tổng bàn tăng.
         if (total > before.score) {
-          const scorer = m.goalTeam === 'home' ? m.homeTeam : m.goalTeam === 'away' ? m.awayTeam : null;
+          const scorer = (m.goalTeam === 'home' || m.goalTeam === 'h') ? m.homeTeam : (m.goalTeam === 'away' || m.goalTeam === 'a') ? m.awayTeam : null;
           const who = scorer ? `${scorer} ghi bàn!` : 'Ghi bàn!';
           if (toastOnRef.current) showToast(`⚽ ${who} ${m.homeTeam} ${m.scoreHome}-${m.scoreAway} ${m.awayTeam}${matchTime ? ` · ${matchTime}` : ''}`, true);
           notifyOS('goal', `⚽ ${who}`, `${m.homeTeam} ${m.scoreHome}–${m.scoreAway} ${m.awayTeam}${matchTime ? `\n${matchTime}` : ''}`, m.matchId);
