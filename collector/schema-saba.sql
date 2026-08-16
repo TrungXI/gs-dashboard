@@ -102,6 +102,45 @@ CREATE INDEX IF NOT EXISTS idx_saba_matches_live    ON saba_matches (is_live);
 CREATE INDEX IF NOT EXISTS idx_saba_matches_updated ON saba_matches (updated_at);
 CREATE INDEX IF NOT EXISTS idx_saba_matches_league  ON saba_matches (league_group_id, league_name, match_id);
 
+-- 3.3a saba_matches column additions (idempotent — safe to re-run on live gs_db).
+--   parent_id / child_match_type : sub-market discriminator. Real (parent) matches
+--     have parent_id NULL/0; corner/booking/over sub-markets have parent_id set AND
+--     child_match_type set. The live/video APIs filter these OUT.
+--   streaming_json : FULL streaming source map, keyed by streamingsrc — built by
+--     aggregating every 'st' frame for the match, e.g.
+--       {"11":{"streamingsrc":11,"streamingid":"783",...},"19":{...},"30":{...}}
+--     The video player URL needs this whole object (URL-encoded), not one id/src.
+--   gv : gameversion (raw 'gv' on the m record) → the &GV= player URL param.
+--   in_play : TRUE only when the match is actually being played (liveperiod 1|2 or
+--     half-time), NOT scheduled/pre-game/ended. is_live is kept for back-compat but
+--     the APIs now gate on in_play.
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS parent_id        bigint;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS child_match_type int;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS streaming_json   jsonb;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS gv               int;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS in_play          bool NOT NULL DEFAULT false;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS league_name_vn   text;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS home_id          bigint;
+ALTER TABLE saba_matches ADD COLUMN IF NOT EXISTS away_id          bigint;
+-- Real-match, in-play index for the live/video APIs (parent matches only).
+CREATE INDEX IF NOT EXISTS idx_saba_matches_inplay ON saba_matches (in_play) WHERE parent_id IS NULL;
+
+-- 3.3b saba_leagues — SABA league dictionary (keyed by leagueid). Populated from
+-- the 'l' league-dictionary frames on the feed, which carry the localized league
+-- NAMES that the 'm' match record does NOT. The collector upserts here and also
+-- denormalizes name_en/name_vn back onto saba_matches.league_name/league_name_vn.
+CREATE TABLE IF NOT EXISTS saba_leagues (
+  league_id     bigint PRIMARY KEY,        -- SABA leagueid
+  name_en       text,                      -- leaguenameen (full, verbatim)
+  name_vn       text,                      -- leaguenamevn (full, verbatim)
+  league_group_id bigint,                  -- leaguegroupid
+  display_cat   int,                       -- leaguedisplaycat (0 = real; 3 = corners; etc.)
+  country_code  text,                      -- countrycode
+  raw           jsonb,                     -- full decoded 'l' record
+  first_seen    timestamptz DEFAULT now(),
+  updated_at    timestamptz DEFAULT now()
+);
+
 -- 3.4 saba_odds — C-Sport odds tick log. Tick-level completeness modelled on
 -- gs_16p_ticks: append a row on EVERY meaningful change the socket pushes (one
 -- row per (market, half) per tick — no change is dropped). Each row carries the

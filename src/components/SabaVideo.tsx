@@ -19,29 +19,60 @@ const ASPECT = 320 / 500;
 // Fallback cell width before the grid column is measured on first paint.
 const FALLBACK_W = 440;
 
-// SABA player base — full origin + session prefix, e.g.
+// SABA player base — full origin + rotating session prefix, e.g.
 //   https://c0z0ia.bpy6vurb.com/(S(<session>))
-// The rotating session S(...) lives here; if it expires the iframes 404 (v1
-// accepts manual env refresh — SPEC §6.2 / Open Q5).
-const SABA_PLAYER_BASE = process.env.NEXT_PUBLIC_SABA_PLAYER_BASE ?? '';
+// NOTE: the base now comes FROM the API response (`playerBase`), NOT from
+// NEXT_PUBLIC_SABA_PLAYER_BASE. The rotating session S(...) is captured server-
+// side from the token bar; if it's empty the iframes 404, so we show a banner
+// instead of mounting broken iframes.
 
+// TODO(backend contract): field names below mirror the agreed
+// /api/gs-saba-video shape — confirm against review/backend-fix-summary.md when
+// it lands (matchId, homeId, awayId, gv, streamingJson object, score_home,
+// score_away, minute). If BE renames anything, update here + the mapper in the
+// poll effect.
 interface SabaVideoMatch {
   matchId: number;
   homeTeam: string;
   awayTeam: string;
   leagueName: string;
-  streamingId: string | null;
-  streamingSrc: number | null;
+  homeId: number | string;
+  awayId: number | string;
+  gv: number | string;
+  // streamingJson: object like {"11":{"_f":2,"streamingsrc":11,...},"19":{...}}
+  // Serialised + URL-encoded into the `streaming` param below.
+  streamingJson: Record<string, unknown>;
   score_home: number;
   score_away: number;
   minute: number | null;
   period?: number | null; // optional: nếu BE thêm vào video response → bật phát hiện HT; nếu không → chỉ goal
 }
 
-// Build the SABA player iframe URL client-side (SPEC §6.2).
-function playerSrc(matchId: number): string {
-  const base = SABA_PLAYER_BASE.replace(/\/+$/, '');
-  return `${base}/Streaming/Schedule?streamingType=SB&id=${matchId}&Hid=&Aid=&sportType=1&display=streaming&isLive=true&lang=vn`;
+// Build the SABA player iframe URL client-side from the working-example format.
+// playerBase already carries the origin + session prefix, e.g.
+//   https://<host>/(S(<session>))
+function playerSrc(playerBase: string, m: SabaVideoMatch): string {
+  const base = playerBase.replace(/\/+$/, '');
+  const streaming = encodeURIComponent(JSON.stringify(m.streamingJson ?? {}));
+  const params =
+    `streamingType=SB` +
+    `&id=${m.matchId}` +
+    `&noMenu=false` +
+    `&Hid=${m.homeId}` +
+    `&Aid=${m.awayId}` +
+    `&sportType=1` +
+    `&GV=${m.gv}` +
+    `&display=streaming` +
+    `&isLive=true` +
+    `&matchId3Rd=` +
+    `&parentMatchId=0` +
+    `&vocalStreaming=` +
+    `&streaming=${streaming}` +
+    `&isSingleMatch=false` +
+    `&lang=vn` +
+    `&generalStreamingType=Match` +
+    `&focusSourceType=2`;
+  return `${base}/Streaming/Schedule?${params}`;
 }
 
 // ── 📸 Snapshot (client-side getDisplayMedia) — ported from LiveVideoWall ─────
@@ -132,11 +163,13 @@ async function captureSabaShot(match: SabaVideoMatch): Promise<void> {
 // Click-to-load: chỉ mount iframe sau khi bấm ▶ (mirror VideoCell của LiveVideoWall).
 function VideoCell({
   match,
+  playerBase,
   displayW,
   bulk,
   onToast,
 }: {
   match: SabaVideoMatch;
+  playerBase: string;
   displayW: number;
   bulk: { on: boolean; n: number } | null;
   onToast: (msg: string, ok: boolean) => void;
@@ -149,7 +182,7 @@ function VideoCell({
   const displayH = Math.round(displayW * ASPECT);
   const scale = displayW / CONTENT_W;
   const iframeH = Math.round(displayH / scale);
-  const src = playerSrc(match.matchId);
+  const src = playerSrc(playerBase, match);
 
   // 📸 chụp CLIENT-SIDE tức thì (getDisplayMedia) → cắt khung video → gửi Telegram.
   const onSnapshot = async () => {
@@ -227,6 +260,7 @@ function VideoCell({
 
 export default function SabaVideo() {
   const [matches, setMatches] = useState<SabaVideoMatch[]>([]);
+  const [playerBase, setPlayerBase] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
 
@@ -268,13 +302,16 @@ export default function SabaVideo() {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch('/api/gs-saba-video', { cache: 'no-store' });
-        const json = (await res.json()) as { ok: boolean; matches?: SabaVideoMatch[]; error?: string };
+        const json = (await res.json()) as {
+          ok: boolean; playerBase?: string; matches?: SabaVideoMatch[]; error?: string;
+        };
         if (cancelled) return;
         if (!json.ok) {
           setError(json.error ?? 'Lỗi tải dữ liệu');
         } else {
           setError(null);
           const next = json.matches ?? [];
+          setPlayerBase(json.playerBase ?? '');
           setMatches(next);
           setLastFetch(new Date());
           // Phát hiện ghi bàn (score tăng) → noti/toast. HT chỉ khi BE trả period.
@@ -342,10 +379,17 @@ export default function SabaVideo() {
           <div className="mb-3 text-4xl">📭</div>
           <div className="text-[14px] text-[#888]">Chưa có trận C-Sport nào đang phát trực tiếp.</div>
         </div>
+      ) : !playerBase ? (
+        // Có trận live nhưng session SABA rỗng/hết hạn → iframe sẽ 404. Hiện banner
+        // thay vì mount iframe hỏng; user dán lại link ở thanh token phía trên.
+        <div className="flex h-[200px] flex-col items-center justify-center gap-3 rounded-xl bg-[#1a1a1a] border border-[#f59e0b]/40">
+          <div className="text-3xl">🔑</div>
+          <div className="text-[13px] text-[#fbbf24]">Chưa có session SABA — dán lại link ở token bar</div>
+        </div>
       ) : (
         <div ref={gridRef} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {matches.map((m) => (
-            <VideoCell key={m.matchId} match={m} displayW={cellW} bulk={bulkLoad} onToast={noti.showToast} />
+            <VideoCell key={m.matchId} match={m} playerBase={playerBase} displayW={cellW} bulk={bulkLoad} onToast={noti.showToast} />
           ))}
         </div>
       )}

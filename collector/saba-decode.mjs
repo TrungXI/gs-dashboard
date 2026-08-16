@@ -113,6 +113,14 @@ export function matchPatchFromAttrs(attrs) {
   if (attrs.ateamnamevn != null) patch.awayTeamVn = attrs.ateamnamevn;
   if (attrs.homeid != null) patch.homeId = num(attrs.homeid);
   if (attrs.awayid != null) patch.awayId = num(attrs.awayid);
+  if (attrs.gv != null) patch.gv = num(attrs.gv);
+  // Sub-market discriminator: real (parent) matches have parentid empty/0; corner/
+  // booking/over sub-markets carry a non-zero parentid AND a childmatchtype.
+  if (attrs.parentid != null) {
+    const pid = num(attrs.parentid);
+    patch.parentId = (pid != null && pid !== 0) ? pid : null;
+  }
+  if (attrs.childmatchtype != null) patch.childMatchType = num(attrs.childmatchtype);
   if (attrs.leagueid != null) patch.leagueId = num(attrs.leagueid);
   if (attrs.leaguenameen != null) patch.leagueName = attrs.leaguenameen;
   if (attrs.leaguenamevn != null) patch.leagueNameVn = attrs.leaguenamevn;
@@ -139,13 +147,59 @@ export function matchPatchFromAttrs(attrs) {
   if (attrs.eventstatus != null) patch.eventStatus = String(attrs.eventstatus);
   if (attrs.kickofftime != null) patch.kickoffAt = attrs.kickofftime;
 
-  const period = patch.period;
-  const st = String(pick('eventstatus', 'gamestatus') ?? '').toLowerCase();
-  if (attrs.liveperiod != null || attrs.eventstatus != null || attrs.gamestatus != null) {
-    patch.isLive = period != null && period >= 1 &&
-      st !== 'ended' && st !== 'end' && st !== 'closed';
+  // In-play detection. SABA 'm' records ALWAYS report marketid='T' and
+  // eventstatus='running' even for scheduled/pre-game matches, so those fields are
+  // useless. The reliable signal is `liveperiod`: 0 = pre-game/between-periods,
+  // 1 = first half (playing), 2 = second half (playing). Half-time is a special
+  // case — liveperiod resets to 0 but isht=true (game underway, in the break).
+  // `gamestatus` 6 = ENDED (liveperiod resets to 0). So:
+  //   in-play  ⇔  (liveperiod ∈ {1,2}  OR  isht=true)  AND NOT ended/fulltime.
+  // `isLive` is kept as an alias of in-play for back-compat.
+  if (attrs.liveperiod != null || attrs.isht != null ||
+      attrs.gamestatus != null || attrs.isfulltime != null) {
+    const lp = patch.period;
+    const ht = patch.isHt === true;
+    const ended = patch.gameStatus === '6' || patch.isFulltime === true;
+    const inPlay = !ended && ((lp != null && (lp === 1 || lp === 2)) || ht);
+    patch.inPlay = inPlay;
+    patch.isLive = inPlay;
   }
   return patch;
+}
+
+// Convert a decoded "l" league-dictionary attrs object into a league row, or null.
+// The 'l' frame is the ONLY place the localized league NAMES arrive; the 'm' match
+// record carries just leagueid. Keyed by leagueid.
+export function leagueFromAttrs(attrs) {
+  const leagueId = num(attrs.leagueid);
+  if (leagueId == null) return null;
+  return {
+    leagueId,
+    nameEn: attrs.leaguenameen != null ? String(attrs.leaguenameen) : null,
+    nameVn: attrs.leaguenamevn != null ? String(attrs.leaguenamevn) : null,
+    leagueGroupId: attrs.leaguegroupid != null ? num(attrs.leaguegroupid) : null,
+    displayCat: attrs.leaguedisplaycat != null ? num(attrs.leaguedisplaycat) : null,
+    countryCode: attrs.countrycode != null ? String(attrs.countrycode)
+      : (attrs.hteamcountrycode != null ? String(attrs.hteamcountrycode) : null),
+    raw: attrs,
+  };
+}
+
+// Convert a decoded "st" streaming frame into one streaming-source entry, or null.
+// Each 'st' frame is ONE source for ONE match (keyed by streamingsrc); the full
+// streaming map the video player needs is the collection of every 'st' frame for a
+// match, e.g. { "11": {…}, "19": {…}, "30": {…} }. buildStreamingEntry returns the
+// per-source object exactly as the player expects it inside that map.
+export function streamingFromAttrs(attrs) {
+  const matchId = num(attrs.matchid);
+  const src = num(attrs.streamingsrc);
+  if (matchId == null || src == null) return null;
+  const entry = { streamingsrc: src };
+  if (attrs.streamingid != null) entry.streamingid = String(attrs.streamingid);
+  if (attrs.streamingfixing != null) entry.streamingfixing = toBool(attrs.streamingfixing);
+  if (attrs.streamingofferto != null) entry.streamingofferto = num(attrs.streamingofferto);
+  if (attrs.streamingoffertocredit != null) entry.streamingoffertocredit = toBool(attrs.streamingoffertocredit);
+  return { matchId, src, entry };
 }
 
 // Convert a decoded "o" attrs object into an odds-state object, or null if the

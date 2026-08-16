@@ -19,7 +19,7 @@ import { getSession, refreshToken } from './saba-auth.mjs';
 import { normalizeTeam } from './team-normalize.mjs';
 import {
   SchemaStore, num, computeMinute, computeSeconds,
-  matchPatchFromAttrs, oddsFromAttrs,
+  matchPatchFromAttrs, oddsFromAttrs, leagueFromAttrs, streamingFromAttrs,
 } from './saba-decode.mjs';
 
 const POLL_MS = 2000;
@@ -40,6 +40,9 @@ const odds = new Map(); // oddsid -> odds state (incl. matchid ref, bettype)
 const dirty = new Set(); // matchids whose odds/score/period changed since flush
 const prevKey = new Map(); // matchid -> last flushed change-key
 const teamCache = new Map(); // saba team name -> saba_teams.id
+const leagues = new Map(); // leagueid -> { nameEn, nameVn, leagueGroupId, displayCat, countryCode, raw }
+const streamingMaps = new Map(); // matchid -> { [streamingsrc]: entry } full streaming map
+const leaguesDirty = new Set(); // leagueids changed since last flush
 
 // Firehose buffer — EVERY tuple as received (no filter/dedup). Drained per flush.
 const rawBuffer = [];
@@ -55,8 +58,46 @@ function upsertMatchState(attrs) {
   cur.raw = mergedRaw;
   cur.scoreHome ??= 0;
   cur.scoreAway ??= 0;
+  backfillLeagueNames(cur);
   matches.set(cur.matchId, cur);
   dirty.add(cur.matchId);
+}
+
+// The 'm' record has leagueid but NOT the league name — names arrive on the 'l'
+// league-dictionary frame. Fill league_name/league_name_vn from the dict when the
+// match record itself didn't carry them.
+function backfillLeagueNames(m) {
+  if (m.leagueId == null) return;
+  const dict = leagues.get(m.leagueId);
+  if (!dict) return;
+  if (m.leagueName == null && dict.nameEn != null) m.leagueName = dict.nameEn;
+  if (m.leagueNameVn == null && dict.nameVn != null) m.leagueNameVn = dict.nameVn;
+  if (m.leagueGroupId == null && dict.leagueGroupId != null) m.leagueGroupId = dict.leagueGroupId;
+  if (m.countryCode == null && dict.countryCode != null) m.countryCode = dict.countryCode;
+}
+
+// Merge a decoded "l" league-dictionary frame into the league Map. Also re-backfill
+// any already-seen match in that league whose name was still missing.
+function upsertLeague(attrs) {
+  const lg = leagueFromAttrs(attrs);
+  if (!lg) return;
+  const cur = leagues.get(lg.leagueId) ?? {};
+  // keep the richest values seen (never overwrite a name with null)
+  leagues.set(lg.leagueId, {
+    nameEn: lg.nameEn ?? cur.nameEn ?? null,
+    nameVn: lg.nameVn ?? cur.nameVn ?? null,
+    leagueGroupId: lg.leagueGroupId ?? cur.leagueGroupId ?? null,
+    displayCat: lg.displayCat ?? cur.displayCat ?? null,
+    countryCode: lg.countryCode ?? cur.countryCode ?? null,
+    raw: lg.raw,
+  });
+  leaguesDirty.add(lg.leagueId);
+  for (const m of matches.values()) {
+    if (m.leagueId === lg.leagueId && (m.leagueName == null || m.leagueNameVn == null)) {
+      backfillLeagueNames(m);
+      dirty.add(m.matchId);
+    }
+  }
 }
 
 function upsertOddsState(attrs) {
@@ -78,12 +119,22 @@ function removeOdds(oddsId) {
 }
 
 function upsertStreaming(attrs) {
-  const matchId = num(attrs.matchid);
-  if (matchId == null) return;
+  const s = streamingFromAttrs(attrs);
+  if (!s) return;
+  const { matchId, src, entry } = s;
   const cur = matches.get(matchId) ?? { matchId, scoreHome: 0, scoreAway: 0 };
-  if (attrs.streamingid != null) cur.streamingId = String(attrs.streamingid);
-  if (attrs.streamingsrc != null) cur.streamingSrc = num(attrs.streamingsrc);
-  cur.hasStreaming = cur.streamingId != null && cur.streamingId !== '';
+  // Build the FULL streaming map keyed by streamingsrc (the video player needs the
+  // whole object, not a single id/src). Each 'st' frame contributes one source.
+  const map = streamingMaps.get(matchId) ?? {};
+  map[String(src)] = entry;
+  streamingMaps.set(matchId, map);
+  cur.streamingJson = map;
+  // Keep single-source fields for back-compat (first/primary source seen).
+  if (cur.streamingId == null && entry.streamingid != null) cur.streamingId = entry.streamingid;
+  if (cur.streamingSrc == null) cur.streamingSrc = src;
+  cur.hasStreaming = Object.values(map).some(
+    (e) => e.streamingid != null && e.streamingid !== '' && e.streamingid !== '999'
+  );
   matches.set(matchId, cur);
   dirty.add(matchId);
 }
@@ -133,6 +184,7 @@ function handleMFrame(bucket, deltas) {
       if (dec.type === 'm' || dec.type === 'ls') upsertMatchState(dec.attrs);
       else if (dec.type === 'o') upsertOddsState(dec.attrs);
       else if (dec.type === 'st') upsertStreaming(dec.attrs);
+      else if (dec.type === 'l') upsertLeague(dec.attrs);
     }
   }
 }
@@ -203,21 +255,25 @@ async function flushMatch(matchId) {
        score_home, score_away, period, minute, is_live,
        home_red, away_red, goal_team, pen_status, injury_time,
        live_period, game_status, event_status, is_ht, is_fulltime, raw,
-       streaming_id, streaming_src, has_streaming, section_id, updated_at
+       streaming_id, streaming_src, has_streaming, section_id,
+       parent_id, child_match_type, gv, streaming_json, in_play, updated_at
      ) VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
        to_timestamp(NULLIF($18,'')::double precision),
        $19,$20,$21,$22,$23,
        $24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,
-       $35,$36,$37,$38, now()
+       $35,$36,$37,$38,
+       $39,$40,$41,$42,$43, now()
      )
      ON CONFLICT (match_id) DO UPDATE SET
        home_team = EXCLUDED.home_team, away_team = EXCLUDED.away_team,
        home_team_vn = EXCLUDED.home_team_vn, away_team_vn = EXCLUDED.away_team_vn,
        home_saba_team_id = EXCLUDED.home_saba_team_id, away_saba_team_id = EXCLUDED.away_saba_team_id,
        home_id = EXCLUDED.home_id, away_id = EXCLUDED.away_id,
-       league_id = EXCLUDED.league_id, league_name = EXCLUDED.league_name,
-       league_name_vn = EXCLUDED.league_name_vn, league_group_id = EXCLUDED.league_group_id,
+       league_id = EXCLUDED.league_id,
+       league_name = COALESCE(EXCLUDED.league_name, saba_matches.league_name),
+       league_name_vn = COALESCE(EXCLUDED.league_name_vn, saba_matches.league_name_vn),
+       league_group_id = EXCLUDED.league_group_id,
        league_display_cat = EXCLUDED.league_display_cat, country_code = EXCLUDED.country_code,
        section_id = EXCLUDED.section_id,
        play_format = EXCLUDED.play_format, pes_version = EXCLUDED.pes_version,
@@ -231,7 +287,11 @@ async function flushMatch(matchId) {
        raw = EXCLUDED.raw,
        streaming_id = COALESCE(EXCLUDED.streaming_id, saba_matches.streaming_id),
        streaming_src = COALESCE(EXCLUDED.streaming_src, saba_matches.streaming_src),
-       has_streaming = saba_matches.has_streaming OR EXCLUDED.has_streaming,
+       has_streaming = EXCLUDED.has_streaming,
+       parent_id = EXCLUDED.parent_id, child_match_type = EXCLUDED.child_match_type,
+       gv = COALESCE(EXCLUDED.gv, saba_matches.gv),
+       streaming_json = COALESCE(EXCLUDED.streaming_json, saba_matches.streaming_json),
+       in_play = EXCLUDED.in_play,
        updated_at = now()`,
     [
       m.matchId, m.homeTeamRaw, m.awayTeamRaw, m.homeTeamVn ?? null, m.awayTeamVn ?? null,
@@ -245,6 +305,8 @@ async function flushMatch(matchId) {
       m.raw ? JSON.stringify(m.raw) : null,
       m.streamingId ?? null, m.streamingSrc ?? null, !!m.hasStreaming,
       m.leagueGroupId ?? null, // section_id = leaguegroupid
+      m.parentId ?? null, m.childMatchType ?? null, m.gv ?? null,
+      m.streamingJson ? JSON.stringify(m.streamingJson) : null, !!m.inPlay,
     ]
   );
 
@@ -304,8 +366,38 @@ async function flushRaw() {
   }
 }
 
+// Persist changed league-dictionary rows to saba_leagues.
+async function flushLeagues() {
+  if (leaguesDirty.size === 0) return;
+  const ids = [...leaguesDirty];
+  leaguesDirty.clear();
+  for (const id of ids) {
+    const lg = leagues.get(id);
+    if (!lg) continue;
+    try {
+      await pool.query(
+        `INSERT INTO saba_leagues (
+           league_id, name_en, name_vn, league_group_id, display_cat, country_code, raw, updated_at
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7, now())
+         ON CONFLICT (league_id) DO UPDATE SET
+           name_en = COALESCE(EXCLUDED.name_en, saba_leagues.name_en),
+           name_vn = COALESCE(EXCLUDED.name_vn, saba_leagues.name_vn),
+           league_group_id = COALESCE(EXCLUDED.league_group_id, saba_leagues.league_group_id),
+           display_cat = COALESCE(EXCLUDED.display_cat, saba_leagues.display_cat),
+           country_code = COALESCE(EXCLUDED.country_code, saba_leagues.country_code),
+           raw = EXCLUDED.raw, updated_at = now()`,
+        [id, lg.nameEn ?? null, lg.nameVn ?? null, lg.leagueGroupId ?? null,
+         lg.displayCat ?? null, lg.countryCode ?? null, lg.raw ? JSON.stringify(lg.raw) : null]
+      );
+    } catch (e) {
+      console.error('[LEAGUE FLUSH ERROR]', id, e.message);
+    }
+  }
+}
+
 async function flush() {
   await flushRaw();
+  await flushLeagues();
   if (dirty.size === 0) return;
   const ids = [...dirty];
   dirty.clear();

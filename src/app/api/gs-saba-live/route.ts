@@ -87,30 +87,32 @@ export async function GET() {
   const pool = db();
   if (!pool) return Response.json({ ok: false, error: 'no db' });
   try {
-    // Live matches only, LEFT JOIN team map for canonical names.
+    // In-play PARENT matches only (exclude prop/corner/booking sub-markets, which
+    // carry a non-null parent_id, and exclude scheduled/ended matches, which are
+    // NOT in_play). LEFT JOIN team map for canonical names.
     const { rows: matchRows } = await pool.query(`
       SELECT m.match_id, m.home_team, m.away_team, m.league_id, m.section_id,
              m.home_id, m.away_id, m.league_name,
              m.league_name_vn, m.league_group_id, m.country_code,
              m.play_format, m.pes_version,
-             m.score_home, m.score_away, m.period, m.minute, m.is_live,
+             m.score_home, m.score_away, m.period, m.minute, m.in_play,
              m.home_red, m.away_red, m.goal_team, m.pen_status, m.has_streaming,
              hm.canonical_name AS home_canon, hm.mapped AS home_mapped,
              am.canonical_name AS away_canon, am.mapped AS away_mapped
       FROM saba_matches m
       LEFT JOIN saba_team_map hm ON hm.saba_name = m.home_team
       LEFT JOIN saba_team_map am ON am.saba_name = m.away_team
-      WHERE m.is_live = true
+      WHERE m.in_play = true AND m.parent_id IS NULL AND m.league_name ILIKE 'SABA%'
       ORDER BY m.league_group_id NULLS LAST, m.league_name NULLS LAST, m.match_id
     `);
 
-    // Latest odds per (match, market, half) for the live matches.
+    // Latest odds per (match, market, half) for the in-play parent matches.
     const { rows: oddsRows } = await pool.query<OddsRow>(`
       SELECT DISTINCT ON (o.match_id, o.market, o.half)
              o.match_id, o.market, o.half, o.line,
              o.home_price, o.away_price, o.draw_price, o.home_gives, o.suspended
       FROM saba_odds o
-      JOIN saba_matches m ON m.match_id = o.match_id AND m.is_live = true
+      JOIN saba_matches m ON m.match_id = o.match_id AND m.in_play = true AND m.parent_id IS NULL AND m.league_name ILIKE 'SABA%'
       ORDER BY o.match_id, o.market, o.half, o.recorded_at DESC
     `);
 
@@ -158,7 +160,7 @@ export async function GET() {
         minuteElapsed: m.minute != null ? Number(m.minute) : null,
         period,
         isH2: period >= 2,
-        isLive: m.is_live === true,
+        isLive: m.in_play === true,
         bettingOpen: !(hcFt?.suspended ?? false),
         suspended: hcFt?.suspended ?? false,
         homeRed: Number(m.home_red ?? 0),
