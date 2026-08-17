@@ -92,11 +92,8 @@ async function compute(): Promise<GoalTimingResponse> {
             SELECT COUNT(DISTINCT event_id) AS n FROM gs_16p_ticks WHERE league_id = $1
           )
           SELECT
-            -- H1: phút 1-45 giữ nguyên. H2: reset về 1-45 (gmin-45) để đồng bộ trục X.
-            CASE WHEN gmin <= 45
-              THEN FLOOR((gmin - 1) / 5) * 5 + 1 || '–' || (FLOOR((gmin - 1) / 5) * 5 + 5)
-              ELSE FLOOR((gmin - 46) / 5) * 5 + 1 || '–' || (FLOOR((gmin - 46) / 5) * 5 + 5)
-            END                                                    AS window_min,
+            FLOOR((gmin - 1) / 5) * 5 + 1 || '–' ||
+              (FLOOR((gmin - 1) / 5) * 5 + 5)                    AS window_min,
             CASE WHEN gmin <= 45 THEN 1 ELSE 2 END                AS half,
             COUNT(*)                                               AS goals,
             COUNT(DISTINCT event_id)                               AS matches_scored,

@@ -24,6 +24,11 @@ function fmt(iso: string) {
   catch { return ''; }
 }
 
+// H2 windows từ API là "46–50", "51–55"... → hiển thị "1–5", "6–10"...
+function h2Label(w: string): string {
+  return w.replace(/(\d+)–(\d+)/, (_, a, b) => `${+a - 45}–${+b - 45}`);
+}
+
 // ── Bar ──────────────────────────────────────────────────────────────────────
 function Bar({ d, animated }: { d: GoalTimingWindow; animated: boolean }) {
   const [hov, setHov] = useState(false);
@@ -47,7 +52,7 @@ function Bar({ d, animated }: { d: GoalTimingWindow; animated: boolean }) {
           fontSize: 10, color: T.text, whiteSpace: 'nowrap', zIndex: 20, lineHeight: 1.6,
         }}>
           <span style={{ fontSize: 13, fontWeight: 700, color, display: 'block' }}>{d.pct}%</span>
-          {d.matchesScored}/{d.totalMatches} · {d.goals} bàn
+          {d.matchesScored}/{d.totalMatches} · {d.goals} bàn · {d.half === 2 ? h2Label(d.window) : d.window}&apos;
         </div>
       )}
       <div style={{
@@ -145,7 +150,7 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
             <div style={{ width: 20 }} />
             <div style={{ flex: 1, display: 'flex', gap: 2 }}>
               {h2.map((d) => (
-                <div key={d.window} style={{ flex: 1, ...MONO, fontSize: 7, color: T.dim, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{d.window}&apos;</div>
+                <div key={d.window} style={{ flex: 1, ...MONO, fontSize: 7, color: T.dim, textAlign: 'center', whiteSpace: 'nowrap', overflow: 'hidden' }}>{h2Label(d.window)}&apos;</div>
               ))}
             </div>
           </div>
