@@ -74,6 +74,7 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
   const peakH1 = h1.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct > a.pct ? b : a), null);
   const peakH2 = h2.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct > a.pct ? b : a), null);
   const lowH1  = h1.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct < a.pct ? b : a), null);
+  const lowH2  = h2.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct < a.pct ? b : a), null);
 
   const HtDivider = () => (
     <div style={{ flexShrink: 0, width: 20, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 4, position: 'relative' }}>
@@ -190,7 +191,7 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
               <span style={{ fontSize: 13, marginLeft: 6, opacity: 0.8 }}>{peakH2.pct}%</span>
             </div>
             <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
-              H2 TB: <strong style={{ color: T.text }}>{lg.avgH2}</strong> vs H1: <strong style={{ color: T.text }}>{lg.avgH1}</strong> bàn
+              Tĩnh nhất: <strong style={{ color: T.text }}>{lowH2 ? h2Label(lowH2.window) : '—'}&apos;</strong> ({lowH2?.pct}%)
             </div>
           </div>
         )}
