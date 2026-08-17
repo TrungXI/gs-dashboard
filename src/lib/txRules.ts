@@ -609,6 +609,30 @@ export const TX_RULES: Record<string, TxRule> = {
     note: 'PAPER — chạy thử, không tiền, không Telegram. Chỉ giải International 20p, đánh XỈU cuối hiệp khi thị trường nghiêng ít bàn + book mở.',
     short: '🌍 PAPER · XỈU · CHỈ International 20p · phút ≥29 (canh tới 42) · Xỉu ≥0,75 + book mở → vào line hiệp đang đá.',
   },
+  'V.Bot Air 1': {
+    emoji: '🌐',
+    headline: 'CHỈ giải International 20p — đánh XỈU theo tỉ số live + phút cụ thể (backtest +21u/231 trận, EV +0.091/trận).',
+    side: 'Luôn đánh XỈU (Under)',
+    when: 'H1 phút 29–31 hoặc H2 phút 24–26 / 29–31 tuỳ condition. Vào ngay khi nhà cái mở kèo.',
+    strategy: [
+      'CHỈ giải International loại 20 phút (league_id 1485).',
+      'Phân tích 281 trận thực tế: tìm phút + tỉ số có EV dương cao nhất, backtest trên toàn bộ data trước khi deploy.',
+      'Hoàn toàn XỈU — không đánh Tài (không tìm được Tài có edge đủ mạnh).',
+      '5 conditions độc lập mỗi trận; 1 condition = 1 lệnh, không overlap.',
+    ],
+    data: [READ_ODDS, 'Tỉ số live, phút trong hiệp (reset mỗi hiệp), line OU + giá Xỉu.', GRADE],
+    entry: [
+      'C1 — Xỉu H1: H1 phút 29–31, tỉ số = 1 bàn, line ~1.50 → Xỉu hiệp 1. [EV +0.046, n=78]',
+      'C2 — Xỉu FT: H2 phút 24–26, tỉ số FT = 1 bàn, line ~1.6 → Xỉu FT. [EV +0.080, n=51]',
+      'C3 — Xỉu FT: H2 phút 24–26, tỉ số FT = 4 bàn, line ~4.6 → Xỉu FT. [EV +0.161, n=32]',
+      'C4 — Xỉu FT: H2 phút 29–31, tỉ số FT = 3 bàn, line ~3.50 → Xỉu FT. [EV +0.122, n=37]',
+      'C5 — Xỉu FT: H2 phút 29–31, tỉ số FT = 4 bàn, line ~4.50 → Xỉu FT. [EV +0.110, n=33]',
+      'Book phải MỞ (bettingOpen=true, không suspended) tại thời điểm vào.',
+    ],
+    note: 'PAPER — chạy thử, không tiền thật. Backtest 231 trận: PnL +21u, win rate trung bình ~62%. Forward-test đang chạy để xác nhận edge.',
+    short: '🌐 PAPER · XỈU · International 20p · 5 conditions (tỉ số + phút) · EV +0.09/trận · book mở → vào ngay.',
+  },
+
   // ── Handicap models (paper) — key riêng 'HCAP:A|B|C' (không phải calc_version, không chạy pm2). ──
   'HCAP:A': {
     emoji: '📈',
