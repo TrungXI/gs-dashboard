@@ -20,6 +20,29 @@ function hlClass(_team: string, _team1?: string, _team2?: string): string {
   return '';
 }
 
+// Format độ chấp: 1 → "1", 0.75 → "0.75" (bỏ số 0 thừa).
+function fmtLine(n: number): string {
+  return String(n);
+}
+
+// Chấp mở kèo: đội trên (Chủ/Khách) + độ chấp. Xám khi thiếu cả 2 nguồn.
+// Dấu "*" nhỏ = lấy từ fallback gs_16p_ticks (odds_log không có).
+function HandicapCell({ m }: { m: Match }) {
+  if (m.hcOpenLine == null || m.hcOpenFav == null) {
+    return <span className="text-[#555]">—</span>;
+  }
+  const favHome = m.hcOpenFav === 'home';
+  const favLabel = favHome ? 'Chủ' : 'Khách';
+  const title = `${favLabel} chấp ${fmtLine(m.hcOpenLine)}${m.hcOpenSource === '16p' ? ' (nguồn 16p ticks)' : ''}`;
+  return (
+    <span title={title} className="whitespace-nowrap font-semibold text-[#fbbf24]">
+      <span className={favHome ? 'text-[#60a5fa]' : 'text-[#f472b6]'}>{favLabel}</span>{' '}
+      -{fmtLine(m.hcOpenLine)}
+      {m.hcOpenSource === '16p' && <span className="text-[#555]" title="nguồn gs_16p_ticks">*</span>}
+    </span>
+  );
+}
+
 // Kết quả từng bên: thắng FT (so tổng) và thắng H1 (so hiệp 1).
 function outcome(m: Match) {
   const ftH = +m.ttHome, ftA = +m.ttAway, h1H = +m.h1Home, h1A = +m.h1Away;
@@ -114,6 +137,9 @@ function DataTable({ matches, highlightTeam, highlightTeam2 }: { matches: Match[
                       <span className="text-[#555]"> – </span>
                       <ScoreCell my={m.ttAway} opp={m.ttHome} />
                     </span>
+                    <span className="ml-auto text-[#888]">
+                      Chấp <HandicapCell m={m} />
+                    </span>
                   </div>
                 </div>
               );
@@ -141,10 +167,11 @@ function DataTable({ matches, highlightTeam, highlightTeam2 }: { matches: Match[
             <col />
             <col className="w-20" />
             <col className="w-20" />
+            <col className="w-24" />
           </colgroup>
           <thead className="sticky top-0 z-10">
             <tr>
-              {['#', 'Ngày', 'Giờ', 'Loại', 'Đội Nhà', 'Đội Khách', 'H1', 'TT'].map((h, i) => (
+              {['#', 'Ngày', 'Giờ', 'Loại', 'Đội Nhà', 'Đội Khách', 'H1', 'TT', 'Chấp mở'].map((h, i) => (
                 <th
                   key={h}
                   className={`bg-[#1a1a1a] px-2.5 py-2.5 text-xs font-semibold text-[#aaa] ${
@@ -159,7 +186,7 @@ function DataTable({ matches, highlightTeam, highlightTeam2 }: { matches: Match[
           <tbody>
             {paddingTop > 0 && (
               <tr>
-                <td colSpan={8} style={{ height: paddingTop }} />
+                <td colSpan={9} style={{ height: paddingTop }} />
               </tr>
             )}
             {items.map((vrow) => {
@@ -202,12 +229,15 @@ function DataTable({ matches, highlightTeam, highlightTeam2 }: { matches: Match[
                     <ScoreCell my={m.ttHome} opp={m.ttAway} /> –{' '}
                     <ScoreCell my={m.ttAway} opp={m.ttHome} />
                   </td>
+                  <td className="whitespace-nowrap border-b border-[#222] px-2.5 py-2 text-center text-xs">
+                    <HandicapCell m={m} />
+                  </td>
                 </tr>
               );
             })}
             {paddingBottom > 0 && (
               <tr>
-                <td colSpan={8} style={{ height: paddingBottom }} />
+                <td colSpan={9} style={{ height: paddingBottom }} />
               </tr>
             )}
           </tbody>

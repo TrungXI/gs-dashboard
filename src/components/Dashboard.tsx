@@ -20,8 +20,10 @@ import BotReport from './BotReport';
 import FtPairs from './FtPairs';
 import GoalTimeline from './GoalTimeline';
 import LiveVideoWall from './LiveVideoWall';
+import SabaFootballLive from './SabaFootballLive';
+import SabaVideo from './SabaVideo';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor' | 'video';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor' | 'video' | 'saba-live' | 'saba-video';
 type FType = 'all' | '20p' | '16p';
 
 // ── URL routing: view ↔ slug (single source of truth) ─────────────────────
@@ -42,6 +44,8 @@ const VIEW_TO_SLUG: Record<View, string> = {
   'goal-timeline': 'goal-timeline',
   'monitor': 'monitor',
   'video': 'video',
+  'saba-live': 'saba-live',
+  'saba-video': 'saba-video',
 };
 
 // Slug (kể cả alias cũ) → View. Alias legacy giữ cho link chia sẻ cũ còn chạy;
@@ -280,8 +284,10 @@ export default function Dashboard({
   const navItems: [View, string, string][] = [
     ['data', '📋', 'GS Dữ liệu'],
     // ['gs-live', '🔴', 'GS Live'], // hidden from nav
-    ['report', '🎯', 'Tài Xỉu Live'],
-    ['video', '📺', 'Video'],
+    ['report', '🎯', 'GS Live'],
+    ['video', '📺', 'GS Video'],
+    ['saba-live', '⚽', 'SABA Live'],
+    // ['saba-video', '🎥', 'SABA Video'], // hidden from nav
     // ['match-analysis', '📈', 'Phân Tích Kèo'], // hidden from nav
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)
@@ -364,10 +370,10 @@ export default function Dashboard({
       </aside>
 
       {/* Main */}
-      <main className={`gs-main flex-1 overflow-y-auto pb-[72px] md:pb-6 bg-[#0d0d0d] ${view === 'video' ? '' : 'p-3 md:p-6'}`}>
+      <main className={`gs-main flex-1 overflow-y-auto pb-[72px] md:pb-6 bg-[#0d0d0d] ${view === 'video' || view === 'saba-video' ? '' : 'p-3 md:p-6'}`}>
         {/* Chỉ báo URL hiện tại — hiển thị trên MỌI view (guard SSR qua urlLabel state). */}
         {urlLabel && (
-          <div className={`mb-2 font-mono text-[11px] text-white/35 ${view === 'video' ? 'px-3 pt-3' : ''}`}>
+          <div className={`mb-2 font-mono text-[11px] text-white/35 ${view === 'video' || view === 'saba-video' ? 'px-3 pt-3' : ''}`}>
             {urlLabel}
           </div>
         )}
@@ -502,6 +508,10 @@ export default function Dashboard({
           <GoalTimeline />
         ) : view === 'video' ? (
           <LiveVideoWall />
+        ) : view === 'saba-live' ? (
+          <SabaFootballLive initialMatch={deepLinkMatch} />
+        ) : view === 'saba-video' ? (
+          <SabaVideo />
         ) : (
           <GSLive initialMatch={deepLinkMatch} />
         )}
@@ -509,7 +519,7 @@ export default function Dashboard({
 
       {/* Bottom nav — mobile only */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 md:hidden border-t border-[#2a2a2a] bg-[#111]">
-        {navItems.filter(([v]) => v !== 'video').map(([v, icon, label]) => (
+        {navItems.map(([v, icon, label]) => (
           <Link
             key={v}
             href={slugHref(v)}

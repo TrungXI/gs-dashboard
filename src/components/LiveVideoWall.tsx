@@ -14,7 +14,13 @@ async function getShareStream(): Promise<MediaStream> {
   const track = sharedStream?.getVideoTracks()[0];
   if (track && track.readyState === 'live') return sharedStream!;
   const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: { displaySurface: 'browser' },
+    // Yêu cầu độ phân giải cao nhất có thể để ảnh crop nét hơn.
+    video: {
+      displaySurface: 'browser',
+      width: { ideal: 3840 },
+      height: { ideal: 2160 },
+      frameRate: { ideal: 10 },
+    },
     audio: false,
     preferCurrentTab: true,
   } as MediaStreamConstraints);
@@ -70,15 +76,18 @@ async function captureAndSend(
     const srcW = clamp(box.width * sx, tw - srcL);
     const srcH = clamp(box.height * sy, th - srcT);
 
+    // Canvas theo PIXEL NGUỒN (không phải CSS px) → giữ nguyên độ nét stream, không downscale.
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(box.width);
-    canvas.height = Math.round(box.height);
+    canvas.width = Math.max(1, Math.round(srcW));
+    canvas.height = Math.max(1, Math.round(srcH));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('không tạo được canvas');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(v, srcL, srcT, srcW, srcH, 0, 0, canvas.width, canvas.height);
 
     const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92),
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.95),
     );
     if (!blob) throw new Error('không tạo được ảnh');
 
@@ -172,9 +181,9 @@ function HcLiveRow({
   return (
     <div className={`flex items-center gap-1 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
       <span className="w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
-      <span className={`min-w-0 flex-1 truncate text-right font-semibold ${dead ? 'text-[#555]' : priceCls(row!.home)}`}>{dead ? '—' : row!.home ?? '—'}</span>
+      <span className={`min-w-0 flex-1 whitespace-nowrap text-right font-semibold sm:truncate ${dead ? 'text-[#555]' : priceCls(row!.home)}`}>{dead ? '—' : row!.home ?? '—'}</span>
       <span className="shrink-0 text-[#555]">·</span>
-      <span className={`min-w-0 flex-1 truncate font-semibold ${dead ? 'text-[#555]' : priceCls(row!.away)}`}>{dead ? '—' : row!.away ?? '—'}</span>
+      <span className={`min-w-0 flex-1 whitespace-nowrap font-semibold sm:truncate ${dead ? 'text-[#555]' : priceCls(row!.away)}`}>{dead ? '—' : row!.away ?? '—'}</span>
     </div>
   );
 }
@@ -192,9 +201,9 @@ function OuLiveRow({
   return (
     <div className={`flex items-center gap-1 text-[10px] tabular-nums${divider ? ' border-t border-[#222] pt-0.5' : ''}`}>
       <span className="w-[30px] shrink-0 text-right text-[#888]">{dead ? '—' : row!.line ?? '—'}</span>
-      <span className={`min-w-0 flex-1 truncate text-right font-semibold ${dead ? 'text-[#555]' : priceCls(row!.over)}`}>{dead ? '—' : row!.over ?? '—'}</span>
+      <span className={`min-w-0 flex-1 whitespace-nowrap text-right font-semibold sm:truncate ${dead ? 'text-[#555]' : priceCls(row!.over)}`}>{dead ? '—' : row!.over ?? '—'}</span>
       <span className="shrink-0 text-[#555]">·</span>
-      <span className={`min-w-0 flex-1 truncate font-semibold ${dead ? 'text-[#555]' : priceCls(row!.under)}`}>{dead ? '—' : row!.under ?? '—'}</span>
+      <span className={`min-w-0 flex-1 whitespace-nowrap font-semibold sm:truncate ${dead ? 'text-[#555]' : priceCls(row!.under)}`}>{dead ? '—' : row!.under ?? '—'}</span>
     </div>
   );
 }
@@ -258,10 +267,61 @@ function OddsBox({ match }: { match: GsLiveMatch }) {
           </div>
         </>
       )}
-      <div className="flex gap-3">
+      {/* Mobile: 2 nhóm xếp DỌC (mỗi nhóm full bề ngang → số line không bị cắt).
+          Desktop (sm+): nằm ngang cạnh nhau như cũ. */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
         <OddsHalf label="Cả trận" hcLines={match.hcLines} ouLines={match.ouLines} />
-        <div className="w-px shrink-0 self-stretch bg-[#222]" />
+        <div className="h-px w-full shrink-0 bg-[#222] sm:h-auto sm:w-px sm:self-stretch" />
         <OddsHalf label="H1" hcLines={match.hcH1Lines} ouLines={match.ouH1Lines} />
+      </div>
+    </div>
+  );
+}
+
+// Một bàn thắng của trận đang live (từ /api/gs-live-goals): đội (h/a), hiệp, phút, tỉ số.
+interface GoalEvent { e: number; s: 'h' | 'a'; h2: boolean; m: number; sh: number; sa: number; }
+
+// Timeline ghi bàn cho MỘT trận — thanh H1|H2, chấm mỗi bàn kèm phút + tỉ số.
+// Mirror cách RankingLive vẽ (nhà = cyan, khách = hồng). Rỗng → không render.
+function GoalTimelineBar({ match, goals }: { match: GsLiveMatch; goals: GoalEvent[] }) {
+  if (goals.length === 0) return null;
+  const HOME = '#38bdf8', AWAY = '#fb7185';
+  // Feed 20p (Asian lẫn International) chạy tới ~phút 50 mỗi hiệp; 16p ~45.
+  const HALF_MAX = (match.matchType === '20p' || match.matchType === '20p_intl') ? 50 : 45;
+  const posOf = (g: GoalEvent) => {
+    const mm = Math.min(Math.max(g.m, 0), HALF_MAX);
+    return g.h2 ? 50 + (mm / HALF_MAX) * 50 : (mm / HALF_MAX) * 50;
+  };
+  return (
+    <div className="border-t border-[#222] px-3 py-2">
+      <div className="mb-1 flex items-center gap-2 text-[9px] uppercase tracking-wide text-[#666]">
+        <span>⚽ Timeline ghi bàn ({goals.length})</span>
+        <span className="ml-auto flex items-center gap-2 normal-case tracking-normal">
+          <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: HOME }} /><span className="max-w-[70px] truncate" style={{ color: HOME }}>{match.homeTeam}</span></span>
+          <span className="inline-flex items-center gap-1"><i className="inline-block h-2 w-2 rounded-full" style={{ background: AWAY }} /><span className="max-w-[70px] truncate" style={{ color: AWAY }}>{match.awayTeam}</span></span>
+        </span>
+      </div>
+      <div className="relative h-10 rounded border border-[#242424] bg-[#161616]">
+        <div className="absolute inset-y-0 left-0 w-1/2 rounded-l bg-[#fbbf24]/[.04]" />
+        <div className="absolute inset-y-0 right-0 w-1/2 rounded-r bg-[#4ade80]/[.04]" />
+        <div className="absolute inset-y-0 left-1/2 w-px bg-[#3a3a3a]" />
+        <span className="absolute left-1 top-0.5 text-[8px] font-semibold text-[#fbbf24]/70">H1</span>
+        <span className="absolute right-1 top-0.5 text-[8px] font-semibold text-[#4ade80]/70">H2</span>
+        {goals.map((g, i) => {
+          const left = posOf(g);
+          const color = g.s === 'h' ? HOME : AWAY;
+          const team = g.s === 'h' ? match.homeTeam : match.awayTeam;
+          return (
+            <div key={`${g.s}-${g.h2 ? 'H2' : 'H1'}-${g.m}-${g.sh}-${g.sa}-${i}`}
+              className="absolute inset-y-0" style={{ left: `${left}%` }}
+              title={`${team} ghi phút ${g.m}' (${g.h2 ? 'H2' : 'H1'}) — ${g.sh}-${g.sa}`}>
+              <div className="absolute inset-y-1.5 w-px" style={{ background: color, opacity: 0.4, transform: 'translateX(-0.5px)' }} />
+              <div className="absolute left-0 top-1/2 h-[9px] w-[9px] rounded-full" style={{ background: color, transform: 'translate(-50%,-50%)', boxShadow: '0 0 0 2px #161616' }} />
+              <span className="absolute left-0 -top-0.5 text-[8px] font-bold tabular-nums" style={{ color, transform: 'translateX(-50%)' }}>{g.m}&apos;</span>
+              <span className="absolute left-0 bottom-0 text-[7px] tabular-nums text-white/45" style={{ transform: 'translateX(-50%)' }}>{g.sh}-{g.sa}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -277,6 +337,7 @@ function VideoCell({
   onToast,
   bulk,
   h1Remembered,
+  goals,
 }: {
   token: string;
   agentId: string;
@@ -285,6 +346,7 @@ function VideoCell({
   onToast: (msg: string, ok: boolean) => void;
   bulk: { on: boolean; n: number } | null;
   h1Remembered: { home: number; away: number } | undefined;
+  goals: GoalEvent[];
 }) {
   const [loaded, setLoaded] = useState(false);
   // "Bật hết / Tắt hết" từ parent → set loaded theo tín hiệu bulk. Ô mới mount cũng
@@ -297,6 +359,8 @@ function VideoCell({
   const iframeH = Math.round(displayH / scale);
   const src = `https://det.zenandfe.com/?token=${encodeURIComponent(token)}&agentId=${agentId}&lng=vi&sportId=1&route=3&eventId=${match.eventId}&brand=&muted=1`;
   const isHT = match.period === 4;
+  // Box viền vàng: từ lúc vào HT cho đến hết phút 10 của H2.
+  const isHtHighlight = isHT || (match.isH2 && match.minuteElapsed != null && match.minuteElapsed <= 10);
   // Đội chấp (favorite) → tô đỏ tên ở title. Ưu tiên kèo cả trận, fallback H1.
   const favSide = match.hcLines?.[0]?.favoriteSide ?? match.hcH1Lines?.[0]?.favoriteSide ?? null;
 
@@ -319,7 +383,7 @@ function VideoCell({
   };
 
   return (
-    <div className="rounded-lg border border-[#2a2a2a] bg-[#141414] overflow-hidden">
+    <div className={`rounded-lg border ${isHtHighlight ? 'border-yellow-400' : 'border-[#2a2a2a]'} bg-[#141414] overflow-hidden`}>
       {/* Header: teams + score + phase + 📸 chụp */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-[#222]">
         <div className="flex-1 min-w-0 text-[13px] font-semibold truncate">
@@ -384,6 +448,9 @@ function VideoCell({
 
       {/* Kèo Chấp + Tài Xỉu (cả trận). Khoá kèo chỉ phủ hộp này, video vẫn rõ. */}
       <OddsBox match={match} />
+
+      {/* Timeline ghi bàn — chỉ hiện khi trận đã có bàn. */}
+      <GoalTimelineBar match={match} goals={goals} />
     </div>
   );
 }
@@ -431,6 +498,10 @@ export default function LiveVideoWall() {
   const osNotiHTRef = useRef(false);
   const [toastOn, setToastOn] = useState(true);
   const toastOnRef = useRef(true);
+  // Công tắc TỔNG — tắt là im HẾT mọi kênh (toast + OS, ghi bàn + hết hiệp + hết
+  // trận), bất kể 3 toggle con đang bật. Mặc định BẬT; chỉ '0' mới tắt.
+  const [notiMaster, setNotiMaster] = useState(true);
+  const notiMasterRef = useRef(true);
   useEffect(() => {
     const g = localStorage.getItem('gs_video_os_noti_goal') === '1';
     const h = localStorage.getItem('gs_video_os_noti_ht') === '1';
@@ -438,6 +509,8 @@ export default function LiveVideoWall() {
     setOsNotiHT(h);   osNotiHTRef.current = h;
     const t = localStorage.getItem('gs_video_toast') !== '0'; // chỉ '0' mới tắt
     setToastOn(t); toastOnRef.current = t;
+    const master = localStorage.getItem('gs_video_noti_master') !== '0';
+    setNotiMaster(master); notiMasterRef.current = master;
   }, []);
 
   async function requestAndSet(
@@ -455,6 +528,7 @@ export default function LiveVideoWall() {
   }
 
   function notifyOS(kind: 'goal' | 'ht', title: string, body: string, eventId?: number) {
+    if (!notiMasterRef.current) return; // công tắc tổng tắt → im hết
     const allowed = kind === 'goal' ? osNotiGoalRef.current : osNotiHTRef.current;
     if (!allowed) return;
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
@@ -496,10 +570,13 @@ export default function LiveVideoWall() {
       return next;
     });
   };
+  // Mirror ra ref để noti loop (chạy trong interval, closure cũ) luôn đọc trạng thái mới nhất.
+  const disabledLeaguesRef = useRef<Set<string>>(new Set());
+  useEffect(() => { disabledLeaguesRef.current = disabledLeagues; }, [disabledLeagues]);
 
   // Snapshot trận ở tick TRƯỚC (keyed eventId) để diff sự kiện: tổng bàn, phase, còn-live.
   // primedRef=false ở lần fetch đầu → chỉ lập baseline, KHÔNG bắn toast.
-  const prevSnapshotRef = useRef<Map<number, { total: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string }>>(new Map());
+  const prevSnapshotRef = useRef<Map<number, { total: number; home: number; away: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string; lgKey: string }>>(new Map());
   const primedRef = useRef(false);
 
   // Nhớ tỉ số H1 per-eventId (mirror RankingLive h1FinalRef/h1Finals): live API hay
@@ -534,32 +611,38 @@ export default function LiveVideoWall() {
         const live = (json.matches ?? []).filter((m) => m.isLive);
 
         // Diff sự kiện so với snapshot tick trước — bỏ qua lần đầu (chỉ lập baseline).
-        const next = new Map<number, { total: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string }>();
+        const next = new Map<number, { total: number; home: number; away: number; phase: 'H1' | 'HT' | 'H2'; homeTeam: string; awayTeam: string; lgKey: string }>();
         for (const m of live) {
           const phase: 'H1' | 'HT' | 'H2' = m.period === 4 ? 'HT' : m.isH2 ? 'H2' : 'H1';
-          next.set(m.eventId, { total: m.h1Home + m.h1Away, phase, homeTeam: m.homeTeam, awayTeam: m.awayTeam });
+          next.set(m.eventId, { total: m.h1Home + m.h1Away, home: m.h1Home, away: m.h1Away, phase, homeTeam: m.homeTeam, awayTeam: m.awayTeam, lgKey: (m.leagueName || '').trim() || m.matchType });
         }
         if (primedRef.current) {
           const prev = prevSnapshotRef.current;
           for (const m of live) {
             const before = prev.get(m.eventId);
             if (!before) continue; // trận mới xuất hiện — không có gì để so
+            // Giải đang TẮT filter → không bắn noti (khớp key với groupByLeague/hiển thị).
+            if (disabledLeaguesRef.current.has((m.leagueName || '').trim() || m.matchType)) continue;
             const nowTotal = m.h1Home + m.h1Away;
             // Ghi bàn: tổng bàn tăng → toast (nếu bật) + noti OS
             if (nowTotal > before.total) {
-              if (toastOnRef.current) showToast(`⚽ ${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, true);
-              notifyOS('goal', `⚽ ${m.homeTeam} vs ${m.awayTeam} ghi bàn!`, `${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, m.eventId);
+              const goalMin = m.minuteElapsed != null ? ` · ${m.minuteElapsed}'` : '';
+              const scorer = m.h1Home > before.home ? m.homeTeam : m.h1Away > before.away ? m.awayTeam : null;
+              const scorerLabel = scorer ? `${scorer} ghi bàn` : 'Ghi bàn';
+              if (notiMasterRef.current && toastOnRef.current) showToast(`⚽ ${scorerLabel} · ${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}${goalMin}`, true);
+              notifyOS('goal', `⚽ ${scorerLabel}!`, `${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}${goalMin ? `\n${goalMin.trim()}` : ''}`, m.eventId);
             }
             // Hết hiệp 1: phase trước là H1, giờ sang HT (period=4) → toast (nếu bật) + noti OS
             if (before.phase === 'H1' && m.period === 4) {
-              if (toastOnRef.current) showToast(`⏸️ Hết hiệp 1 · ${m.homeTeam} vs ${m.awayTeam}`, true);
+              if (notiMasterRef.current && toastOnRef.current) showToast(`⏸️ Hết hiệp 1 · ${m.homeTeam} vs ${m.awayTeam}`, true);
               notifyOS('ht', '🔔 Hết Hiệp 1', `${m.homeTeam} ${m.h1Home}-${m.h1Away} ${m.awayTeam}`, m.eventId);
             }
           }
           // Hết trận: eventId có ở snapshot trước nhưng biến mất khỏi list live hiện tại (chỉ toast in-app)
           for (const [eid, before] of prev) {
             if (!next.has(eid)) {
-              if (toastOnRef.current) showToast(`🏁 Hết trận · ${before.homeTeam} vs ${before.awayTeam}`, true);
+              if (disabledLeaguesRef.current.has(before.lgKey)) continue; // giải tắt → bỏ qua
+              if (notiMasterRef.current && toastOnRef.current) showToast(`🏁 Hết trận · ${before.homeTeam} vs ${before.awayTeam}`, true);
             }
           }
         }
@@ -594,6 +677,27 @@ export default function LiveVideoWall() {
     return () => { cancelled = true; clearInterval(id); };
   }, [token]);
 
+  // Timeline ghi bàn per trận live — từ /api/gs-live-goals (ưu tiên gs_16p_ticks,
+  // có cả International 20p). Key = danh sách eventId live (đổi khi trận vào/ra) →
+  // fetch NGAY, sau đó 10s/lần (bàn thắng hiếm). Tab ẩn thì ngừng cho nhẹ.
+  const [goalLog, setGoalLog] = useState<GoalEvent[]>([]);
+  const liveIdsKey = matches.map((m) => m.eventId).sort((a, b) => a - b).join(',');
+  useEffect(() => {
+    if (!liveIdsKey) { setGoalLog([]); return; }
+    let alive = true;
+    const fetchGoals = async () => {
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const res = await fetch(`/api/gs-live-goals?events=${liveIdsKey}`, { cache: 'no-store' });
+        const json = (await res.json()) as { ok: boolean; goals?: GoalEvent[] };
+        if (alive && json.ok) setGoalLog(json.goals ?? []);
+      } catch { /* giữ nguyên */ }
+    };
+    fetchGoals();
+    const gid = setInterval(fetchGoals, 10000);
+    return () => { alive = false; clearInterval(gid); };
+  }, [liveIdsKey]);
+
   return (
     <div className="p-5">
       {/* Top section: title + token input + refresh status */}
@@ -604,24 +708,39 @@ export default function LiveVideoWall() {
           <span className="text-[11px] text-[#666]">
             {matches.length} trận{lastFetch && ` · ${lastFetch.toLocaleTimeString('vi-VN')}`}
           </span>
+          {/* Công tắc TỔNG — tắt là im HẾT (toast + OS, mọi loại). Ưu tiên cao nhất. */}
           <button
             type="button"
+            onClick={() => {
+              const next = !notiMaster;
+              setNotiMaster(next); notiMasterRef.current = next;
+              localStorage.setItem('gs_video_noti_master', next ? '1' : '0');
+            }}
+            className={`rounded px-2 py-0.5 text-[11px] font-semibold border transition-colors ${notiMaster ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#f87171]/50 text-[#f87171] bg-[#f87171]/10 hover:bg-[#f87171]/20'}`}
+            title={notiMaster ? 'Đang bật thông báo — bấm để TẮT HẾT' : 'Đã tắt hết thông báo — bấm để bật lại'}
+          >
+            {notiMaster ? '🔔 Thông báo: BẬT' : '🔕 Đã tắt hết'}
+          </button>
+          <button
+            type="button"
+            disabled={!notiMaster}
             onClick={() => {
               if (osNotiGoal) { setOsNotiGoal(false); osNotiGoalRef.current = false; localStorage.setItem('gs_video_os_noti_goal', '0'); }
               else requestAndSet('gs_video_os_noti_goal', setOsNotiGoal, osNotiGoalRef);
             }}
-            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${osNotiGoal ? 'border-[#22c55e]/40 text-[#22c55e] bg-[#22c55e]/10 hover:bg-[#22c55e]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
             title={osNotiGoal ? 'Tắt noti ghi bàn' : 'Bật noti ghi bàn ra Macbook'}
           >
             {osNotiGoal ? '⚽ Ghi bàn ON' : '⚽ Ghi bàn OFF'}
           </button>
           <button
             type="button"
+            disabled={!notiMaster}
             onClick={() => {
               if (osNotiHT) { setOsNotiHT(false); osNotiHTRef.current = false; localStorage.setItem('gs_video_os_noti_ht', '0'); }
               else requestAndSet('gs_video_os_noti_ht', setOsNotiHT, osNotiHTRef);
             }}
-            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${osNotiHT ? 'border-[#fbbf24]/40 text-[#fbbf24] bg-[#fbbf24]/10 hover:bg-[#fbbf24]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
             title={osNotiHT ? 'Tắt noti hết H1' : 'Bật noti hết H1 ra Macbook'}
           >
             {osNotiHT ? '🔔 Hết H1 ON' : '🔔 Hết H1 OFF'}
@@ -629,12 +748,13 @@ export default function LiveVideoWall() {
           {/* Bật/tắt toast popup trong app */}
           <button
             type="button"
+            disabled={!notiMaster}
             onClick={() => {
               const next = !toastOn;
               setToastOn(next); toastOnRef.current = next;
               localStorage.setItem('gs_video_toast', next ? '1' : '0');
             }}
-            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${toastOn ? 'border-[#17a2b8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${toastOn ? 'border-[#17a2b8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
             title={toastOn ? 'Tắt toast popup trong app' : 'Bật toast popup trong app'}
           >
             {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
@@ -718,7 +838,7 @@ export default function LiveVideoWall() {
               </div>
               <div ref={si === 0 ? gridRef : undefined} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 {section.matches.map((m) => (
-                  <VideoCell key={m.eventId} token={token} agentId={agentId} match={m} displayW={cellW} onToast={showToast} bulk={bulkLoad} h1Remembered={h1Finals.get(m.eventId)} />
+                  <VideoCell key={m.eventId} token={token} agentId={agentId} match={m} displayW={cellW} onToast={showToast} bulk={bulkLoad} h1Remembered={h1Finals.get(m.eventId)} goals={goalLog.filter((g) => g.e === m.eventId)} />
                 ))}
               </div>
             </section>

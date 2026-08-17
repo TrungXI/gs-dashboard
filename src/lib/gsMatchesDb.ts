@@ -62,6 +62,24 @@ function rowToMatch(r: {
   };
 }
 
+// Page rows carry the base match columns plus the resolved opening handicap.
+function pageRowToMatch(r: Parameters<typeof rowToMatch>[0] & {
+  hc_open_line: string | number | null;
+  hc_open_home_gives: boolean | null;
+  hc_open_source: 'odds' | '16p' | null;
+}): Match {
+  const base = rowToMatch(r);
+  const line = r.hc_open_line === null || r.hc_open_line === ''
+    ? null
+    : Number(r.hc_open_line);
+  return {
+    ...base,
+    hcOpenLine: line !== null && Number.isFinite(line) ? line : null,
+    hcOpenFav: r.hc_open_home_gives === null ? null : r.hc_open_home_gives ? 'home' : 'away',
+    hcOpenSource: r.hc_open_source,
+  };
+}
+
 export async function fetchAllMatches(): Promise<Match[]> {
   const db = getPool();
   const { rows } = await db.query(`
@@ -136,12 +154,75 @@ export async function fetchMatchesPage(q: MatchQuery): Promise<MatchPage> {
   const { where, params } = buildWhere(q);
 
   const countSql = `SELECT COUNT(*)::int AS total ${FROM_JOINS} ${where}`;
+
+  // Page query enriched with the opening handicap ("chấp mở kèo"). Each history
+  // row is resolved to its sb21 event_id — first via match_odds_log's earliest
+  // snapshot (nearest match_time, ≤15 min, keeps the map 1:1), then falling back
+  // to gs_16p_ticks' earliest start_time for events the odds log never captured.
+  // The handicap itself is hcLines[0] (the market's main line, exactly what the
+  // collector stores as hc_line): pulled from the pre-kickoff first_seen snapshot
+  // (period 2), or from the earliest 16p tick's raw JSONB when odds_log lacks it.
   const pageSql = `
-    SELECT ${SELECT_COLS}
-    ${FROM_JOINS}
-    ${where}
-    ORDER BY mh.match_time DESC
-    LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    WITH page AS (
+      SELECT mh.id, mh.match_time, mh.match_type, mh.league,
+             mh.home_team_id, mh.away_team_id,
+             ${HOME_NAME_EXPR} AS home_team, ${AWAY_NAME_EXPR} AS away_team,
+             mh.h1_home, mh.h1_away, mh.tt_home, mh.tt_away
+      ${FROM_JOINS}
+      ${where}
+      ORDER BY mh.match_time DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    ),
+    fs AS (
+      SELECT event_id, home_team_id, away_team_id, MIN(recorded_at) AS fs_at
+      FROM match_odds_log GROUP BY event_id, home_team_id, away_team_id
+    ),
+    ev AS (
+      SELECT DISTINCT ON (p.id) p.id AS mh_id, fs.event_id
+      FROM page p JOIN fs
+        ON fs.home_team_id = p.home_team_id AND fs.away_team_id = p.away_team_id
+       AND abs(extract(epoch FROM (fs.fs_at - p.match_time))) <= 900
+      ORDER BY p.id, abs(extract(epoch FROM (fs.fs_at - p.match_time)))
+    ),
+    ev16 AS (
+      SELECT DISTINCT ON (p.id) p.id AS mh_id, t.event_id
+      FROM page p JOIN (
+        SELECT event_id, home_team_id, away_team_id, MIN(start_time) AS st
+        FROM gs_16p_ticks WHERE start_time IS NOT NULL
+        GROUP BY event_id, home_team_id, away_team_id
+      ) t
+        ON t.home_team_id = p.home_team_id AND t.away_team_id = p.away_team_id
+       AND abs(extract(epoch FROM (t.st - p.match_time))) <= 900
+      ORDER BY p.id, abs(extract(epoch FROM (t.st - p.match_time)))
+    ),
+    hc_odds AS (
+      SELECT DISTINCT ON (event_id) event_id, hc_line, hc_home_gives
+      FROM match_odds_log
+      WHERE snapshot_type = 'first_seen' AND period = 2
+        AND hc_line IS NOT NULL AND hc_line <> ''
+      ORDER BY event_id, recorded_at
+    ),
+    hc_16p AS (
+      SELECT DISTINCT ON (event_id) event_id,
+        raw->'hcLines'->0->>'line' AS hc_line,
+        (raw->'hcLines'->0->>'homeGives')::boolean AS hc_home_gives
+      FROM gs_16p_ticks
+      WHERE raw->'hcLines'->0 IS NOT NULL
+      ORDER BY event_id, recorded_at
+    )
+    SELECT p.match_time, p.match_type, p.league, p.home_team, p.away_team,
+           p.h1_home, p.h1_away, p.tt_home, p.tt_away,
+           COALESCE(o.hc_line, s.hc_line) AS hc_open_line,
+           COALESCE(o.hc_home_gives, s.hc_home_gives) AS hc_open_home_gives,
+           CASE WHEN o.hc_line IS NOT NULL THEN 'odds'
+                WHEN s.hc_line IS NOT NULL THEN '16p'
+                ELSE NULL END AS hc_open_source
+    FROM page p
+    LEFT JOIN ev   ON ev.mh_id = p.id
+    LEFT JOIN ev16 ON ev16.mh_id = p.id
+    LEFT JOIN hc_odds o ON o.event_id = ev.event_id
+    LEFT JOIN hc_16p  s ON s.event_id = COALESCE(ev.event_id, ev16.event_id)
+    ORDER BY p.match_time DESC
   `;
 
   const [countRes, pageRes] = await Promise.all([
@@ -151,7 +232,7 @@ export async function fetchMatchesPage(q: MatchQuery): Promise<MatchPage> {
 
   return {
     total: countRes.rows[0]?.total ?? 0,
-    matches: pageRes.rows.map(rowToMatch),
+    matches: pageRes.rows.map(pageRowToMatch),
   };
 }
 
