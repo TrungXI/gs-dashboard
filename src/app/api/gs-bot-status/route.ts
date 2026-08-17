@@ -32,6 +32,7 @@ const NAME_MAP: Record<string, string> = {
   'gs-tai-xiu-live': 'Tài Xỉu Live',
   'gs-tx-paper-v8-drift': 'TX v8.0 · lineDrift',
   'gs-vbot21-qt-xiu': 'V.Bot 21 QT Xỉu',
+  'gs-vbot-air1': 'V.Bot Air 1',
 };
 
 // pm2 process → NHIỀU calc_version (1 process chạy nhiều model). gs-hcap-paper chạy cả 3
