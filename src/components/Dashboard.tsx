@@ -287,7 +287,7 @@ export default function Dashboard({
     ['report', '🎯', 'GS Live'],
     ['video', '📺', 'GS Video'],
     ['saba-live', '⚽', 'SABA Live'],
-    // ['saba-video', '🎥', 'SABA Video'], // hidden from nav
+    ['saba-video', '🎥', 'SABA Video'],
     // ['match-analysis', '📈', 'Phân Tích Kèo'], // hidden from nav
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
     // ['bet-table', '🧮', 'Bảng kèo per-trận'],   // hidden per OPS task (per-match table)
@@ -519,7 +519,7 @@ export default function Dashboard({
 
       {/* Bottom nav — mobile only */}
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex h-14 md:hidden border-t border-[#2a2a2a] bg-[#111]">
-        {navItems.map(([v, icon, label]) => (
+        {navItems.filter(([v]) => v !== 'video' && v !== 'saba-video').map(([v, icon, label]) => (
           <Link
             key={v}
             href={slugHref(v)}

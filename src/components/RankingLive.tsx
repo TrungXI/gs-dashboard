@@ -1410,7 +1410,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       {/* Header */}
       <div className="mb-5 flex items-center gap-3 flex-wrap">
-        <h1 className="text-xl font-bold text-white">🏆 Xếp hạng — Live</h1>
+        <h1 className="text-xl font-bold text-white">GS Live</h1>
         <span className="text-[13px] text-[#666]">{liveMatches.length} trận live</span>
         <button
           type="button"

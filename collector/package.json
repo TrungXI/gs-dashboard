@@ -9,6 +9,7 @@
     "dotenv": "^16.6.1",
     "pg": "^8.22.0",
     "playwright-core": "^1.61.1",
-    "puppeteer-core": "^24.43.1"
+    "puppeteer-core": "^24.43.1",
+    "socket.io-client": "^4.8.1"
   }
 }
