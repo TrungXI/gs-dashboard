@@ -18,7 +18,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: 'no image' }, { status: 400 });
   }
 
-  const token = process.env.TG_BOT_TOKEN;
+  const token = process.env.TG_BOT_TOKEN || '8867426775:AAE1_oibMcHUUHL8VaiJIPPZz4XyTMz5zhw';
   if (!token) {
     return NextResponse.json({ ok: false, error: 'no token' }, { status: 500 });
   }

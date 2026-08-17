@@ -589,8 +589,9 @@ export default function LiveVideoWall() {
   const [matches, setMatches] = useState<GsLiveMatch[]>([]);
   const [loading, setLoading] = useState(false);
   // Bật/tắt HẾT video: mỗi lần bấm đổi `n` để mọi VideoCell re-apply (kể cả ô mới mount).
-  const [bulkLoad, setBulkLoad] = useState<{ on: boolean; n: number } | null>(null);
-  const bulkN = useRef(0);
+  // Khởi động với on=true → auto bật hết khi vào trang.
+  const [bulkLoad, setBulkLoad] = useState<{ on: boolean; n: number } | null>({ on: true, n: 1 });
+  const bulkN = useRef(1);
   // KHÔNG remount iframe khi đổi/quay lại tab (user 2026-08-15: giữ video chạy, đừng reload).
   // iframe không có key động + không unmount → luồng WebRTC tự resume khi quay lại, khỏi load lại.
   const [error, setError] = useState<string | null>(null);
