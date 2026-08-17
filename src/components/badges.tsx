@@ -29,9 +29,12 @@ export function TeamBadge({
   winH1?: boolean;
 }) {
   const c = LEAGUE_COLOR[type];
-  const style: CSSProperties = winFt
-    ? { background: 'rgba(251,191,36,0.20)', color: '#fbbf24', borderColor: 'rgba(251,191,36,0.60)' }
-    : { background: c.bg, color: c.fg, borderColor: c.border };
+  // bg + border luôn theo màu giải; chỉ text đổi vàng khi thắng FT.
+  const style: CSSProperties = {
+    background: c.bg,
+    color: winFt ? '#fbbf24' : c.fg,
+    borderColor: c.border,
+  };
   if (winH1) {
     style.textDecoration = 'underline';
     style.textDecorationColor = '#f87171';
