@@ -22,8 +22,9 @@ import GoalTimeline from './GoalTimeline';
 import LiveVideoWall from './LiveVideoWall';
 import SabaFootballLive from './SabaFootballLive';
 import SabaVideo from './SabaVideo';
+import GoalTimingReport from './GoalTimingReport';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'monitor' | 'video' | 'saba-live' | 'saba-video';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'goal-timing' | 'monitor' | 'video' | 'saba-live' | 'saba-video';
 type FType = 'all' | '20p' | '16p';
 
 // ── URL routing: view ↔ slug (single source of truth) ─────────────────────
@@ -42,6 +43,7 @@ const VIEW_TO_SLUG: Record<View, string> = {
   'bot-report': 'bot-report',
   'ft-pairs': 'ft-pairs',
   'goal-timeline': 'goal-timeline',
+  'goal-timing': 'goal-timing',
   'monitor': 'monitor',
   'video': 'video',
   'saba-live': 'saba-live',
@@ -295,6 +297,7 @@ export default function Dashboard({
     // ['team-form', '🔄', 'Quy luật phong độ'], // hidden from nav
     ['tx-report', '💰', 'Báo cáo TX'],
     ['bot-report', '🤖', 'Bot Report'],
+    ['goal-timing', '⚽', 'Bàn Thắng'],
     // ['ft-pairs', '📈', 'Cặp WL/BL'], // hidden from nav
     // ['goal-timeline', '⏱️', 'Timeline Ghi Bàn'], // hidden from nav
     ['monitor', '🖥️', 'Monitor'],
@@ -504,6 +507,8 @@ export default function Dashboard({
           <BotReport />
         ) : view === 'ft-pairs' ? (
           <FtPairs />
+        ) : view === 'goal-timing' ? (
+          <GoalTimingReport />
         ) : view === 'goal-timeline' ? (
           <GoalTimeline />
         ) : view === 'video' ? (
