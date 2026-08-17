@@ -468,6 +468,8 @@ export default function LiveVideoWall() {
     const t = extractToken(v);
     setToken(t);
     try { localStorage.setItem(LS_TOKEN, t); } catch { /* ignore */ }
+    // Token mới → reload toàn bộ iframe (src đổi → browser tự remount).
+    setBulkLoad({ on: true, n: ++bulkN.current });
   };
   const agentId = token.split('-')[0] || '69';
 
