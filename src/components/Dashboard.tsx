@@ -288,7 +288,7 @@ export default function Dashboard({
     // ['gs-live', '🔴', 'GS Live'], // hidden from nav
     ['report', '🎯', 'GS Live'],
     ['video', '📺', 'GS Video'],
-    ['saba-live', '⚽', 'SABA Live'],
+    // ['saba-live', '⚽', 'SABA Live'], // hidden from nav
     ['saba-video', '🎥', 'SABA Video'],
     // ['match-analysis', '📈', 'Phân Tích Kèo'], // hidden from nav
     // ['bet-stats', '📊', 'Thống kê kèo'], // hidden from nav
