@@ -605,12 +605,14 @@ export default function LiveVideoWall() {
 
     const fetchMatches = async () => {
       setLoading(true);
-      setError(null);
       try {
         const res = await fetch(`/api/gs-live?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
-        const json = (await res.json()) as { ok: boolean; matches?: GsLiveMatch[]; error?: string };
-        if (cancelled) return;
-        if (!json.ok) throw new Error(json.error || 'Lỗi tải trận');
+        // Server restart / deploy → trả HTML thay vì JSON → bỏ qua lặng lẽ.
+        const ct = res.headers.get('content-type') ?? '';
+        if (!ct.includes('json')) return;
+        const json = (await res.json().catch(() => null)) as { ok: boolean; matches?: GsLiveMatch[]; error?: string } | null;
+        if (!json || cancelled) return;
+        if (!json.ok) { if (!cancelled) setError(json.error || 'Lỗi tải trận'); return; }
         const live = (json.matches ?? []).filter((m) => m.isLive);
 
         // Diff sự kiện so với snapshot tick trước — bỏ qua lần đầu (chỉ lập baseline).
@@ -668,9 +670,7 @@ export default function LiveVideoWall() {
 
         setMatches(live);
         setLastFetch(new Date());
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      } finally {
+      } catch { /* network error — bỏ qua, poll sau */ } finally {
         if (!cancelled) setLoading(false);
       }
     };
@@ -692,8 +692,9 @@ export default function LiveVideoWall() {
       if (typeof document !== 'undefined' && document.hidden) return;
       try {
         const res = await fetch(`/api/gs-live-goals?events=${liveIdsKey}`, { cache: 'no-store' });
-        const json = (await res.json()) as { ok: boolean; goals?: GoalEvent[] };
-        if (alive && json.ok) setGoalLog(json.goals ?? []);
+        if (!(res.headers.get('content-type') ?? '').includes('json')) return;
+        const json = (await res.json().catch(() => null)) as { ok: boolean; goals?: GoalEvent[] } | null;
+        if (alive && json && json.ok) setGoalLog(json.goals ?? []);
       } catch { /* giữ nguyên */ }
     };
     fetchGoals();
