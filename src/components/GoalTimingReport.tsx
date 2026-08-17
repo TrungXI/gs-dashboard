@@ -186,7 +186,7 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
           <div style={{ background: T.surface, border: `1px solid ${T.border}`, borderTop: `2px solid ${T.h2}`, borderRadius: 7, padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ ...MONO, fontSize: 9, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: T.muted }}>Đỉnh H2</div>
             <div style={{ fontSize: 18, fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1, color: T.h2 }}>
-              {peakH2.window}&apos;
+              {h2Label(peakH2.window)}&apos;
               <span style={{ fontSize: 13, marginLeft: 6, opacity: 0.8 }}>{peakH2.pct}%</span>
             </div>
             <div style={{ fontSize: 11, color: T.muted, lineHeight: 1.5 }}>
