@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const homeTeam = req.nextUrl.searchParams.get('homeTeam')?.trim();
   const awayTeam = req.nextUrl.searchParams.get('awayTeam')?.trim();
   const matchType = req.nextUrl.searchParams.get('matchType');
-  if (!homeTeam || !awayTeam || matchType !== '20p_intl') {
+  if (!homeTeam || !awayTeam || !matchType || !['20p_intl', '20p_club'].includes(matchType)) {
     return NextResponse.json({ ok: false, error: 'invalid pair' }, { status: 400 });
   }
   const client = db();
@@ -31,13 +31,13 @@ export async function GET(req: NextRequest) {
     }>(`
       SELECT match_time, home_team, away_team, h1_home, h1_away, tt_home, tt_away
       FROM gs_matches_history
-      WHERE match_type = '20p_intl'
+      WHERE match_type = $3
         AND ((home_team = $1 AND away_team = $2) OR (home_team = $2 AND away_team = $1))
         AND h1_home IS NOT NULL AND h1_away IS NOT NULL
         AND tt_home IS NOT NULL AND tt_away IS NOT NULL
       ORDER BY match_time DESC
       LIMIT 10
-    `, [homeTeam, awayTeam]);
+    `, [homeTeam, awayTeam, matchType]);
     return NextResponse.json({
       ok: true,
       // Keep the same shape consumed by H2HMiniList. International has no

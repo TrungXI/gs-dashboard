@@ -25,7 +25,7 @@ import SabaVideo from './SabaVideo';
 import GoalTimingReport from './GoalTimingReport';
 
 type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'goal-timing' | 'monitor' | 'video' | 'saba-live' | 'saba-video';
-type FType = 'all' | '20p' | '16p';
+type FType = 'all' | '20p' | '16p' | '20p_club';
 
 // ── URL routing: view ↔ slug (single source of truth) ─────────────────────
 // Mỗi View có 1 slug canonical dùng làm ?view=<slug>. Slug trùng tên view cho
@@ -63,7 +63,7 @@ const SLUG_TO_VIEW: Record<string, View> = {
 // URL hiển thị + dùng cho <Link href>. Guard SSR.
 const slugHref = (v: View) => `/?view=${VIEW_TO_SLUG[v]}`;
 
-const EMPTY_OPTIONS: FilterOptions = { dates: [], teams: [], count20: 0, count16: 0, total: 0 };
+const EMPTY_OPTIONS: FilterOptions = { dates: [], teams: [], count20: 0, countClub: 0, count16: 0, total: 0 };
 
 export default function Dashboard({
   initialMatches,
@@ -94,7 +94,9 @@ export default function Dashboard({
   const deepLinkFilterPending = useRef(false);
   // Preset carried from the H2H matrix → bet-table (league + team pair). Keyed so
   // a fresh click always remounts BetStatsTable with the new pair.
-  const [betTablePreset, setBetTablePreset] = useState<{ key: number; type: FType; team: string; team2: string } | null>(null);
+  // `type` here mirrors BetStatsTable's preset union (no 20p_club — bet-stats has
+  // no Club support), not the widened data-view FType.
+  const [betTablePreset, setBetTablePreset] = useState<{ key: number; type: 'all' | '20p' | '16p'; team: string; team2: string } | null>(null);
   const openPairInBetTable = useCallback<OpenPairFn>((p) => {
     setBetTablePreset({ key: Date.now(), type: p.type, team: p.team, team2: p.team2 });
     setView('bet-table');
@@ -135,7 +137,7 @@ export default function Dashboard({
     if (Number.isFinite(eventId)) setDeepLinkMatch(eventId);
 
     // Pair deep-link → GS Dữ liệu pre-filtered by tournament + both teams.
-    if (typeParam === '20p' || typeParam === '16p' || typeParam === 'all') setFType(typeParam);
+    if (typeParam === '20p' || typeParam === '16p' || typeParam === '20p_club' || typeParam === 'all') setFType(typeParam);
     if (teamParam) { setFTeam(teamParam); deepLinkFilterPending.current = true; }
     if (team2Param) { setFTeam2(team2Param); deepLinkFilterPending.current = true; }
 
@@ -278,6 +280,7 @@ export default function Dashboard({
   const typeChips: [FType, string][] = [
     ['all', 'Tất cả'],
     ['20p', `20p (${options.count20})`],
+    ['20p_club', `CLB (${options.countClub})`],
     ['16p', `16p (${options.count16})`],
   ];
 

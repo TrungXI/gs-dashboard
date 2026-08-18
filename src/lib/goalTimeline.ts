@@ -17,7 +17,7 @@ export const BUFFER_MIN = 60; // trận bắt đầu < now()-60' mới coi hoàn
 export const CAP_MINUTE = 50; // horizon cố định mỗi hiệp
 export const DAYS_ALLOW = [7, 14] as const;
 export const BIN_ALLOW = [5, 10] as const;
-export const LEAGUE_ALLOW = ['16p', '20p_asian', '20p_intl'] as const;
+export const LEAGUE_ALLOW = ['16p', '20p_asian', '20p_intl', '20p_club'] as const;
 export const PERM_R = 2000;
 export const PERM_SEED = 0x9e3779b9; // deterministic mulberry32
 export const THRESH = {
@@ -896,7 +896,7 @@ export function buildGoalTimeline(input: RawInput, params: BuildParams): GoalTim
   };
 
   let events: EventModel[];
-  if (params.league === '20p_intl') {
+  if (params.league === '20p_intl' || params.league === '20p_club') {
     events = buildEventsFromTicks(input.tickRows ?? [], q);
   } else {
     events = buildEventsFromOdds(input.oddsRows ?? [], q);

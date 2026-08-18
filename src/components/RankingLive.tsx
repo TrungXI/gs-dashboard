@@ -21,6 +21,7 @@ const GS_STREAM_TOKEN = process.env.NEXT_PUBLIC_GS_TOKEN ?? '';
 const LEAGUE_16P = 2140;
 const LEAGUE_20P = 2125;
 const LEAGUE_20P_INTL = 1485;
+const LEAGUE_20P_CLUB = 1508;
 
 // ── Gợi ý Tài/Xỉu deterministic (EMPIRICAL) — hằng số, mỗi cái có lý do (§6 SPEC) ──
 const N_MIN = 8;              // dưới 8 trận đối đầu có line → phân phối quá nhiễu (bài học 0-0→Tài GIẢ)
@@ -480,9 +481,9 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   // Toast in-app: bật/tắt popup. Mặc định BẬT (chỉ tắt khi localStorage = '0').
   const [toastOn, setToastOn] = useState(true);
   const toastOnRef = useRef(true);
-  // Lọc theo loại trận (16p / 20p / tất cả). Ref để effect noti (poll) đọc giá trị mới nhất.
-  const [typeFilter, setTypeFilter] = useState<'all' | '16p' | '20p' | '20p_intl'>('all');
-  const typeFilterRef = useRef<'all' | '16p' | '20p' | '20p_intl'>('all');
+  // Multi-select filter: Set rỗng = hiện tất cả. Ref để effect noti (poll) đọc giá trị mới nhất.
+  const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
+  const typeFilterRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const g = localStorage.getItem('gs_os_noti_goal') === '1';
@@ -497,9 +498,18 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   useEffect(() => { toastOnRef.current = toastOn; }, [toastOn]);
   useEffect(() => { typeFilterRef.current = typeFilter; }, [typeFilter]);
 
-  // Kèo có qua bộ lọc loại trận hiện tại không (đọc qua ref để effect noti thấy giá trị mới).
+  // Kèo có qua bộ lọc không (Set rỗng = tất cả; đọc qua ref để effect noti thấy giá trị mới).
   const passesFilter = (mt: GsLiveMatch['matchType']) =>
-    typeFilterRef.current === 'all' || mt === typeFilterRef.current;
+    typeFilterRef.current.size === 0 || typeFilterRef.current.has(mt);
+
+  const toggleTypeFilter = (val: string) => {
+    setTypeFilter(prev => {
+      const next = new Set(prev);
+      if (next.has(val)) next.delete(val); else next.add(val);
+      typeFilterRef.current = next;
+      return next;
+    });
+  };
 
   async function requestAndSet(
     key: string,
@@ -694,7 +704,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   const h2hMap = h2hByLimit.get(h2hLimit) ?? EMPTY_H2H;
 
   const liveMatches = matches.filter(
-    (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P || m.leagueId === LEAGUE_20P_INTL,
+    (m) => m.leagueId === LEAGUE_16P || m.leagueId === LEAGUE_20P || m.leagueId === LEAGUE_20P_INTL || m.leagueId === LEAGUE_20P_CLUB,
   );
 
   const sorted = [...liveMatches].sort((a, b) => a.eventId - b.eventId);
@@ -729,6 +739,8 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
       // 16p/20p vẫn giữ API cũ để có luôn chỉ số Tài/Xỉu đã chấm theo opening line.
       const endpoint = m.matchType === '20p_intl'
         ? `/api/gs-h2h-recent?matchType=20p_intl&homeTeam=${encodeURIComponent(m.homeTeam)}&awayTeam=${encodeURIComponent(m.awayTeam)}`
+        : m.matchType === '20p_club'
+        ? `/api/gs-h2h-recent?matchType=20p_club&homeTeam=${encodeURIComponent(m.homeTeam)}&awayTeam=${encodeURIComponent(m.awayTeam)}`
         : `/api/gs-h2h-pair?eventId=${id}`;
       fetch(endpoint, { cache: 'no-store', signal: ctrl.signal })
         .then(async (r) => {
@@ -755,10 +767,11 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
   // Render theo THỨ TỰ FEED gốc (liveMatches = như nhà cái trả về), KHÔNG sort eventId
   // (sorted chỉ dùng cho fetch-key ổn định). → thứ tự hiển thị khớp nhà cái.
   // Lọc theo loại trận (16p/20p/tất cả) trước khi render danh sách.
-  const shownMatches = liveMatches.filter((m) => typeFilter === 'all' || m.matchType === typeFilter);
+  const shownMatches = liveMatches.filter((m) => typeFilter.size === 0 || typeFilter.has(m.matchType));
   const group16 = shownMatches.filter((m) => m.leagueId === LEAGUE_16P);
   const group20 = shownMatches.filter((m) => m.leagueId === LEAGUE_20P);
   const group20Intl = shownMatches.filter((m) => m.leagueId === LEAGUE_20P_INTL);
+  const group20Club = shownMatches.filter((m) => m.leagueId === LEAGUE_20P_CLUB);
 
   const leagueName16 = group16[0]?.leagueName ?? '16 Phút';
   const leagueName20 = group20[0]?.leagueName ?? '20 Phút';
@@ -1085,7 +1098,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
             if (goals.length === 0) return null;
             const HOME = '#38bdf8', AWAY = '#fb7185';   // nhà = cyan, khách = hồng
             // Feed 20p (Asian lẫn International) chạy tới khoảng phút 50 mỗi hiệp.
-            const HALF_MAX = (m.matchType === '20p' || m.matchType === '20p_intl') ? 50 : 45;
+            const HALF_MAX = (m.matchType === '20p' || m.matchType === '20p_intl' || m.matchType === '20p_club') ? 50 : 45;
             const posOf = (g: GoalEvent) => {
               const mm = Math.min(Math.max(g.m, 0), HALF_MAX);
               return g.h2 ? 50 + (mm / HALF_MAX) * 50 : (mm / HALF_MAX) * 50;
@@ -1447,21 +1460,28 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         >
           {toastOn ? '💬 Toast ON' : '🔕 Toast OFF'}
         </button>
-        {/* Lọc loại trận: Tất cả / 16p / 20p — lọc cả danh sách hiển thị lẫn noti/toast. */}
+        {/* Multi-select filter: click để toggle từng giải, "Tất cả" để reset. */}
         <div className="flex items-center gap-1">
-          {([['all', 'Tất cả'], ['16p', '16p'], ['20p', '20p Asian'], ['20p_intl', '20p Quốc tế']] as const).map(([val, label]) => {
-            const active = typeFilter === val;
+          <button
+            type="button"
+            onClick={() => { const s = new Set<string>(); setTypeFilter(s); typeFilterRef.current = s; }}
+            className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${typeFilter.size === 0 ? 'border-[#38bdf8]/40 text-[#3dd6ea] bg-[#17a2b8]/10' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
+            title="Hiện tất cả giải"
+          >
+            Tất cả
+          </button>
+          {(['16p', '20p', '20p_intl', '20p_club'] as const).map((val) => {
+            const labels: Record<string, string> = { '16p': '16p', '20p': '20p Asian', '20p_intl': '20p Quốc tế', '20p_club': '20p CLB' };
+            const active = typeFilter.has(val);
             return (
               <button
                 key={val}
                 type="button"
-                onClick={() => {
-                  setTypeFilter(val); typeFilterRef.current = val;
-                }}
+                onClick={() => toggleTypeFilter(val)}
                 className={`rounded px-2 py-0.5 text-[11px] border transition-colors ${active ? 'border-[#38bdf8]/40 text-[#3dd6ea] bg-[#17a2b8]/10 hover:bg-[#17a2b8]/20' : 'border-[#2a2a2a] bg-[#1a1a1a] text-[#aaa] hover:text-white hover:border-[#444]'}`}
-                title={`Lọc trận ${label}`}
+                title={`${active ? 'Bỏ' : 'Chọn'} giải ${labels[val]}`}
               >
-                {label}
+                {labels[val]}
               </button>
             );
           })}
@@ -1474,7 +1494,7 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
         </div>
       )}
 
-      {group16.length === 0 && group20.length === 0 && group20Intl.length === 0 ? (
+      {group16.length === 0 && group20.length === 0 && group20Intl.length === 0 && group20Club.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl bg-[#1a1a1a] border border-[#2a2a2a]">
           <div className="mb-3 text-4xl">⏳</div>
           <div className="text-[14px] text-[#888]">Chưa có trận live. Đang chờ dữ liệu…</div>
@@ -1484,11 +1504,12 @@ export default function RankingLive({ initialMatch = null }: { initialMatch?: nu
           <LeagueGroup title={leagueName16} items={group16} />
           <LeagueGroup title={leagueName20} items={group20} />
           <LeagueGroup title={leagueName20Intl} items={group20Intl} />
+          <LeagueGroup title={group20Club[0]?.leagueName ?? '🏟️ Giao Hữu Câu Lạc Bộ 20p'} items={group20Club} />
         </>
       )}
       {selected && (() => {
         // Danh sách phẳng theo đúng thứ tự hiển thị.
-        const flat = [...group16, ...group20, ...group20Intl];
+        const flat = [...group16, ...group20, ...group20Intl, ...group20Club];
         const n = flat.length;
         const idx = flat.findIndex((m) => m.eventId === selected.eventId);
         // Vòng lặp vô hạn: cuối → về đầu, đầu → về cuối (chỉ cần >1 trận).

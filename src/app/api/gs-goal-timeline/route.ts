@@ -63,9 +63,9 @@ async function queryOdds(
 ): Promise<{ rows: OddsRawRow[]; coverageStart: string | null; coverageEnd: string | null }> {
   // A cohort event = an event of this match_type whose FIRST recorded_at (any row)
   // is within the completed window. 20p_asian additionally excludes events that have
-  // any tick in gs_16p_ticks league_id=1485 (those are 20p_intl, not asian).
+  // any tick in gs_16p_ticks league_id=1485 (intl) or 1508 (club).
   const notExists = excludeIntlTicks
-    ? `AND NOT EXISTS (SELECT 1 FROM gs_16p_ticks t WHERE t.event_id = mol.event_id AND t.league_id = 1485)`
+    ? `AND NOT EXISTS (SELECT 1 FROM gs_16p_ticks t WHERE t.event_id = mol.event_id AND t.league_id IN (1485, 1508))`
     : '';
 
   const sql = `
@@ -101,17 +101,17 @@ async function queryOdds(
   };
 }
 
-// 20p_intl → gs_16p_ticks league_id=1485. Pull all ticks for cohort events whose
-// first tick fell inside the completed window.
+// 20p_intl → gs_16p_ticks league_id=1485; 20p_club → league_id=1508.
 async function queryTicks(
   db: Pool,
   days: number,
+  leagueId: number,
 ): Promise<{ rows: TickRawRow[]; coverageStart: string | null; coverageEnd: string | null }> {
   const sql = `
     WITH cohort AS (
       SELECT event_id, MIN(recorded_at) AS start_at
       FROM gs_16p_ticks
-      WHERE league_id = 1485
+      WHERE league_id = $3
         AND recorded_at >= now() - ($1 || ' days')::interval
       GROUP BY event_id
       HAVING MIN(recorded_at) >= now() - ($1 || ' days')::interval
@@ -121,17 +121,17 @@ async function queryTicks(
            t.score_home, t.score_away, t.recorded_at
     FROM gs_16p_ticks t
     JOIN cohort c ON c.event_id = t.event_id
-    WHERE t.league_id = 1485
+    WHERE t.league_id = $3
     ORDER BY t.event_id, t.recorded_at, t.id
   `;
-  const { rows } = await db.query(sql, [String(days), String(BUFFER_MIN)]);
+  const { rows } = await db.query(sql, [String(days), String(BUFFER_MIN), leagueId]);
 
   const covSql = `
     SELECT MIN(recorded_at) AS cov_start, MAX(recorded_at) AS cov_end
     FROM gs_16p_ticks
-    WHERE league_id = 1485 AND recorded_at >= now() - ($1 || ' days')::interval
+    WHERE league_id = $2 AND recorded_at >= now() - ($1 || ' days')::interval
   `;
-  const cov = await db.query(covSql, [String(days)]);
+  const cov = await db.query(covSql, [String(days), leagueId]);
 
   return {
     rows: rows as TickRawRow[],
@@ -164,8 +164,9 @@ export async function GET(req: Request) {
     const completeThroughIso = new Date(now - BUFFER_MIN * 60_000).toISOString();
     let payload: GoalTimelineResponse;
 
-    if (league === '20p_intl') {
-      const { rows, coverageStart, coverageEnd } = await queryTicks(db, days);
+    if (league === '20p_intl' || league === '20p_club') {
+      const leagueId = league === '20p_club' ? 1508 : 1485;
+      const { rows, coverageStart, coverageEnd } = await queryTicks(db, days, leagueId);
       payload = buildGoalTimeline(
         { tickRows: rows, sourceCoverageStart: coverageStart, sourceCoverageEnd: coverageEnd, completeThrough: completeThroughIso },
         { league, days, bin },

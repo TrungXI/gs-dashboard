@@ -14,7 +14,7 @@ import { TypeBadge } from './badges';
 
 const PAGE_SIZE = 50;
 
-const EMPTY_OPTIONS: FilterOptions = { dates: [], teams: [], count20: 0, count16: 0, total: 0 };
+const EMPTY_OPTIONS: FilterOptions = { dates: [], teams: [], count20: 0, countClub: 0, count16: 0, total: 0 };
 
 // Bangkok ISO weekday (1=Mon .. 7=Sun) → short Vietnamese label.
 const WEEKDAY_LABEL: Record<number, string> = {

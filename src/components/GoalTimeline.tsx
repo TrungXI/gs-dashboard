@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Spinner } from './Spinner';
 
 // ── Response shape (mirror /api/gs-goal-timeline §6, khoá) ───────────────────
-type League = '16p' | '20p_asian' | '20p_intl';
+type League = '16p' | '20p_asian' | '20p_intl' | '20p_club';
 type HalfKey = 'H1' | 'H2';
 
 interface DistBin {
@@ -99,6 +99,7 @@ const LEAGUES: [League, string][] = [
   ['16p', '16p'],
   ['20p_asian', '20p Asian'],
   ['20p_intl', '20p Quốc tế'],
+  ['20p_club', '20p CLB'],
 ];
 const DAYS_OPTS = [7, 14];
 const BIN_OPTS = [5, 10];

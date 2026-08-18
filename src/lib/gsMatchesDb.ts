@@ -116,7 +116,7 @@ function buildWhere(q: MatchQuery): { where: string; params: unknown[] } {
     // '20p' folds in the International 20p league (match_type '20p_intl'), a
     // variant of the same 20-minute format — otherwise equality drops it.
     if (q.type === '20p') {
-      clauses.push(`mh.match_type IN ('20p', '20p_intl')`);
+      clauses.push(`mh.match_type IN ('20p', '20p_intl', '20p_club')`);
     } else {
       params.push(q.type);
       clauses.push(`mh.match_type = $${params.length}`);
@@ -240,6 +240,7 @@ export interface FilterOptions {
   dates: { date: string; label: string; count: number }[]; // label = DD/MM/YYYY, value used by filter = YYYY-MM-DD
   teams: string[];
   count20: number;
+  countClub: number;
   count16: number;
   total: number;
 }
@@ -266,7 +267,8 @@ export async function fetchMatchFilterOptions(): Promise<FilterOptions> {
   const countsSql = `
     SELECT
       COUNT(*)::int AS total,
-      COUNT(*) FILTER (WHERE mh.match_type IN ('20p', '20p_intl'))::int AS c20,
+      COUNT(*) FILTER (WHERE mh.match_type IN ('20p', '20p_intl', '20p_club'))::int AS c20,
+      COUNT(*) FILTER (WHERE mh.match_type = '20p_club')::int AS cclub,
       COUNT(*) FILTER (WHERE mh.match_type = '16p')::int AS c16
     ${FROM_JOINS}
   `;
@@ -286,6 +288,7 @@ export async function fetchMatchFilterOptions(): Promise<FilterOptions> {
     dates,
     teams: teamsRes.rows.map((r: { name: string }) => r.name),
     count20: countsRes.rows[0]?.c20 ?? 0,
+    countClub: countsRes.rows[0]?.cclub ?? 0,
     count16: countsRes.rows[0]?.c16 ?? 0,
     total: countsRes.rows[0]?.total ?? 0,
   };

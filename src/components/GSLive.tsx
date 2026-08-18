@@ -23,7 +23,7 @@ import type { PairResult } from '../app/api/gs-h2h-splits/route';
 export interface GsLiveMatch {
   leagueId: number;
   leagueName: string;
-  matchType: '16p' | '20p' | '20p_intl' | '8p' | '12p';
+  matchType: '16p' | '20p' | '20p_intl' | '20p_club' | '8p' | '12p';
   eventId: number;
   startTime: string;
   homeTeam: string;
@@ -538,6 +538,40 @@ export default function GSLive({ initialMatch }: { initialMatch?: number | null 
           <LeagueSection
             title="Giao Hữu Châu Á GS (Ảo) 20 Phút"
             matches={matches.filter((m) => m.leagueId === 2125)}
+            hasStatsSet={hasStatsSet}
+            h2hMap={h2hMap}
+            prevMap={prevMap}
+            scoredIds={scoredIds}
+            nowMs={nowMs}
+            loadTs={loadTs}
+            activeToken={activeToken}
+            globalReloadKey={globalReloadKey}
+            h1Finals={h1Finals}
+            autoStream={autoStream}
+            onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onHcWatch={(m) => setHcWatchMatchId(m.eventId)}
+            activeMatchId={analysisMatchId}
+          />
+          <LeagueSection
+            title="Giao Hữu Quốc Tế GS (Ảo) 20 Phút"
+            matches={matches.filter((m) => m.leagueId === 1485)}
+            hasStatsSet={hasStatsSet}
+            h2hMap={h2hMap}
+            prevMap={prevMap}
+            scoredIds={scoredIds}
+            nowMs={nowMs}
+            loadTs={loadTs}
+            activeToken={activeToken}
+            globalReloadKey={globalReloadKey}
+            h1Finals={h1Finals}
+            autoStream={autoStream}
+            onAnalysis={(m) => setAnalysisMatchId(m.eventId)}
+            onHcWatch={(m) => setHcWatchMatchId(m.eventId)}
+            activeMatchId={analysisMatchId}
+          />
+          <LeagueSection
+            title="Giao Hữu Câu Lạc Bộ GS (Ảo) 20 Phút"
+            matches={matches.filter((m) => m.leagueId === 1508)}
             hasStatsSet={hasStatsSet}
             h2hMap={h2hMap}
             prevMap={prevMap}

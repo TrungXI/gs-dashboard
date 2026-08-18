@@ -25,6 +25,8 @@ export function apiToRow(m: Record<string, unknown>): Match {
   // International 1485 is displayed/researched separately from Asian 2125.
   const matchType = league === 'GS International Friendlies (Virtual) - 20 minutes'
     ? '20p_intl'
+    : league === 'GS Club Friendlies (Virtual) - 20 minutes'
+    ? '20p_club'
     : league.includes('20 minutes') ? '20p' : '16p';
   return {
     date,

@@ -52,6 +52,7 @@ const LEAGUES = [
   { id: 2140, matchType: '16p',       label: '16p (S)' },
   { id: 2125, matchType: '20p',       label: '20p Asian (V)' },
   { id: 1485, matchType: '20p_intl',  label: '20p Quốc Tế (QT)' },
+  { id: 1508, matchType: '20p_club',  label: 'CLB (V)' },
 ] as const;
 
 async function compute(): Promise<GoalTimingResponse> {

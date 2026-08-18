@@ -46,16 +46,16 @@ function normalizeTeam(name: string): string {
   return ((VN_TO_EN[base] ?? base) + suffix).trim();
 }
 
-// 2140 = GS Asian 16p, 2125 = GS Asian 20p, 1485 = GS International 20p.
-// 1485 is display/research-only; this route is separate from the bot feed.
-const GS_LEAGUE_IDS = new Set([2140, 2125, 1485]);
+// 2140 = GS Asian 16p, 2125 = GS Asian 20p, 1485 = GS International 20p, 1508 = GS Club 20p.
+const GS_LEAGUE_IDS = new Set([2140, 2125, 1485, 1508]);
 
-type MatchType = '16p' | '20p' | '20p_intl' | '8p' | '12p';
+type MatchType = '16p' | '20p' | '20p_intl' | '20p_club' | '8p' | '12p';
 
 const MATCH_TYPE: Record<number, MatchType> = {
   2140: '16p',
   2125: '20p',
   1485: '20p_intl',
+  1508: '20p_club',
 };
 
 

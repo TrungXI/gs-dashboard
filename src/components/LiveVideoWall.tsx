@@ -126,7 +126,7 @@ function extractToken(input: string): string {
 }
 
 // Thứ tự hiển thị giải cố định: 16p → 20p → 20p_intl → còn lại.
-const MATCH_TYPE_ORDER: Record<string, number> = { '16p': 0, '20p': 1, '20p_intl': 2 };
+const MATCH_TYPE_ORDER: Record<string, number> = { '16p': 0, '20p': 1, '20p_intl': 2, '20p_club': 3 };
 
 // Gom trận theo GIẢI. Key = leagueName (fallback matchType nếu rỗng).
 // Mỗi section giữ 1 lưới 3 cột riêng. Sort ổn định: theo matchType rồi tên giải.
@@ -287,7 +287,7 @@ function GoalTimelineBar({ match, goals }: { match: GsLiveMatch; goals: GoalEven
   if (goals.length === 0) return null;
   const HOME = '#38bdf8', AWAY = '#fb7185';
   // Feed 20p (Asian lẫn International) chạy tới ~phút 50 mỗi hiệp; 16p ~45.
-  const HALF_MAX = (match.matchType === '20p' || match.matchType === '20p_intl') ? 50 : 45;
+  const HALF_MAX = (match.matchType === '20p' || match.matchType === '20p_intl' || match.matchType === '20p_club') ? 50 : 45;
   const posOf = (g: GoalEvent) => {
     const mm = Math.min(Math.max(g.m, 0), HALF_MAX);
     return g.h2 ? 50 + (mm / HALF_MAX) * 50 : (mm / HALF_MAX) * 50;
