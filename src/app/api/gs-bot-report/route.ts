@@ -31,8 +31,10 @@ const BOTS: {
   { calcVersion: 'V.Bot 17 Test BlackList', label: 'TÀI / Test BlackList', side: 'tai' },
   { calcVersion: 'V.Bot 21 QT Xỉu', label: 'V21 QT Xỉu', side: 'xiu' },
   { calcVersion: 'V.Bot Air 1', label: 'Air1 · XỈU theo tỉ số+phút', side: 'xiu' },
-  { calcVersion: 'TNK - CLB - Top Rung H2', label: 'TNK CLB · Rung H2 (≥65%)', side: 'tai' },
-  { calcVersion: 'TNK - CLB - Top Tài H2', label: 'TNK CLB · Tài H2 đầu hiệp (≥65%)', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Rung H1', label: 'TNK CLB · Rung H1 (≥60%)', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Rung H2', label: 'TNK CLB · Rung H2 (≥60%)', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Tài H2', label: 'TNK CLB · Tài H2 đầu hiệp (≥60%)', side: 'tai' },
+  { calcVersion: 'NVT - CLB - RH2', label: 'NVT CLB · H1 kèo hiệp 1 + H2 kèo cả trận', side: 'tai' },
   // 3 handicap models — same output shape, sourced from gs_hcap_paper by `model`.
   { calcVersion: 'hcap:A', dbKey: 'A', label: 'HC-A · Trên tiếp', side: 'tai', source: 'hcap' },
   { calcVersion: 'hcap:B', dbKey: 'B', label: 'HC-B · Ngược dưới+Tài', side: 'tai', source: 'hcap' },
@@ -44,6 +46,8 @@ const BUCKET_COUNT = 8;
 export const BUCKET_LABELS = ['00-03h', '03-06h', '06-09h', '09-12h', '12-15h', '15-18h', '18-21h', '21-24h'];
 // "Recent" window for the golden-window ranking: last N days (by distinct dates present).
 const RECENT_DAYS = 3;
+// Model coi như "đã ngừng chạy" nếu không ra kèo mới quá ngần này ngày (user 2026-08-20).
+const STALE_DAYS = 2;
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -88,6 +92,8 @@ export interface BotReport {
   best: WindowRank | null; // best recent bucket
   worst: WindowRank | null; // worst recent bucket
   decayFlag: boolean; // any bucket decaying → ⚠️ warn
+  lastActiveAt: string | null; // ISO — MAX(entry_at)/MAX(requested_at), null = chưa từng ra kèo
+  stale: boolean; // lastActiveAt null hoặc quá STALE_DAYS ngày → model coi như đã ngừng chạy
 }
 
 export interface BotReportResponse {
@@ -202,6 +208,38 @@ export async function GET() {
         if (rk) aggRows.push({ rk, d: r.d, bucket: num(r.bucket), w: num(r.w), l: num(r.l), net: num(r.net) });
       }
     }
+
+    // Last-activity per bot (unfiltered by settlement — an open/unsettled leg still counts as
+    // "còn chạy"). Powers the "ẩn model đã ngừng chạy" toggle in BotReport. Keyed by render calcVersion.
+    const lastActiveMap = new Map<string, Date>();
+    if (txKeyToRk.size > 0) {
+      const lastTxRes = await pool.query<{ calc_version: string; last_at: Date }>(
+        `SELECT calc_version, MAX(entry_at) AS last_at
+           FROM gs_tx_paper
+          WHERE calc_version = ANY($1)
+          GROUP BY 1`,
+        [[...txKeyToRk.keys()]],
+      );
+      for (const r of lastTxRes.rows) {
+        const rk = txKeyToRk.get(r.calc_version);
+        if (rk && r.last_at) lastActiveMap.set(rk, new Date(r.last_at));
+      }
+    }
+    if (hcapKeyToRk.size > 0) {
+      const lastHcapRes = await pool.query<{ model: string; last_at: Date }>(
+        `SELECT model, MAX(requested_at) AS last_at
+           FROM gs_hcap_paper
+          WHERE model = ANY($1)
+          GROUP BY 1`,
+        [[...hcapKeyToRk.keys()]],
+      );
+      for (const r of lastHcapRes.rows) {
+        const rk = hcapKeyToRk.get(r.model);
+        if (rk && r.last_at) lastActiveMap.set(rk, new Date(r.last_at));
+      }
+    }
+    const STALE_MS = STALE_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
 
     // Distinct days (ascending) across ALL bots — shared column axis.
     const daySet = new Set<string>();
@@ -330,6 +368,9 @@ export async function GET() {
         rankable.length > 0 ? [...rankable].sort((a, b2) => a.recentNet - b2.recentNet)[0] : null;
       const decayFlag = ranks.some((r) => r.decaying);
 
+      const lastActive = lastActiveMap.get(b.calcVersion) ?? null;
+      const stale = lastActive == null || now - lastActive.getTime() > STALE_MS;
+
       return {
         calcVersion: b.calcVersion,
         label: b.label,
@@ -340,6 +381,8 @@ export async function GET() {
         best,
         worst,
         decayFlag,
+        lastActiveAt: lastActive ? lastActive.toISOString() : null,
+        stale,
       };
     });
 

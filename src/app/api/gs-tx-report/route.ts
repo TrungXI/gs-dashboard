@@ -45,6 +45,7 @@ export interface TxReportRow {
   v21: V21Entry | null; // V.Bot 21 QT Xỉu: phút vào + OU line + giá Xỉu/Tài lúc vào (từ snapshot qtXiu_V21)
   entryHalf: 'h1' | 'h2' | null; // Thời điểm vào lệnh — hiệp (chuẩn hoá từ snapshot, xem deriveEntryTime)
   entryMinute: number | null; // Thời điểm vào lệnh — phút trong hiệp đó (null nếu snapshot cũ không ghi)
+  entryExtended: boolean; // true = phải CHỜ nhà cái mở khoá mới vào được (phút vào trễ hơn mốc rule)
 }
 
 // V.Bot 21 QT Xỉu — snapshot lúc VÀO XỈU (strategy 'qtXiu_V21').
@@ -189,6 +190,7 @@ interface TxDbRow {
   v21_score: string | number | null; // snapshot->>'scoreAtBet'
   minute_elapsed: string | number | null; // snapshot->>'minuteElapsed' — nhóm bot cũ (V.Bot 1/2/5/7-13/17...)
   is_h2: string | null;                   // snapshot->>'isH2' — 'true'/'false', có thể vắng mặt
+  entry_extended: string | null;          // snapshot->>'extended' — 'true' khi lệnh vào nhờ chờ mở khoá
 }
 
 // Thời điểm vào lệnh, chuẩn hoá về 1 dạng — ưu tiên minuteAtBet+half (V14/15/16/16pRung/18/21/V16pAsian),
@@ -247,6 +249,7 @@ function toRow(r: TxDbRow): TxReportRow {
         : null,
     entryHalf: entryTime.half,
     entryMinute: entryTime.minute,
+    entryExtended: r.entry_extended === 'true',
   };
 }
 
@@ -294,7 +297,8 @@ export async function GET(req: Request) {
                 snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
                 snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
                 snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score,
-                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2
+                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2,
+                snapshot->>'extended' AS entry_extended
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -312,7 +316,8 @@ export async function GET(req: Request) {
                 snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
                 snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
                 snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score,
-                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2
+                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2,
+                snapshot->>'extended' AS entry_extended
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC

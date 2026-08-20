@@ -148,7 +148,8 @@ export default function TxReport() {
   };
 
   // Ẩn hẳn các bản R4 cũ khỏi report (user 2026-08-07): R4-B + R4-C + R4-D (đều đã stop).
-  const HIDDEN_VERSIONS = new Set(['V.Bot 12 R4-B', 'V.Bot 12 R4-C', 'V.Bot 12 R4-D']);
+  // V.Bot Baby 3 ẩn từ 2026-08-20 (user): thua quá sâu (-61u/272 kèo), đã pm2 stop.
+  const HIDDEN_VERSIONS = new Set(['V.Bot 12 R4-B', 'V.Bot 12 R4-C', 'V.Bot 12 R4-D', 'V.Bot Baby 3']);
   const summary = (data?.summaryByVersion ?? []).filter((s) => !HIDDEN_VERSIONS.has(s.calcVersion));
   // Ẩn bot đã tắt: chỉ giữ version đang chạy (pm2 online). showOff=true hoặc chưa biết status → hiện full.
   const canFilter = !showOff && running != null && running.size > 0;
@@ -201,6 +202,20 @@ export default function TxReport() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
+                  // Category CHUNG "TNK - CLB" (user 2026-08-20): gom 2 bot cùng giải Câu Lạc Bộ
+                  // 20p để áp chung update/rule, pin lên ĐẦU danh sách (trước cả section Chính).
+                  const TNK_CLB_GROUP = new Set(['TNK - CLB - Top Rung H1', 'TNK - CLB - Top Rung H2', 'TNK - CLB - Top Tài H2']);
+                  const tnkClb = visibleSummary
+                    .filter((s) => TNK_CLB_GROUP.has(s.calcVersion))
+                    .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
+
+                  // Category "NVT - CLB" (user 2026-08-20) — bot rung H2 giải Câu Lạc Bộ 20p, rule riêng
+                  // (không dùng gs_clbv_analyst, vào ouLines[0], có gia hạn khi bị khoá kèo).
+                  const NVT_CLB_GROUP = new Set(['NVT - CLB - RH2', 'NVT - CLB - RH2 Real']);
+                  const nvtClb = visibleSummary
+                    .filter((s) => NVT_CLB_GROUP.has(s.calcVersion))
+                    .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
+
                   // Gom bot TIỀN THẬT theo CHỦ VÍ (name) thành từng section cho dễ quan sát: Chính / Kiên / Nam / Trọng.
                   const REAL = new Set([
                     'V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Nam', 'V.Bot 12 Trong', // V.Bot 12 real 4 ví (Nam/Kien/Trong KHÔNG có chữ "Real")
@@ -213,7 +228,9 @@ export default function TxReport() {
                   const SECTION_ICON: Record<string, string> = { 'Chính': '👑', 'Kiên': '🧑', 'Nam': '🧑', 'Trọng': '🧑' };
 
                   const reals = visibleSummary.filter((s) => REAL.has(s.calcVersion));
-                  const others = visibleSummary.filter((s) => !REAL.has(s.calcVersion)).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
+                  const others = visibleSummary
+                    .filter((s) => !REAL.has(s.calcVersion) && !TNK_CLB_GROUP.has(s.calcVersion) && !NVT_CLB_GROUP.has(s.calcVersion))
+                    .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
                   const sections = SECTION_ORDER
                     .map((name) => ({ name, bots: reals.filter((s) => owner(s.calcVersion) === name).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl) }))
                     .filter((sec) => sec.bots.length > 0);
@@ -297,6 +314,32 @@ export default function TxReport() {
 
                   return (
                     <>
+                      {tnkClb.length > 0 && (() => {
+                        const open = !collapsed.has('__tnk_clb');
+                        return (
+                          <Fragment key="__tnk_clb">
+                            <SectionHeader name="__tnk_clb" label="🏟️ TNK - CLB" count={tnkClb.length} open={open} live={tnkClb.some((s) => s.openBets > 0)} />
+                            {open && (
+                              <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                                {tnkClb.map(renderCard)}
+                              </div>
+                            )}
+                          </Fragment>
+                        );
+                      })()}
+                      {nvtClb.length > 0 && (() => {
+                        const open = !collapsed.has('__nvt_clb');
+                        return (
+                          <Fragment key="__nvt_clb">
+                            <SectionHeader name="__nvt_clb" label="🎯 NVT - CLB" count={nvtClb.length} open={open} live={nvtClb.some((s) => s.openBets > 0)} />
+                            {open && (
+                              <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                                {nvtClb.map(renderCard)}
+                              </div>
+                            )}
+                          </Fragment>
+                        );
+                      })()}
                       {sections.map((sec) => {
                         const open = !collapsed.has(sec.name);
                         return (

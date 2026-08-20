@@ -91,8 +91,11 @@ function vnTime(iso: string): string {
 const entryScore = (r: { scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null }): string =>
   r.scoreHomeAtEntry == null || r.scoreAwayAtEntry == null ? '- -' : `${r.scoreHomeAtEntry}-${r.scoreAwayAtEntry}`;
 // Thời điểm vào lệnh: "H1 15'" / "H2 5'" — '-' nếu snapshot cũ/bot chưa ghi (xem deriveEntryTime ở API).
-const entryTimeStr = (r: { entryHalf: 'h1' | 'h2' | null; entryMinute: number | null }): string =>
-  r.entryHalf == null || r.entryMinute == null ? '-' : `${r.entryHalf === 'h1' ? 'H1' : 'H2'} ${r.entryMinute}'`;
+// Thêm hậu tố "(chờ mở khoá)" khi lệnh chỉ vào được sau lúc nhà cái mở khoá lại (phút trễ hơn mốc rule).
+const entryTimeStr = (r: { entryHalf: 'h1' | 'h2' | null; entryMinute: number | null; entryExtended?: boolean }): string =>
+  r.entryHalf == null || r.entryMinute == null
+    ? '-'
+    : `${r.entryHalf === 'h1' ? 'H1' : 'H2'} ${r.entryMinute}'${r.entryExtended ? ' (chờ mở khoá)' : ''}`;
 
 function KeoLabel({ market, side }: { market: 'h1' | 'ft'; side: 'tai' | 'xiu' }) {
   const tai = side === 'tai';

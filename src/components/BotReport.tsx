@@ -246,11 +246,25 @@ function GoldenWindow({ bots, recentDays }: { bots: BotReportData[]; recentDays:
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
+// Ẩn model đã ngừng chạy (>2 ngày không ra kèo mới) — nhớ qua localStorage, giống toggle bên TxReport.
+const SHOW_STALE_KEY = 'gs-bot-report:show-stale';
+
 export default function BotReport() {
   const [data, setData] = useState<BotReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string | null>(null); // calcVersion của bot đang xem
+  const [showStale, setShowStale] = useState(false); // false = ẩn model đã ngừng chạy; true = hiện full
+  useEffect(() => {
+    try { setShowStale(localStorage.getItem(SHOW_STALE_KEY) === '1'); } catch { /* noop */ }
+  }, []);
+  const toggleShowStale = () => {
+    setShowStale((prev) => {
+      const next = !prev;
+      try { localStorage.setItem(SHOW_STALE_KEY, next ? '1' : '0'); } catch { /* noop */ }
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -277,7 +291,9 @@ export default function BotReport() {
   }, [load]);
 
   const days = data?.days ?? [];
-  const bots = data?.bots ?? [];
+  const allBots = data?.bots ?? [];
+  const bots = showStale ? allBots : allBots.filter((b) => !b.stale);
+  const staleCount = allBots.length - bots.length;
   // Bot đang chọn: theo tab, fallback về con đầu (xử lý cả lúc data mới load / tab cũ không còn).
   const activeBot = bots.find((b) => b.calcVersion === activeTab) ?? bots[0] ?? null;
 
@@ -292,8 +308,18 @@ export default function BotReport() {
         )}
         {data && !loading && (
           <button
+            type="button"
+            onClick={toggleShowStale}
+            title={showStale ? 'Đang hiện tất cả — bấm để ẩn model đã ngừng chạy' : `Đang ẩn model không ra kèo mới quá 2 ngày — bấm để hiện tất cả`}
+            className={`ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1 text-[11px] font-semibold leading-none transition active:scale-95 ${showStale ? 'border-[#38bdf8]/45 bg-[#38bdf8]/15 text-[#7dd3fc] hover:bg-[#38bdf8]/30' : 'border-[#22c55e]/45 bg-[#22c55e]/15 text-[#86efac] hover:bg-[#22c55e]/30'}`}
+          >
+            {showStale ? '👁 Hiện tất cả' : `🟢 Chỉ model đang chạy${staleCount > 0 ? ` (ẩn ${staleCount})` : ''}`}
+          </button>
+        )}
+        {data && !loading && (
+          <button
             onClick={load}
-            className="ml-auto rounded-md bg-white/[.07] px-2.5 py-1 text-[11px] font-semibold text-white/60 hover:bg-white/15 hover:text-white"
+            className="rounded-md bg-white/[.07] px-2.5 py-1 text-[11px] font-semibold text-white/60 hover:bg-white/15 hover:text-white"
           >
             ↻ Làm mới
           </button>
@@ -319,10 +345,21 @@ export default function BotReport() {
         </div>
       ) : loading && data === null ? (
         <LoadingState label="Đang tải báo cáo bot…" className="py-24" />
-      ) : days.length === 0 || bots.length === 0 ? (
+      ) : days.length === 0 || allBots.length === 0 ? (
         <div className="flex h-[200px] flex-col items-center justify-center rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]">
           <div className="mb-3 text-4xl">📭</div>
           <div className="text-[14px] text-[#888]">Chưa có dữ liệu kèo cho các con bot này</div>
+        </div>
+      ) : bots.length === 0 ? (
+        <div className="flex h-[200px] flex-col items-center justify-center gap-3 rounded-xl border border-[#2a2a2a] bg-[#1a1a1a]">
+          <div className="text-4xl">💤</div>
+          <div className="text-[14px] text-[#888]">Tất cả {allBots.length} model đều đã ngừng chạy quá 2 ngày</div>
+          <button
+            onClick={toggleShowStale}
+            className="rounded-md bg-white/10 px-3 py-1.5 text-xs font-semibold text-white/80 hover:bg-white/20 hover:text-white"
+          >
+            👁 Hiện tất cả
+          </button>
         </div>
       ) : (
         <div className={`transition-opacity duration-200 ${loading ? 'pointer-events-none opacity-40' : ''}`}>
