@@ -90,13 +90,16 @@ function vnTime(iso: string): string {
 }
 const entryScore = (r: { scoreHomeAtEntry: number | null; scoreAwayAtEntry: number | null }): string =>
   r.scoreHomeAtEntry == null || r.scoreAwayAtEntry == null ? '- -' : `${r.scoreHomeAtEntry}-${r.scoreAwayAtEntry}`;
+// Thời điểm vào lệnh: "H1 15'" / "H2 5'" — '-' nếu snapshot cũ/bot chưa ghi (xem deriveEntryTime ở API).
+const entryTimeStr = (r: { entryHalf: 'h1' | 'h2' | null; entryMinute: number | null }): string =>
+  r.entryHalf == null || r.entryMinute == null ? '-' : `${r.entryHalf === 'h1' ? 'H1' : 'H2'} ${r.entryMinute}'`;
 
 function KeoLabel({ market, side }: { market: 'h1' | 'ft'; side: 'tai' | 'xiu' }) {
   const tai = side === 'tai';
   return (
     <span className="font-semibold">
       <span className="text-[#777]">{market === 'h1' ? 'H1' : 'FT'} </span>
-      <span style={{ color: tai ? '#4ade80' : '#fb7185' }}>{tai ? 'Tài' : 'Xỉu'}</span>
+      <span style={{ color: tai ? '#4ade80' : '#fb7185' }}>{tai ? '↑ Tài' : '↓ Xỉu'}</span>
     </span>
   );
 }
@@ -202,6 +205,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                       <th className="px-3 py-2 font-semibold">Line</th>
                       <th className="px-3 py-2 font-semibold">Giá</th>
                       <th className="px-3 py-2 font-semibold">P</th>
+                      <th className="px-3 py-2 font-semibold">Thời điểm vào</th>
                       <th className="px-3 py-2 font-semibold">Tỉ số vào</th>
                       <th className="px-3 py-2 font-semibold">Tổng cuối</th>
                       <th className="px-3 py-2 font-semibold">KQ</th>
@@ -223,6 +227,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                         <td className="px-3 py-2 text-[#bbb]">{r.lineRaw ?? r.line}</td>
                         <td className="px-3 py-2 text-[#bbb]">{r.price.toFixed(2)}</td>
                         <td className="px-3 py-2 text-[#bbb]">{Math.round(r.pModel * 100)}%</td>
+                        <td className="px-3 py-2 text-[#bbb] tabular-nums">{entryTimeStr(r)}</td>
                         <td className="px-3 py-2 text-[#bbb] tabular-nums">{entryScore(r)}</td>
                         <td className="px-3 py-2 text-[#bbb]">{r.finalTotal ?? '—'}</td>
                         <td className="px-3 py-2 font-semibold">
@@ -231,21 +236,21 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                       </tr>
                       {r.arm29 && (
                         <tr className="border-b border-[#222]">
-                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                          <td colSpan={10} className="px-3 pb-2 pt-0">
                             <Arm29Row arm29={r.arm29} />
                           </td>
                         </tr>
                       )}
                       {r.v21 && (
                         <tr className="border-b border-[#222]">
-                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                          <td colSpan={10} className="px-3 pb-2 pt-0">
                             <V21Row v21={r.v21} />
                           </td>
                         </tr>
                       )}
                       {(r.arm25 || r.arm32 || r.entryOdds) && (
                         <tr className="border-b border-[#222]">
-                          <td colSpan={9} className="px-3 pb-2 pt-0">
+                          <td colSpan={10} className="px-3 pb-2 pt-0">
                             <Vbot16Timeline r={r} />
                           </td>
                         </tr>
@@ -273,6 +278,7 @@ export default function TxDetailDrawer({ version, onClose }: { version: string; 
                       <span className="text-[#888]">line <span className="text-[#bbb]">{r.lineRaw ?? r.line}</span></span>
                       <span className="text-[#888]">giá <span className="text-[#bbb]">{r.price.toFixed(2)}</span></span>
                       <span className="text-[#888]">P <span className="text-[#bbb]">{Math.round(r.pModel * 100)}%</span></span>
+                      <span className="text-[#888]">thời điểm <span className="text-[#bbb]">{entryTimeStr(r)}</span></span>
                       <span className="text-[#888]">vào <span className="text-[#bbb]">{entryScore(r)}</span></span>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] tabular-nums">

@@ -33,6 +33,12 @@ const NAME_MAP: Record<string, string> = {
   'gs-tx-paper-v8-drift': 'TX v8.0 · lineDrift',
   'gs-vbot21-qt-xiu': 'V.Bot 21 QT Xỉu',
   'gs-vbot-air1': 'V.Bot Air 1',
+  'gs-vbot-air1-real': 'V.Bot Air 1 Real',
+  'gs-vbot-baby1': 'V.Bot Baby 1',
+  'gs-vbot-baby2': 'V.Bot Baby 2',
+  'gs-vbot-baby3': 'V.Bot Baby 3',
+  'gs-vbot-tiger': 'V.Bot Tiger',
+  'gs-vbot-tiger-real': 'V.Bot Tiger Real',
 };
 
 // pm2 process → NHIỀU calc_version (1 process chạy nhiều model). gs-hcap-paper chạy cả 3

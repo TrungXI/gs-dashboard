@@ -9,6 +9,8 @@
     "lint": "eslint",
     "tx:test": "node --test 'tx-lab/test/*.test.mjs'",
     "tx:run": "node tx-lab/run.mjs",
+    "rung:run": "node tx-lab/rung/run.mjs",
+    "rung:test": "node --test 'tx-lab/rung/test/*.test.mjs'",
     "gtl:test": "node --test scripts/goalTimeline.test.ts"
   },
   "dependencies": {

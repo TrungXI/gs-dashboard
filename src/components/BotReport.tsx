@@ -57,7 +57,7 @@ function BotMatrix({ bot, days }: { bot: BotReportData; days: string[] }) {
       <div className="flex items-center justify-between gap-2 border-b border-[#222] px-3 py-2.5">
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-bold" style={{ color: accent }}>
-            {bot.label}
+            {bot.side === 'tai' ? '▲' : '▼'} {bot.label}
           </span>
           <span className="text-[10px] text-[#666]">{bot.calcVersion}</span>
         </div>
@@ -176,18 +176,44 @@ function windowChip(rank: WindowRank | null, kind: 'best' | 'worst') {
   );
 }
 
+// Trạng thái thu/mở của khối "cửa vàng" — nhớ qua localStorage.
+const GW_OPEN_KEY = 'gs-bot-report:golden-window-open';
+
 function GoldenWindow({ bots, recentDays }: { bots: BotReportData[]; recentDays: string[] }) {
   const recentLabel = recentDays.length > 0 ? recentDays.map(fmtDay).join(', ') : '—';
+  // Mặc định MỞ. Đọc localStorage ngay ở initializer — an toàn vì GoldenWindow
+  // chỉ render sau khi fetch xong (server render ra LoadingState, không ra khối này).
+  const [open, setOpen] = useState(
+    () => typeof window === 'undefined' || localStorage.getItem(GW_OPEN_KEY) !== '0',
+  );
+  const toggle = () => {
+    setOpen((v) => {
+      const next = !v;
+      localStorage.setItem(GW_OPEN_KEY, next ? '1' : '0');
+      return next;
+    });
+  };
   return (
     <div className="mb-6 rounded-lg border border-[#2a2a2a] bg-[#141414]">
-      <div className="border-b border-[#222] px-3 py-2.5">
-        <div className="text-[13px] font-bold text-[#eee]">🕐 Bản đồ cửa vàng theo giờ</div>
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className={`w-full px-3 py-2.5 text-left transition-colors hover:bg-white/[.03] ${open ? 'border-b border-[#222]' : ''}`}
+      >
+        <div className="flex items-center gap-2 text-[13px] font-bold text-[#eee]">
+          <span className={`text-[10px] text-[#888] transition-transform ${open ? 'rotate-90' : ''}`}>▶</span>
+          🕐 Bản đồ cửa vàng theo giờ
+          {!open && <span className="ml-auto text-[10px] font-semibold text-[#666]">{bots.length} bot · bấm để mở</span>}
+        </div>
+        {open && (
         <div className="mt-0.5 text-[11px] text-[#888]">
           Xếp hạng khung giờ theo hiệu quả <span className="font-semibold text-[#eee]">GẦN ĐÂY</span> (
           {recentDays.length} ngày cuối: {recentLabel}) — <span className="text-[#666]">KHÔNG</span> dùng cumulative
           (cumulative che decay). <span className="text-[#fbbf24]">⚠️ suy</span> = gần đây tệ hơn lịch sử → edge đang chết.
         </div>
-      </div>
+        )}
+      </button>
+      {open && (
       <div className="flex flex-col divide-y divide-[#1c1c1c]">
         {bots.map((bot) => {
           const accent = bot.side === 'tai' ? '#4ade80' : '#f87171';
@@ -195,7 +221,7 @@ function GoldenWindow({ bots, recentDays }: { bots: BotReportData[]; recentDays:
             <div key={bot.calcVersion} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center">
               <div className="flex items-center gap-2 sm:w-40 sm:shrink-0">
                 <span className="text-[12px] font-bold" style={{ color: accent }}>
-                  {bot.label}
+                  {bot.side === 'tai' ? '▲' : '▼'} {bot.label}
                 </span>
                 {bot.decayFlag && <span title="Có khung đang suy">⚠️</span>}
               </div>
@@ -213,6 +239,7 @@ function GoldenWindow({ bots, recentDays }: { bots: BotReportData[]; recentDays:
           );
         })}
       </div>
+      )}
     </div>
   );
 }
@@ -314,7 +341,7 @@ export default function BotReport() {
                   }`}
                   style={on ? { color: accent, borderColor: accent } : undefined}
                 >
-                  {bot.label}
+                  {bot.side === 'tai' ? '▲' : '▼'} {bot.label}
                   {bot.decayFlag ? ' ⚠️' : ''}
                 </button>
               );

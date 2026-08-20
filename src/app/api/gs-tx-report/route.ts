@@ -43,6 +43,8 @@ export interface TxReportRow {
   entryOdds: EntryOdds | null; // V.Bot 16: giá lúc VÀO lệnh (line over + giá)
   entryMin: number | null; // V.Bot 16: phút (trong hiệp) lúc đặt lệnh
   v21: V21Entry | null; // V.Bot 21 QT Xỉu: phút vào + OU line + giá Xỉu/Tài lúc vào (từ snapshot qtXiu_V21)
+  entryHalf: 'h1' | 'h2' | null; // Thời điểm vào lệnh — hiệp (chuẩn hoá từ snapshot, xem deriveEntryTime)
+  entryMinute: number | null; // Thời điểm vào lệnh — phút trong hiệp đó (null nếu snapshot cũ không ghi)
 }
 
 // V.Bot 21 QT Xỉu — snapshot lúc VÀO XỈU (strategy 'qtXiu_V21').
@@ -185,9 +187,26 @@ interface TxDbRow {
   v21_under: string | number | null; // snapshot->>'underAt29'
   v21_over: string | number | null;  // snapshot->>'overAt29'
   v21_score: string | number | null; // snapshot->>'scoreAtBet'
+  minute_elapsed: string | number | null; // snapshot->>'minuteElapsed' — nhóm bot cũ (V.Bot 1/2/5/7-13/17...)
+  is_h2: string | null;                   // snapshot->>'isH2' — 'true'/'false', có thể vắng mặt
+}
+
+// Thời điểm vào lệnh, chuẩn hoá về 1 dạng — ưu tiên minuteAtBet+half (V14/15/16/16pRung/18/21/V16pAsian),
+// fallback minuteElapsed+isH2 (V.Bot 1/2/5/7-10), fallback minuteElapsed KHÔNG isH2 (V.Bot 12/13/17 — rule
+// các bot này CHỈ vào ở hiệp 1 nên mặc định half='h1'), null nếu snapshot cũ hoàn toàn không có gì (hiện '-' ở FE).
+function deriveEntryTime(r: TxDbRow): { half: 'h1' | 'h2' | null; minute: number | null } {
+  if (r.entry_min != null && r.entry_min !== '' && (r.v21_half === 'h1' || r.v21_half === 'h2')) {
+    return { half: r.v21_half, minute: Number(r.entry_min) };
+  }
+  if (r.minute_elapsed != null && r.minute_elapsed !== '') {
+    const half: 'h1' | 'h2' = r.is_h2 === 'true' ? 'h2' : 'h1';
+    return { half, minute: Number(r.minute_elapsed) };
+  }
+  return { half: null, minute: null };
 }
 
 function toRow(r: TxDbRow): TxReportRow {
+  const entryTime = deriveEntryTime(r);
   return {
     id: Number(r.id),
     calcVersion: r.calc_version,
@@ -226,6 +245,8 @@ function toRow(r: TxDbRow): TxReportRow {
             score: r.v21_score == null || r.v21_score === '' ? null : Number(r.v21_score),
           }
         : null,
+    entryHalf: entryTime.half,
+    entryMinute: entryTime.minute,
   };
 }
 
@@ -272,7 +293,8 @@ export async function GET(req: Request) {
                 snapshot->>'minuteAtBet' AS entry_min,
                 snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
                 snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
-                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score
+                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score,
+                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2
            FROM gs_tx_paper
            ORDER BY entry_at DESC
            LIMIT $1 OFFSET $2`,
@@ -289,7 +311,8 @@ export async function GET(req: Request) {
                 snapshot->>'minuteAtBet' AS entry_min,
                 snapshot->>'strategy' AS v21_strategy, snapshot->>'half' AS v21_half,
                 snapshot->>'lineRaw' AS v21_line, snapshot->>'underAt29' AS v21_under,
-                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score
+                snapshot->>'overAt29' AS v21_over, snapshot->>'scoreAtBet' AS v21_score,
+                snapshot->>'minuteElapsed' AS minute_elapsed, snapshot->>'isH2' AS is_h2
            FROM gs_tx_paper
            WHERE calc_version = $1
            ORDER BY entry_at DESC

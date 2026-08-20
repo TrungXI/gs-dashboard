@@ -69,8 +69,10 @@ function Bar({ d, animated }: { d: GoalTimingWindow; animated: boolean }) {
 
 // ── Chart for one league ──────────────────────────────────────────────────────
 function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
-  const h1 = lg.windows.filter((w) => w.half === 1);
-  const h2 = lg.windows.filter((w) => w.half === 2);
+  const [src, setSrc] = useState<'ticks' | 'oddslog'>('ticks');
+  const activeWindows = src === 'ticks' ? lg.windows : lg.windowsOddslog;
+  const h1 = activeWindows.filter((w) => w.half === 1);
+  const h2 = activeWindows.filter((w) => w.half === 2);
   const peakH1 = h1.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct > a.pct ? b : a), null);
   const peakH2 = h2.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct > a.pct ? b : a), null);
   const lowH1  = h1.reduce<GoalTimingWindow | null>((a, b) => (!a || b.pct < a.pct ? b : a), null);
@@ -89,11 +91,46 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
 
   return (
     <div>
+      {/* Data source info + toggle */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
+        {([
+          { key: 'ticks' as const,   label: 'gs_16p_ticks',      n: lg.ticksMatches,   color: '#3BCFB4' },
+          { key: 'oddslog' as const, label: 'match_odds_log',    n: lg.oddslogMatches, color: '#F5C842' },
+          { key: null,               label: 'gs_matches_history', n: lg.totalMatches,   color: '#7B8FA1' },
+        ] as const).map(({ key, label, n, color }) => {
+          const isActive = key === src;
+          const isClickable = key !== null;
+          return (
+            <div
+              key={label}
+              onClick={() => isClickable && setSrc(key)}
+              style={{
+                background: isActive ? `${color}12` : T.surface,
+                border: `1px solid ${isActive ? color : T.border}`,
+                borderRadius: 6, padding: '8px 10px',
+                display: 'flex', flexDirection: 'column', gap: 3,
+                cursor: isClickable ? 'pointer' : 'default',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <div style={{ ...MONO, fontSize: 9, color: isActive ? color : T.muted, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 4 }}>
+                {label}
+                {isActive && <span style={{ background: color, color: '#07101A', fontSize: 7, fontWeight: 700, padding: '1px 4px', borderRadius: 3, letterSpacing: '0.05em' }}>CHART</span>}
+              </div>
+              <div style={{ ...MONO, fontSize: 17, fontWeight: 700, color: isActive ? color : T.muted, lineHeight: 1 }}>
+                {n.toLocaleString()}
+                <span style={{ fontSize: 10, fontWeight: 400, color: T.muted, marginLeft: 4 }}>trận</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 1, background: T.border, border: `1px solid ${T.border}`, borderRadius: 7, overflow: 'hidden', marginBottom: 16 }}>
         {[
           { v: String(lg.avgGoals), u: 'bàn', l: 'TB / trận', c: T.text },
-          { v: String(lg.totalMatches), u: '', l: 'Trận', c: T.text },
+          { v: String(lg.totalMatches), u: '', l: 'Trận (history)', c: T.text },
           { v: String(lg.avgH1), u: 'H1', l: 'Hiệp 1 TB', c: T.h1 },
           { v: String(lg.avgH2), u: 'H2', l: 'Hiệp 2 TB', c: T.h2 },
         ].map(({ v, u, l, c }) => (
@@ -300,7 +337,7 @@ export default function GoalTimingReport() {
           ))}
         </div>
         <div style={{ ...MONO, fontSize: 9, color: T.dim }}>
-          gs_16p_ticks · {current.totalMatches} events · cập nhật {fmt(data.cachedAt)}
+          16p_ticks ({current.ticksMatches}) · odds_log ({current.oddslogMatches}) · history ({current.totalMatches}) · {fmt(data.cachedAt)}
         </div>
       </div>
     </div>

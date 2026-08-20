@@ -29,12 +29,15 @@ export interface LeagueStat {
   leagueId: number;
   matchType: string;
   label: string;
-  totalMatches: number;
+  totalMatches: number;           // gs_matches_history
+  ticksMatches: number;           // gs_16p_ticks distinct events
+  oddslogMatches: number;         // match_odds_log distinct events
   avgGoals: number;
   avgH1: number;
   avgH2: number;
   pctGoalless: number;
-  windows: GoalTimingWindow[];
+  windows: GoalTimingWindow[];       // từ gs_16p_ticks
+  windowsOddslog: GoalTimingWindow[]; // từ match_odds_log
 }
 
 export interface GoalTimingResponse {
@@ -61,7 +64,7 @@ async function compute(): Promise<GoalTimingResponse> {
   // All league stats + window data in parallel
   const results = await Promise.all(
     LEAGUES.map(async (lg) => {
-      const [statsRes, winRes] = await Promise.all([
+      const [statsRes, winRes, srcRes, winOddsRes] = await Promise.all([
         pool.query<{ matches: string; avg_total: string; avg_h1: string; avg_h2: string; goalless: string }>(`
           SELECT
             COUNT(*) AS matches,
@@ -106,7 +109,59 @@ async function compute(): Promise<GoalTimingResponse> {
           GROUP BY FLOOR((gmin - 1) / 5), CASE WHEN gmin <= 45 THEN 1 ELSE 2 END
           ORDER BY FLOOR((gmin - 1) / 5)
         `, [lg.id]),
+
+        pool.query<{ ticks_n: string; oddslog_n: string }>(`
+          SELECT
+            (SELECT COUNT(DISTINCT event_id) FROM gs_16p_ticks   WHERE league_id  = $1) AS ticks_n,
+            (SELECT COUNT(DISTINCT event_id) FROM match_odds_log WHERE match_type = $2) AS oddslog_n
+        `, [lg.id, lg.matchType]),
+
+        // windows từ match_odds_log (score change detection) — dùng match_type vì league_id thường NULL
+        pool.query<{ window_min: string; half: string; goals: string; matches_scored: string; total: string; pct: string }>(`
+          WITH ticks_lag AS (
+            SELECT
+              event_id, minute, period, is_h2,
+              score_home + score_away AS total,
+              LAG(score_home + score_away)
+                OVER (PARTITION BY event_id ORDER BY recorded_at) AS prev_total
+            FROM match_odds_log
+            WHERE match_type = $1 AND period IN (2, 8)
+              AND score_home IS NOT NULL AND score_away IS NOT NULL
+          ),
+          goals AS (
+            SELECT
+              event_id,
+              CASE WHEN is_h2 THEN minute + 45 ELSE minute END AS gmin
+            FROM ticks_lag
+            WHERE total > prev_total AND prev_total IS NOT NULL AND minute <= 45
+          ),
+          total_ev AS (
+            SELECT COUNT(DISTINCT event_id) AS n FROM match_odds_log WHERE match_type = $1
+          )
+          SELECT
+            FLOOR((gmin - 1) / 5) * 5 + 1 || '–' ||
+              (FLOOR((gmin - 1) / 5) * 5 + 5)                    AS window_min,
+            CASE WHEN gmin <= 45 THEN 1 ELSE 2 END                AS half,
+            COUNT(*)                                               AS goals,
+            COUNT(DISTINCT event_id)                               AS matches_scored,
+            (SELECT n FROM total_ev)                               AS total,
+            ROUND(100.0 * COUNT(DISTINCT event_id) /
+              NULLIF((SELECT n FROM total_ev), 0), 1)              AS pct
+          FROM goals
+          WHERE gmin BETWEEN 1 AND 90
+          GROUP BY FLOOR((gmin - 1) / 5), CASE WHEN gmin <= 45 THEN 1 ELSE 2 END
+          ORDER BY FLOOR((gmin - 1) / 5)
+        `, [lg.matchType]),
       ]);
+
+      const mapWindows = (rows: typeof winRes.rows) => rows.map((r) => ({
+        window: r.window_min,
+        half: parseInt(r.half) as 1 | 2,
+        goals: parseInt(r.goals),
+        matchesScored: parseInt(r.matches_scored),
+        totalMatches: parseInt(r.total),
+        pct: parseFloat(r.pct),
+      }));
 
       const s = statsRes.rows[0];
       const total = parseInt(s.matches);
@@ -115,18 +170,14 @@ async function compute(): Promise<GoalTimingResponse> {
         matchType: lg.matchType,
         label: lg.label,
         totalMatches: total,
+        ticksMatches: parseInt(srcRes.rows[0]?.ticks_n ?? '0'),
+        oddslogMatches: parseInt(srcRes.rows[0]?.oddslog_n ?? '0'),
         avgGoals: parseFloat(s.avg_total),
         avgH1: parseFloat(s.avg_h1),
         avgH2: parseFloat(s.avg_h2),
         pctGoalless: total > 0 ? parseFloat((100 * parseInt(s.goalless) / total).toFixed(1)) : 0,
-        windows: winRes.rows.map((r) => ({
-          window: r.window_min,
-          half: parseInt(r.half) as 1 | 2,
-          goals: parseInt(r.goals),
-          matchesScored: parseInt(r.matches_scored),
-          totalMatches: parseInt(r.total),
-          pct: parseFloat(r.pct),
-        })),
+        windows: mapWindows(winRes.rows),
+        windowsOddslog: mapWindows(winOddsRes.rows),
       };
       return stat;
     })

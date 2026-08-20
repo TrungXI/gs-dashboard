@@ -23,8 +23,9 @@ import LiveVideoWall from './LiveVideoWall';
 import SabaFootballLive from './SabaFootballLive';
 import SabaVideo from './SabaVideo';
 import GoalTimingReport from './GoalTimingReport';
+import ClbvAnalyst from './ClbvAnalyst';
 
-type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'goal-timing' | 'monitor' | 'video' | 'saba-live' | 'saba-video';
+type View = 'data' | 'gs-live' | 'report' | 'match-analysis' | 'bet-stats' | 'bet-table' | 'h2h-matrix' | 'team-form' | 'tx-report' | 'bot-report' | 'ft-pairs' | 'goal-timeline' | 'goal-timing' | 'monitor' | 'video' | 'saba-live' | 'saba-video' | 'clbv-analyst';
 type FType = 'all' | '20p' | '16p' | '20p_club';
 
 // ── URL routing: view ↔ slug (single source of truth) ─────────────────────
@@ -48,6 +49,7 @@ const VIEW_TO_SLUG: Record<View, string> = {
   'video': 'video',
   'saba-live': 'saba-live',
   'saba-video': 'saba-video',
+  'clbv-analyst': 'clbv-analyst',
 };
 
 // Slug (kể cả alias cũ) → View. Alias legacy giữ cho link chia sẻ cũ còn chạy;
@@ -303,6 +305,7 @@ export default function Dashboard({
     ['goal-timing', '⚽', 'Bàn Thắng'],
     // ['ft-pairs', '📈', 'Cặp WL/BL'], // hidden from nav
     // ['goal-timeline', '⏱️', 'Timeline Ghi Bàn'], // hidden from nav
+    ['clbv-analyst', '🏟️', 'CLBV Analyst'],
     ['monitor', '🖥️', 'Monitor'],
   ];
 
@@ -512,6 +515,8 @@ export default function Dashboard({
           <FtPairs />
         ) : view === 'goal-timing' ? (
           <GoalTimingReport />
+        ) : view === 'clbv-analyst' ? (
+          <ClbvAnalyst />
         ) : view === 'goal-timeline' ? (
           <GoalTimeline />
         ) : view === 'video' ? (

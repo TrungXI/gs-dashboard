@@ -31,6 +31,8 @@ const BOTS: {
   { calcVersion: 'V.Bot 17 Test BlackList', label: 'TÀI / Test BlackList', side: 'tai' },
   { calcVersion: 'V.Bot 21 QT Xỉu', label: 'V21 QT Xỉu', side: 'xiu' },
   { calcVersion: 'V.Bot Air 1', label: 'Air1 · XỈU theo tỉ số+phút', side: 'xiu' },
+  { calcVersion: 'TNK - CLB - Top Rung H2', label: 'TNK CLB · Rung H2 (≥65%)', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Tài H2', label: 'TNK CLB · Tài H2 đầu hiệp (≥65%)', side: 'tai' },
   // 3 handicap models — same output shape, sourced from gs_hcap_paper by `model`.
   { calcVersion: 'hcap:A', dbKey: 'A', label: 'HC-A · Trên tiếp', side: 'tai', source: 'hcap' },
   { calcVersion: 'hcap:B', dbKey: 'B', label: 'HC-B · Ngược dưới+Tài', side: 'tai', source: 'hcap' },
