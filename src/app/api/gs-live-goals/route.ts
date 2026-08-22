@@ -3,7 +3,7 @@ import { Pool } from 'pg';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Timeline ghi bàn cho các trận đang live. Ưu tiên gs_16p_ticks vì logger này
+// Timeline ghi bàn cho các trận đang live. Ưu tiên gs_full_ticks vì logger này
 // có cả International 20p (1485); chỉ fallback match_odds_log cho event chưa có tick.
 let _pool: Pool | null = null;
 function pool(): Pool | null {
@@ -23,11 +23,11 @@ export async function GET(req: Request) {
   try {
     const { rows } = await db.query(`
       WITH tick_events AS (
-        SELECT DISTINCT event_id FROM gs_16p_ticks
+        SELECT DISTINCT event_id FROM gs_full_ticks
         WHERE event_id = ANY($1::int[]) AND recorded_at > now() - interval '4 hours'
       ), snapshots AS (
         SELECT t.event_id, t.minute, t.is_h2, t.score_home, t.score_away, t.recorded_at, t.id
-        FROM gs_16p_ticks t
+        FROM gs_full_ticks t
         WHERE t.event_id = ANY($1::int[]) AND t.recorded_at > now() - interval '4 hours'
         UNION ALL
         SELECT l.event_id, l.minute, l.is_h2, l.score_home, l.score_away, l.recorded_at, l.id

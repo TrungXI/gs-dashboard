@@ -680,7 +680,7 @@ export default function LiveVideoWall() {
     return () => { cancelled = true; clearInterval(id); };
   }, [token]);
 
-  // Timeline ghi bàn per trận live — từ /api/gs-live-goals (ưu tiên gs_16p_ticks,
+  // Timeline ghi bàn per trận live — từ /api/gs-live-goals (ưu tiên gs_full_ticks,
   // có cả International 20p). Key = danh sách eventId live (đổi khi trận vào/ra) →
   // fetch NGAY, sau đó 10s/lần (bàn thắng hiếm). Tab ẩn thì ngừng cho nhẹ.
   const [goalLog, setGoalLog] = useState<GoalEvent[]>([]);

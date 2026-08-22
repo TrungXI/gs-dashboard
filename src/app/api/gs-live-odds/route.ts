@@ -25,7 +25,7 @@ export async function GET(req: Request) {
              betting_open, match_suspended,
              ft_line, ft_tai, ft_xiu, ft_susp,
              h1_line, h1_tai, h1_xiu, h1_susp
-      FROM gs_16p_ticks
+      FROM gs_full_ticks
       WHERE event_id=$1
       ORDER BY recorded_at ASC
       LIMIT 1200`, [eventId]);

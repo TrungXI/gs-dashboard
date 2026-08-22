@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 // GET /api/gs-goal-timing
 // Tính % trận có bàn thắng theo từng khung 5 phút cho cả 3 giải:
 //   16p (league_id 2140), 20p Asian (2125), 20p Intl (1485)
-// Nguồn: gs_16p_ticks (score diff giữa tick liên tiếp = bàn thắng)
+// Nguồn: gs_full_ticks (score diff giữa tick liên tiếp = bàn thắng)
 // Cache 2h in-memory — tính 1 lần, phục vụ nhiều request.
 
 let _pool: Pool | null = null;
@@ -30,13 +30,13 @@ export interface LeagueStat {
   matchType: string;
   label: string;
   totalMatches: number;           // gs_matches_history
-  ticksMatches: number;           // gs_16p_ticks distinct events
+  ticksMatches: number;           // gs_full_ticks distinct events
   oddslogMatches: number;         // match_odds_log distinct events
   avgGoals: number;
   avgH1: number;
   avgH2: number;
   pctGoalless: number;
-  windows: GoalTimingWindow[];       // từ gs_16p_ticks
+  windows: GoalTimingWindow[];       // từ gs_full_ticks
   windowsOddslog: GoalTimingWindow[]; // từ match_odds_log
 }
 
@@ -82,7 +82,7 @@ async function compute(): Promise<GoalTimingResponse> {
               score_home + score_away AS total,
               LAG(score_home + score_away)
                 OVER (PARTITION BY event_id ORDER BY recorded_at) AS prev_total
-            FROM gs_16p_ticks
+            FROM gs_full_ticks
             WHERE league_id = $1 AND period IN (2, 8)
           ),
           goals AS (
@@ -93,7 +93,7 @@ async function compute(): Promise<GoalTimingResponse> {
             WHERE total > prev_total AND prev_total IS NOT NULL AND minute <= 45
           ),
           total_ev AS (
-            SELECT COUNT(DISTINCT event_id) AS n FROM gs_16p_ticks WHERE league_id = $1
+            SELECT COUNT(DISTINCT event_id) AS n FROM gs_full_ticks WHERE league_id = $1
           )
           SELECT
             FLOOR((gmin - 1) / 5) * 5 + 1 || '–' ||
@@ -112,7 +112,7 @@ async function compute(): Promise<GoalTimingResponse> {
 
         pool.query<{ ticks_n: string; oddslog_n: string }>(`
           SELECT
-            (SELECT COUNT(DISTINCT event_id) FROM gs_16p_ticks   WHERE league_id  = $1) AS ticks_n,
+            (SELECT COUNT(DISTINCT event_id) FROM gs_full_ticks   WHERE league_id  = $1) AS ticks_n,
             (SELECT COUNT(DISTINCT event_id) FROM match_odds_log WHERE match_type = $2) AS oddslog_n
         `, [lg.id, lg.matchType]),
 

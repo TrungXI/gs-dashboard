@@ -63,9 +63,9 @@ async function queryOdds(
 ): Promise<{ rows: OddsRawRow[]; coverageStart: string | null; coverageEnd: string | null }> {
   // A cohort event = an event of this match_type whose FIRST recorded_at (any row)
   // is within the completed window. 20p_asian additionally excludes events that have
-  // any tick in gs_16p_ticks league_id=1485 (intl) or 1508 (club).
+  // any tick in gs_full_ticks league_id=1485 (intl) or 1508 (club).
   const notExists = excludeIntlTicks
-    ? `AND NOT EXISTS (SELECT 1 FROM gs_16p_ticks t WHERE t.event_id = mol.event_id AND t.league_id IN (1485, 1508))`
+    ? `AND NOT EXISTS (SELECT 1 FROM gs_full_ticks t WHERE t.event_id = mol.event_id AND t.league_id IN (1485, 1508))`
     : '';
 
   const sql = `
@@ -101,7 +101,7 @@ async function queryOdds(
   };
 }
 
-// 20p_intl → gs_16p_ticks league_id=1485; 20p_club → league_id=1508.
+// 20p_intl → gs_full_ticks league_id=1485; 20p_club → league_id=1508.
 async function queryTicks(
   db: Pool,
   days: number,
@@ -110,7 +110,7 @@ async function queryTicks(
   const sql = `
     WITH cohort AS (
       SELECT event_id, MIN(recorded_at) AS start_at
-      FROM gs_16p_ticks
+      FROM gs_full_ticks
       WHERE league_id = $3
         AND recorded_at >= now() - ($1 || ' days')::interval
       GROUP BY event_id
@@ -119,7 +119,7 @@ async function queryTicks(
     )
     SELECT t.event_id, t.period, t.minute, t.is_h2,
            t.score_home, t.score_away, t.recorded_at
-    FROM gs_16p_ticks t
+    FROM gs_full_ticks t
     JOIN cohort c ON c.event_id = t.event_id
     WHERE t.league_id = $3
     ORDER BY t.event_id, t.recorded_at, t.id
@@ -128,7 +128,7 @@ async function queryTicks(
 
   const covSql = `
     SELECT MIN(recorded_at) AS cov_start, MAX(recorded_at) AS cov_end
-    FROM gs_16p_ticks
+    FROM gs_full_ticks
     WHERE league_id = $2 AND recorded_at >= now() - ($1 || ' days')::interval
   `;
   const cov = await db.query(covSql, [String(days), leagueId]);

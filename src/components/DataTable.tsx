@@ -26,7 +26,7 @@ function fmtLine(n: number): string {
 }
 
 // Chấp mở kèo: đội trên (Chủ/Khách) + độ chấp. Xám khi thiếu cả 2 nguồn.
-// Dấu "*" nhỏ = lấy từ fallback gs_16p_ticks (odds_log không có).
+// Dấu "*" nhỏ = lấy từ fallback gs_full_ticks (odds_log không có).
 function HandicapCell({ m }: { m: Match }) {
   if (m.hcOpenLine == null || m.hcOpenFav == null) {
     return <span className="text-[#555]">—</span>;
@@ -38,7 +38,7 @@ function HandicapCell({ m }: { m: Match }) {
     <span title={title} className="whitespace-nowrap font-semibold text-[#fbbf24]">
       <span className={favHome ? 'text-[#60a5fa]' : 'text-[#f472b6]'}>{favLabel}</span>{' '}
       -{fmtLine(m.hcOpenLine)}
-      {m.hcOpenSource === '16p' && <span className="text-[#555]" title="nguồn gs_16p_ticks">*</span>}
+      {m.hcOpenSource === '16p' && <span className="text-[#555]" title="nguồn gs_full_ticks">*</span>}
     </span>
   );
 }

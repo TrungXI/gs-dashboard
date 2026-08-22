@@ -12,7 +12,7 @@ export interface Match {
   ttAway: string;
   // ── Chấp mở kèo (opening handicap) ──────────────────────────────────────
   // Chấp phút ~1 của trận, market chính (hcLines[0]). Nguồn chính là
-  // match_odds_log (snapshot first_seen, period 2); fallback gs_16p_ticks
+  // match_odds_log (snapshot first_seen, period 2); fallback gs_full_ticks
   // (tick sớm nhất) khi odds_log không có. `null` khi cả hai nguồn đều thiếu.
   hcOpenLine?: number | null; // độ chấp tuyệt đối (0, 0.25, 0.5…)
   hcOpenFav?: 'home' | 'away' | null; // bên chấp (đội trên)

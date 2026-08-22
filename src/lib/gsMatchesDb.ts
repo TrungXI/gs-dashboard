@@ -158,7 +158,7 @@ export async function fetchMatchesPage(q: MatchQuery): Promise<MatchPage> {
   // Page query enriched with the opening handicap ("chấp mở kèo"). Each history
   // row is resolved to its sb21 event_id — first via match_odds_log's earliest
   // snapshot (nearest match_time, ≤15 min, keeps the map 1:1), then falling back
-  // to gs_16p_ticks' earliest start_time for events the odds log never captured.
+  // to gs_full_ticks' earliest start_time for events the odds log never captured.
   // The handicap itself is hcLines[0] (the market's main line, exactly what the
   // collector stores as hc_line): pulled from the pre-kickoff first_seen snapshot
   // (period 2), or from the earliest 16p tick's raw JSONB when odds_log lacks it.
@@ -188,7 +188,7 @@ export async function fetchMatchesPage(q: MatchQuery): Promise<MatchPage> {
       SELECT DISTINCT ON (p.id) p.id AS mh_id, t.event_id
       FROM page p JOIN (
         SELECT event_id, home_team_id, away_team_id, MIN(start_time) AS st
-        FROM gs_16p_ticks WHERE start_time IS NOT NULL
+        FROM gs_full_ticks WHERE start_time IS NOT NULL
         GROUP BY event_id, home_team_id, away_team_id
       ) t
         ON t.home_team_id = p.home_team_id AND t.away_team_id = p.away_team_id
@@ -206,7 +206,7 @@ export async function fetchMatchesPage(q: MatchQuery): Promise<MatchPage> {
       SELECT DISTINCT ON (event_id) event_id,
         raw->'hcLines'->0->>'line' AS hc_line,
         (raw->'hcLines'->0->>'homeGives')::boolean AS hc_home_gives
-      FROM gs_16p_ticks
+      FROM gs_full_ticks
       WHERE raw->'hcLines'->0 IS NOT NULL
       ORDER BY event_id, recorded_at
     )

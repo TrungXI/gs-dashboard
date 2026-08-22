@@ -1,6 +1,6 @@
 // goalTimeline.ts — PURE logic for the "Timeline Ghi Bàn" report (CHANGE-GOALTIMELINE).
 //
-// No I/O. Callers (the route) query raw rows from match_odds_log / gs_16p_ticks and
+// No I/O. Callers (the route) query raw rows from match_odds_log / gs_full_ticks and
 // hand them to `buildGoalTimeline(rawRows, params)`, which returns the response object
 // exactly matching §6 of the implementation SPEC.
 //
@@ -9,7 +9,7 @@
 //
 // Audit basis (CHANGE-GOALTIMELINE-c3-audit.md):
 //   C1 — goalless = MAX(score_home+score_away) OVER event == 0 (NOT absence of goal rows).
-//   C3 — gs_16p_ticks score is whole-match CUMULATIVE; smooth single-tick flicker.
+//   C3 — gs_full_ticks score is whole-match CUMULATIVE; smooth single-tick flicker.
 
 // ── §0 constants (pre-declared, C5) ─────────────────────────────────────────
 export const METHODOLOGY_VERSION = 'gtl-1';
@@ -44,7 +44,7 @@ export interface OddsRawRow {
   recorded_at: string | Date;
 }
 
-// A row from gs_16p_ticks (for 20p_intl sourcing, league_id=1485).
+// A row from gs_full_ticks (for 20p_intl sourcing, league_id=1485).
 export interface TickRawRow {
   event_id: number | string;
   period: number | string | null; // 2 → H1, 8 → H2

@@ -94,7 +94,7 @@ function LeagueChart({ lg, animated }: { lg: LeagueStat; animated: boolean }) {
       {/* Data source info + toggle */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
         {([
-          { key: 'ticks' as const,   label: 'gs_16p_ticks',      n: lg.ticksMatches,   color: '#3BCFB4' },
+          { key: 'ticks' as const,   label: 'gs_full_ticks',      n: lg.ticksMatches,   color: '#3BCFB4' },
           { key: 'oddslog' as const, label: 'match_odds_log',    n: lg.oddslogMatches, color: '#F5C842' },
           { key: null,               label: 'gs_matches_history', n: lg.totalMatches,   color: '#7B8FA1' },
         ] as const).map(({ key, label, n, color }) => {
