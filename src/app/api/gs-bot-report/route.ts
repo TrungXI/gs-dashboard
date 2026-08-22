@@ -25,16 +25,21 @@ const BOTS: {
   source?: 'tx' | 'hcap';
   dbKey?: string;
 }[] = [
-  { calcVersion: 'V.Bot 14', label: 'TÀI / V.Bot14', side: 'tai' },
-  { calcVersion: 'V.Bot 12 Test Full', label: 'XỈU / Test Full', side: 'xiu' },
-  { calcVersion: 'V.Bot 12 Test Whitelist', label: 'XỈU / Test Whitelist', side: 'xiu' },
-  { calcVersion: 'V.Bot 17 Test BlackList', label: 'TÀI / Test BlackList', side: 'tai' },
-  { calcVersion: 'V.Bot 21 QT Xỉu', label: 'V21 QT Xỉu', side: 'xiu' },
-  { calcVersion: 'V.Bot Air 1', label: 'Air1 · XỈU theo tỉ số+phút', side: 'xiu' },
-  { calcVersion: 'TNK - CLB - Top Rung H1', label: 'TNK CLB · Rung H1 (≥60%)', side: 'tai' },
-  { calcVersion: 'TNK - CLB - Top Rung H2', label: 'TNK CLB · Rung H2 (≥60%)', side: 'tai' },
-  { calcVersion: 'TNK - CLB - Top Tài H2', label: 'TNK CLB · Tài H2 đầu hiệp (≥60%)', side: 'tai' },
-  { calcVersion: 'NVT - CLB - RH2', label: 'NVT CLB · H1 kèo hiệp 1 + H2 kèo cả trận', side: 'tai' },
+  { calcVersion: 'V.Bot 14', label: 'V.Bot 14', side: 'tai' },
+  { calcVersion: 'V.Bot 12 Test Full', label: 'V.Bot 12 Test Full', side: 'xiu' },
+  { calcVersion: 'V.Bot 12 Test Whitelist', label: 'V.Bot 12 Test Whitelist', side: 'xiu' },
+  { calcVersion: 'V.Bot 17 Test BlackList', label: 'V.Bot 17 Test BlackList', side: 'tai' },
+  { calcVersion: 'V.Bot 21 QT Xỉu', label: 'V.Bot 21 QT Xỉu', side: 'xiu' },
+  { calcVersion: 'V.Bot Air 1', label: 'V.Bot Air 1', side: 'xiu' },
+  { calcVersion: 'TNK - CLB - Top Rung H1', label: 'TNK - CLB - Top Rung H1', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Rung H2', label: 'TNK - CLB - Top Rung H2', side: 'tai' },
+  { calcVersion: 'TNK - CLB - Top Tài H2', label: 'TNK - CLB - Top Tài H2', side: 'tai' },
+  { calcVersion: 'NVT - CLB - RH2', label: 'NVT - CLB - RH2', side: 'tai' },
+  { calcVersion: 'NVT - CLB - RH2 - F1', label: 'NVT - CLB - RH2 - F1', side: 'tai' },
+  // 2026-08-22 (user): 2 bot paper chạy ngầm giữ NGUYÊN rule Top Rung BẢN CŨ (trước 19:17 ngày
+  // 21/08, còn cổng giá PRICE_FLOOR=-0.85) — dựng để đối chứng sau khi 2 bot TNK gốc đổi rule.
+  { calcVersion: 'NVT-R-H1', label: 'NVT-R-H1', side: 'tai' },
+  { calcVersion: 'NVT-R-H2', label: 'NVT-R-H2', side: 'tai' },
   // 3 handicap models — same output shape, sourced from gs_hcap_paper by `model`.
   { calcVersion: 'hcap:A', dbKey: 'A', label: 'HC-A · Trên tiếp', side: 'tai', source: 'hcap' },
   { calcVersion: 'hcap:B', dbKey: 'B', label: 'HC-B · Ngược dưới+Tài', side: 'tai', source: 'hcap' },

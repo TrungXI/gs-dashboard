@@ -18,7 +18,9 @@ export interface ClbvAnalystRow {
   teamId: number;
   teamName: string;
   fullN: number | null; fullTaiRate: number | null; fullTaiAvgGoals: number | null;
+  fullXiuRate: number | null; fullXiuAvgGoals: number | null;
   h1N: number | null; h1TaiRate: number | null; h1TaiAvgGoals: number | null;
+  h1XiuRate: number | null; h1XiuAvgGoals: number | null;
   h2N: number | null;
   h2TaiRate: number | null; h2TaiAvgGoals: number | null;
   h2XiuRate: number | null; h2XiuAvgGoals: number | null;
@@ -32,7 +34,9 @@ interface RawRow {
   team_id: number;
   team_name: string;
   full_n: number | null; full_tai_rate: string | null; full_tai_avg_goals: string | null;
+  full_xiu_rate: string | null; full_xiu_avg_goals: string | null;
   h1_n: number | null; h1_tai_rate: string | null; h1_tai_avg_goals: string | null;
+  h1_xiu_rate: string | null; h1_xiu_avg_goals: string | null;
   h2_n: number | null;
   h2_tai_rate: string | null; h2_tai_avg_goals: string | null;
   h2_xiu_rate: string | null; h2_xiu_avg_goals: string | null;
@@ -53,7 +57,9 @@ function rowToApi(r: RawRow): ClbvAnalystRow {
     teamId: r.team_id,
     teamName: r.team_name,
     fullN: r.full_n, fullTaiRate: num(r.full_tai_rate), fullTaiAvgGoals: num(r.full_tai_avg_goals),
+    fullXiuRate: num(r.full_xiu_rate), fullXiuAvgGoals: num(r.full_xiu_avg_goals),
     h1N: r.h1_n, h1TaiRate: num(r.h1_tai_rate), h1TaiAvgGoals: num(r.h1_tai_avg_goals),
+    h1XiuRate: num(r.h1_xiu_rate), h1XiuAvgGoals: num(r.h1_xiu_avg_goals),
     h2N: r.h2_n,
     h2TaiRate: num(r.h2_tai_rate), h2TaiAvgGoals: num(r.h2_tai_avg_goals),
     h2XiuRate: num(r.h2_xiu_rate), h2XiuAvgGoals: num(r.h2_xiu_avg_goals),
@@ -71,8 +77,8 @@ export async function GET() {
   try {
     const { rows } = await pool.query<RawRow>(
       `SELECT team_id, team_name,
-              full_n, full_tai_rate, full_tai_avg_goals,
-              h1_n, h1_tai_rate, h1_tai_avg_goals,
+              full_n, full_tai_rate, full_tai_avg_goals, full_xiu_rate, full_xiu_avg_goals,
+              h1_n, h1_tai_rate, h1_tai_avg_goals, h1_xiu_rate, h1_xiu_avg_goals,
               h2_n, h2_tai_rate, h2_tai_avg_goals, h2_xiu_rate, h2_xiu_avg_goals,
               rung_h1_n, rung_h1_rate, rung_h1_avg_goals,
               rung_h2_n, rung_h2_rate, rung_h2_avg_goals,

@@ -71,7 +71,9 @@ interface Agg {
   teamName: string | null;
 
   fullN: number; fullFracSum: number; fullWinN: number; fullWinGoalsSum: number;
+  fullXiuFracSum: number; fullXiuWinN: number; fullXiuWinGoalsSum: number;
   h1N: number; h1FracSum: number; h1WinN: number; h1WinGoalsSum: number;
+  h1XiuFracSum: number; h1XiuWinN: number; h1XiuWinGoalsSum: number;
 
   h2N: number;
   h2TaiFracSum: number; h2TaiWinN: number; h2TaiWinGoalsSum: number;
@@ -85,7 +87,9 @@ function newAgg(teamId: number): Agg {
   return {
     teamId, teamName: null,
     fullN: 0, fullFracSum: 0, fullWinN: 0, fullWinGoalsSum: 0,
+    fullXiuFracSum: 0, fullXiuWinN: 0, fullXiuWinGoalsSum: 0,
     h1N: 0, h1FracSum: 0, h1WinN: 0, h1WinGoalsSum: 0,
+    h1XiuFracSum: 0, h1XiuWinN: 0, h1XiuWinGoalsSum: 0,
     h2N: 0,
     h2TaiFracSum: 0, h2TaiWinN: 0, h2TaiWinGoalsSum: 0,
     h2XiuFracSum: 0, h2XiuWinN: 0, h2XiuWinGoalsSum: 0,
@@ -183,18 +187,26 @@ export async function POST() {
       const goalH1Rows = rows.filter((r) => r.snapshot_type === 'goal_h1');
       const goalH2Rows = rows.filter((r) => r.snapshot_type === 'goal_h2');
 
-      // ── 1. full_* — kèo Tài cả trận ──
+      // ── 1. full_* — kèo Tài/Xỉu cả trận ──
       let fullFrac: number | null = null;
+      let fullXiuFrac: number | null = null;
       if (firstSeen) {
         const openLine = parseLine(firstSeen.ou_line);
-        if (openLine != null) fullFrac = gradeFraction('tai', openLine, ftTotal);
+        if (openLine != null) {
+          fullFrac = gradeFraction('tai', openLine, ftTotal);
+          fullXiuFrac = gradeFraction('xiu', openLine, ftTotal);
+        }
       }
 
-      // ── 2. h1_* — kèo Tài hiệp 1 ──
+      // ── 2. h1_* — kèo Tài/Xỉu hiệp 1 ──
       let h1Frac: number | null = null;
+      let h1XiuFrac: number | null = null;
       if (firstSeen) {
         const openH1Line = parseLine(firstSeen.ou_h1_line);
-        if (openH1Line != null) h1Frac = gradeFraction('tai', openH1Line, htTotal);
+        if (openH1Line != null) {
+          h1Frac = gradeFraction('tai', openH1Line, htTotal);
+          h1XiuFrac = gradeFraction('xiu', openH1Line, htTotal);
+        }
       }
 
       // ── 3 & 4. h2_tai_* / h2_xiu_* — kèo Tài/Xỉu hiệp 2 ──
@@ -239,13 +251,17 @@ export async function POST() {
         let a = agg.get(teamId);
         if (!a) { a = newAgg(teamId); agg.set(teamId, a); }
 
-        if (fullFrac != null) {
+        if (fullFrac != null && fullXiuFrac != null) {
           a.fullN++; a.fullFracSum += fullFrac;
           if (fullFrac > 0.5) { a.fullWinN++; a.fullWinGoalsSum += ftTotal; }
+          a.fullXiuFracSum += fullXiuFrac;
+          if (fullXiuFrac > 0.5) { a.fullXiuWinN++; a.fullXiuWinGoalsSum += ftTotal; }
         }
-        if (h1Frac != null) {
+        if (h1Frac != null && h1XiuFrac != null) {
           a.h1N++; a.h1FracSum += h1Frac;
           if (h1Frac > 0.5) { a.h1WinN++; a.h1WinGoalsSum += htTotal; }
+          a.h1XiuFracSum += h1XiuFrac;
+          if (h1XiuFrac > 0.5) { a.h1XiuWinN++; a.h1XiuWinGoalsSum += htTotal; }
         }
         if (h2TaiFrac != null && h2XiuFrac != null && h2Goals != null) {
           a.h2N++;
@@ -287,9 +303,13 @@ export async function POST() {
       full_n: usable.map((id) => agg.get(id)!.fullN),
       full_tai_rate: usable.map((id) => rate(agg.get(id)!.fullFracSum, agg.get(id)!.fullN)),
       full_tai_avg_goals: usable.map((id) => avgGoals(agg.get(id)!.fullWinGoalsSum, agg.get(id)!.fullWinN)),
+      full_xiu_rate: usable.map((id) => rate(agg.get(id)!.fullXiuFracSum, agg.get(id)!.fullN)),
+      full_xiu_avg_goals: usable.map((id) => avgGoals(agg.get(id)!.fullXiuWinGoalsSum, agg.get(id)!.fullXiuWinN)),
       h1_n: usable.map((id) => agg.get(id)!.h1N),
       h1_tai_rate: usable.map((id) => rate(agg.get(id)!.h1FracSum, agg.get(id)!.h1N)),
       h1_tai_avg_goals: usable.map((id) => avgGoals(agg.get(id)!.h1WinGoalsSum, agg.get(id)!.h1WinN)),
+      h1_xiu_rate: usable.map((id) => rate(agg.get(id)!.h1XiuFracSum, agg.get(id)!.h1N)),
+      h1_xiu_avg_goals: usable.map((id) => avgGoals(agg.get(id)!.h1XiuWinGoalsSum, agg.get(id)!.h1XiuWinN)),
       h2_n: usable.map((id) => agg.get(id)!.h2N),
       h2_tai_rate: usable.map((id) => rate(agg.get(id)!.h2TaiFracSum, agg.get(id)!.h2N)),
       h2_tai_avg_goals: usable.map((id) => avgGoals(agg.get(id)!.h2TaiWinGoalsSum, agg.get(id)!.h2TaiWinN)),
@@ -308,24 +328,24 @@ export async function POST() {
         `
         INSERT INTO gs_clbv_analyst (
           team_id, team_name,
-          full_n, full_tai_rate, full_tai_avg_goals,
-          h1_n, h1_tai_rate, h1_tai_avg_goals,
+          full_n, full_tai_rate, full_tai_avg_goals, full_xiu_rate, full_xiu_avg_goals,
+          h1_n, h1_tai_rate, h1_tai_avg_goals, h1_xiu_rate, h1_xiu_avg_goals,
           h2_n, h2_tai_rate, h2_tai_avg_goals, h2_xiu_rate, h2_xiu_avg_goals,
           rung_h1_n, rung_h1_rate, rung_h1_avg_goals,
           rung_h2_n, rung_h2_rate, rung_h2_avg_goals,
           window_days, updated_at
         )
-        SELECT t.*, $20::int, now() FROM UNNEST(
+        SELECT t.*, $24::int, now() FROM UNNEST(
           $1::int[], $2::text[],
-          $3::int[], $4::numeric[], $5::numeric[],
-          $6::int[], $7::numeric[], $8::numeric[],
-          $9::int[], $10::numeric[], $11::numeric[], $12::numeric[], $13::numeric[],
-          $14::int[], $15::numeric[], $16::numeric[],
-          $17::int[], $18::numeric[], $19::numeric[]
+          $3::int[], $4::numeric[], $5::numeric[], $6::numeric[], $7::numeric[],
+          $8::int[], $9::numeric[], $10::numeric[], $11::numeric[], $12::numeric[],
+          $13::int[], $14::numeric[], $15::numeric[], $16::numeric[], $17::numeric[],
+          $18::int[], $19::numeric[], $20::numeric[],
+          $21::int[], $22::numeric[], $23::numeric[]
         ) AS t(
           team_id, team_name,
-          full_n, full_tai_rate, full_tai_avg_goals,
-          h1_n, h1_tai_rate, h1_tai_avg_goals,
+          full_n, full_tai_rate, full_tai_avg_goals, full_xiu_rate, full_xiu_avg_goals,
+          h1_n, h1_tai_rate, h1_tai_avg_goals, h1_xiu_rate, h1_xiu_avg_goals,
           h2_n, h2_tai_rate, h2_tai_avg_goals, h2_xiu_rate, h2_xiu_avg_goals,
           rung_h1_n, rung_h1_rate, rung_h1_avg_goals,
           rung_h2_n, rung_h2_rate, rung_h2_avg_goals
@@ -333,7 +353,9 @@ export async function POST() {
         ON CONFLICT (team_id) DO UPDATE SET
           team_name = EXCLUDED.team_name,
           full_n = EXCLUDED.full_n, full_tai_rate = EXCLUDED.full_tai_rate, full_tai_avg_goals = EXCLUDED.full_tai_avg_goals,
+          full_xiu_rate = EXCLUDED.full_xiu_rate, full_xiu_avg_goals = EXCLUDED.full_xiu_avg_goals,
           h1_n = EXCLUDED.h1_n, h1_tai_rate = EXCLUDED.h1_tai_rate, h1_tai_avg_goals = EXCLUDED.h1_tai_avg_goals,
+          h1_xiu_rate = EXCLUDED.h1_xiu_rate, h1_xiu_avg_goals = EXCLUDED.h1_xiu_avg_goals,
           h2_n = EXCLUDED.h2_n, h2_tai_rate = EXCLUDED.h2_tai_rate, h2_tai_avg_goals = EXCLUDED.h2_tai_avg_goals,
           h2_xiu_rate = EXCLUDED.h2_xiu_rate, h2_xiu_avg_goals = EXCLUDED.h2_xiu_avg_goals,
           rung_h1_n = EXCLUDED.rung_h1_n, rung_h1_rate = EXCLUDED.rung_h1_rate, rung_h1_avg_goals = EXCLUDED.rung_h1_avg_goals,

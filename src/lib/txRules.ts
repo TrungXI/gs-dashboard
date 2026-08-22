@@ -327,88 +327,82 @@ export const TX_RULES: Record<string, TxRule> = {
   },
   'TNK - CLB - Top Rung H1': {
     emoji: '🥇',
-    headline: 'Kèo RUNG hiệp 1 — CHỈ giải Câu Lạc Bộ 20 phút, CHỈ trận thoả cả 3 điều kiện tỉ lệ (bảng CLBV Analyst). Mirror của bot Rung H2 nhưng cho hiệp 1, dùng market "Tài hiệp 1" riêng. PAPER — bot mới, đang dò.',
+    headline: 'Đánh TÀI hiệp 1, trận Câu Lạc Bộ 20 phút — chỉ chọn trận có đội hay ghi bàn muộn hiệp 1. Bot chạy THỬ, không đặt tiền thật.',
     side: 'Đánh TÀI (Over) — mỗi trận tối đa 1 lệnh',
-    when: 'Hiệp 1: chỉ ARM (ghi tỉ số nền) nếu lần đầu thấy trận rơi đúng phút 29-31; từ phút 30 tới phút 38 canh liên tục. Thấy trận lần đầu SAU phút 31 → bỏ hẳn. Quá phút 38 chưa vào được → hết cửa sổ, bỏ trận.',
+    when: 'Hiệp 1: theo dõi từ phút 29, vào lệnh từ phút 34 cho tới khi hết hiệp 1.',
     strategy: [
-      'CHỌN TRẬN (cần CẢ 3 điều kiện): (1) có ÍT NHẤT 1 đội (sân nhà hoặc sân khách) tỉ lệ "rung H1" ≥ 60% (≥10 trận dữ liệu) — đội này gọi là "đội trigger"; (2) CẢ 2 đội tỉ lệ "Tài cả trận" ≥ 40% (≥10 trận); (3) CẢ 2 đội tỉ lệ "Tài hiệp 1" ≥ 40% (≥10 trận) — danh sách tự cập nhật khi bấm Sync ở trang CLBV Analyst.',
-      'Phút 29-31 (cửa sổ ARM, chỉ arm 1 lần): ghi tổng bàn hiện tại (hiệp 1) làm mốc nền. Từ đó tới lúc vào lệnh, hễ có thêm bàn là HUỶ luôn.',
-      'Điều kiện RIÊNG của bot này (không có ở bot Rung H2): chỉ vào nếu tổng bàn hiện tại + 1 < "bàn thắng trung bình khi thắng kèo Tài hiệp 1" CỦA ĐỘI TRIGGER. VD: Villarreal có rung H1=60%, Tài H1=55.95%, bàn thắng TB khi thắng Tài H1 = 3.08 → chỉ vào nếu tổng bàn hiện tại ≤ 2 (vì 2+1 < 3.08). Thiếu số liệu này (đội trigger chưa từng thắng kèo Tài H1 trong 7 ngày) → bỏ, không đoán mò.',
-      'Từ phút 30 tới phút 38: tìm đúng mức Tài = tổng bàn hiện tại + 0,5 (đúng bằng) trên THỊ TRƯỜNG "Tài hiệp 1" riêng (khác dòng kèo cả trận), giá phải LỚN HƠN -0,85 (nhận cả giá rất gần 0 và cả giá dương, không có sàn tối thiểu — giống bot Rung H2).',
-      'Chỉ vào khi nhà cái đang mở kèo (không khoá cả trận) và đúng mức kèo đó không bị ẩn/khoá riêng.',
-      'Giải Câu Lạc Bộ (leagueId 1508) — bot đọc CHUNG feed http://localhost:8899 như mọi bot paper khác.',
+      'Chỉ chọn trận có ít nhất 1 đội (sân nhà hoặc sân khách) hay thắng kèo Tài kiểu "ghi bàn muộn" hiệp 1 — tỉ lệ này từ 60% trở lên theo thống kê tự cập nhật.',
+      'Từ phút 29: ghi lại tỉ số làm mốc. Nếu có thêm bàn thắng trước khi vào lệnh → huỷ, không đánh trận đó nữa.',
+      'Từ phút 34 trở đi: nếu vẫn chưa có bàn thêm và nhà cái đang mở kèo (không khoá, không ẩn) → đánh TÀI ở mức kèo sát tỉ số hiện tại. Đánh ở bất kỳ giá nào nhà cái đưa ra, không kén giá cao/thấp.',
+      'Mỗi trận chỉ đánh đúng 1 lệnh.',
     ],
-    data: [READ_ODDS, 'Bảng gs_clbv_analyst (tỉ lệ rung H1 + Tài cả trận + Tài hiệp 1 + bàn TB khi thắng Tài H1, số trận từng đội), tổng bàn hiệp 1 hiện tại.', 'Chấm: theo TỔNG BÀN HIỆP 1 (HT) — KHÔNG phải cả trận — vì đây là market "Tài hiệp 1" riêng.'],
+    data: [READ_ODDS, 'Tỉ lệ đội hay ghi bàn muộn hiệp 1 (thống kê nội bộ, tự cập nhật), tổng bàn hiệp 1 hiện tại.', 'Chấm thắng/thua theo TỔNG BÀN HIỆP 1 — không tính bàn ghi ở hiệp 2.'],
     entry: [
-      'Trận thuộc giải Câu Lạc Bộ 20 phút, thoả cả 3 điều kiện tỉ lệ: ≥1 đội rung H1 ≥60%, CẢ 2 đội Tài cả trận ≥40%, CẢ 2 đội Tài H1 ≥40% (mỗi ngưỡng ≥10 trận dữ liệu).',
-      'Phút 29-31 của hiệp 1 (lần đầu thấy trận trong khoảng này): ghi tổng bàn làm nền. Thấy trận lần đầu muộn hơn → bỏ hẳn.',
-      'Từ mốc nền tới lúc vào lệnh: không có bàn nào thêm.',
-      'Tổng bàn hiện tại + 1 < bàn TB khi thắng kèo Tài H1 của đội trigger (đội đạt rung H1 ≥60%).',
-      'Từ phút 30 tới 38: có mức Tài (thị trường hiệp 1) = tổng bàn + 0,5 đúng bằng, giá > -0,85 (nhận cả giá dương), nhà cái đang mở kèo, mức đó không bị khoá riêng → vào TÀI. Quá phút 38 → bỏ hẳn.',
+      'Trận thuộc giải Câu Lạc Bộ 20 phút, có ≥1 đội hay ghi bàn muộn hiệp 1 (tỉ lệ ≥60%).',
+      'Phút 29: ghi tỉ số làm mốc.',
+      'Từ mốc đó tới lúc vào lệnh: không có bàn thắng nào thêm.',
+      'Từ phút 34 trở đi: có mức Tài sát tỉ số hiện tại, nhà cái đang mở kèo → vào lệnh.',
     ],
-    note: 'PAPER 100% — không gọi API đặt cược thật ở bất kỳ nhánh code nào (white-paper: chạy live cho các trận sắp tới, chỉ ghi nhận giả lập). Chấm theo tổng bàn HIỆP 1 (khác bot Rung H2 chấm theo FT cả trận). Xem chi tiết ở CLBV Analyst + TX Report.',
-    short: '🥇 PAPER · CLB · rung H1≥60% (1 đội) + Tài cả trận≥40% + Tài H1≥40% (cả 2 đội) · phút 30-38 · tổng bàn+1<TB bàn thắng Tài H1 đội trigger · Tài +0,5 giá>-0,85 · chấm theo HT · 1 lệnh/trận.',
+    note: 'PAPER 100% — chỉ ghi nhận giả lập, KHÔNG đặt tiền thật ở bất kỳ bước nào. Chấm theo tổng bàn HIỆP 1 (khác bot Rung H2 chấm theo cả trận). Rule đã đơn giản hoá 2026-08-22 theo yêu cầu — bỏ các điều kiện phụ (mẫu tối thiểu, giới hạn giá, giới hạn phút cuối).',
+    short: '🥇 PAPER · Tài hiệp 1 · đội hay ghi bàn muộn H1 ≥60% · vào từ phút 34 nếu chưa có bàn từ phút 29 · 1 lệnh/trận.',
   },
   'TNK - CLB - Top Rung H2': {
     emoji: '🏟️',
-    headline: 'Kèo RUNG hiệp 2 — CHỈ giải Câu Lạc Bộ 20 phút, CHỈ trận thoả cả 3 điều kiện tỉ lệ (bảng CLBV Analyst). PAPER — chưa backtest dài, đang dò. Rule cập nhật 2026-08-20.',
+    headline: 'Đánh TÀI hiệp 2, trận Câu Lạc Bộ 20 phút — chỉ chọn trận có đội hay ghi bàn muộn hiệp 2. Bot chạy THỬ, không đặt tiền thật.',
     side: 'Đánh TÀI (Over) — mỗi trận tối đa 1 lệnh',
-    when: 'Hiệp 2: chỉ ARM (ghi tỉ số nền) nếu lần đầu thấy trận rơi đúng phút 29-31; từ phút 30 tới phút 38 canh liên tục. Thấy trận lần đầu SAU phút 31 (VD bot mới restart) → bỏ hẳn, không đoán mò. Quá phút 38 chưa vào được → hết cửa sổ, bỏ trận.',
+    when: 'Hiệp 2: theo dõi từ phút 29, vào lệnh từ phút 34 cho tới khi hết trận.',
     strategy: [
-      'CHỌN TRẬN (2026-08-20, cần CẢ 3 điều kiện): (1) có ÍT NHẤT 1 đội (sân nhà hoặc sân khách) tỉ lệ "rung H2" ≥ 60% (≥10 trận dữ liệu); (2) CẢ 2 đội tỉ lệ "Tài cả trận" ≥ 40% (≥10 trận); (3) CẢ 2 đội tỉ lệ "Tài hiệp 2" ≥ 40% (≥10 trận) — danh sách tự cập nhật khi bấm Sync ở trang CLBV Analyst, bot đọc lại khoảng mỗi 3 phút.',
-      'Phút 29-31 (cửa sổ ARM, chỉ arm 1 lần trong khoảng này): ghi tổng bàn hiện tại làm mốc nền. Từ đó tới lúc vào lệnh, hễ có thêm bàn là HUỶ luôn (không vào kèo trận đó nữa).',
-      'Từ phút 30 tới phút 38 (2026-08-20: thêm mốc phút tối đa — trước đây không giới hạn, dễ vào kèo quá trễ cuối hiệp): mỗi lần cập nhật kèo, tìm đúng mức Tài = tổng bàn hiện tại + 0,5 (không lấy mức gần nhất, phải đúng bằng) và giá kèo đó phải LỚN HƠN -0,85 — 2026-08-20 bỏ CẢ 2 chốt cũ: không còn sàn tối thiểu 0,5 (nhận cả giá rất gần 0, kể cả kèo xác suất thắng thấp) và không còn loại giá dương/0 (nhận cả kèo giá dương). Ví dụ -0,1, -0,7, 0, hay +0,3 đều ĐẠT; chỉ -0,86/-0,95 (quá sâu) mới BỎ. Quá phút 38 chưa vào được → BỎ HẲN, không chờ thêm.',
-      'Điều kiện MỚI (2026-08-20): chỉ vào kèo nếu tổng bàn hiện tại < 5 HOẶC đang có ít nhất 1 đội bị thẻ đỏ — nếu tổng bàn ≥5 mà chưa có thẻ đỏ thì tiếp tục chờ (thẻ đỏ có thể xuất hiện sau, chưa huỷ hẳn trận).',
-      'Chỉ vào khi nhà cái đang mở kèo (không khoá cả trận) và đúng mức kèo đó không bị ẩn/khoá riêng.',
-      'Giải Câu Lạc Bộ (leagueId 1508) đã nằm trong feed thật dùng chung (feed-leagues.json, từ 2026-08-18) — bot này đọc CHUNG feed đó (http://localhost:8899) như mọi bot paper khác, chỉ tự lọc riêng giải này, không tự poll sb21 riêng.',
+      'Chỉ chọn trận có ít nhất 1 đội (sân nhà hoặc sân khách) hay thắng kèo Tài kiểu "ghi bàn muộn" hiệp 2 — tỉ lệ này từ 60% trở lên theo thống kê tự cập nhật.',
+      'Từ phút 29: ghi lại tỉ số làm mốc. Nếu có thêm bàn thắng trước khi vào lệnh → huỷ, không đánh trận đó nữa.',
+      'Từ phút 34 trở đi: nếu vẫn chưa có bàn thêm và nhà cái đang mở kèo (không khoá, không ẩn) → đánh TÀI ở mức kèo sát tỉ số hiện tại. Đánh ở bất kỳ giá nào nhà cái đưa ra, không kén giá cao/thấp.',
+      'Mỗi trận chỉ đánh đúng 1 lệnh.',
     ],
-    data: [READ_ODDS, 'Bảng gs_clbv_analyst (tỉ lệ rung H2 + Tài cả trận + Tài hiệp 2, số trận từng đội), tổng bàn hiện tại, thẻ đỏ, phút trong hiệp 2.', 'Chấm: theo tổng bàn cả trận (FT) — mức luôn lẻ 0,5 nên không bao giờ hoà.'],
+    data: [READ_ODDS, 'Tỉ lệ đội hay ghi bàn muộn hiệp 2 (thống kê nội bộ, tự cập nhật), tổng bàn cả trận hiện tại.', 'Chấm thắng/thua theo TỔNG BÀN CẢ TRẬN (FT).'],
     entry: [
-      'Trận thuộc giải Câu Lạc Bộ 20 phút, thoả cả 3 điều kiện tỉ lệ: ≥1 đội rung H2 ≥60%, CẢ 2 đội Tài cả trận ≥40%, CẢ 2 đội Tài hiệp 2 ≥40% (mỗi ngưỡng ≥10 trận dữ liệu).',
-      'Phút 29-31 của hiệp 2 (lần đầu thấy trận trong khoảng này): ghi tổng bàn làm nền. Thấy trận lần đầu muộn hơn → bỏ hẳn.',
-      'Từ mốc nền tới lúc vào lệnh: không có bàn nào thêm.',
-      'Tổng bàn hiện tại < 5 HOẶC đang có đội bị thẻ đỏ.',
-      'Trong khoảng phút 30-38: có mức Tài = tổng bàn + 0,5 đúng bằng, giá > -0,85 (nhận cả giá dương), nhà cái đang mở kèo, mức đó không bị khoá riêng → vào TÀI. Quá phút 38 → bỏ hẳn.',
+      'Trận thuộc giải Câu Lạc Bộ 20 phút, có ≥1 đội hay ghi bàn muộn hiệp 2 (tỉ lệ ≥60%).',
+      'Phút 29: ghi tỉ số làm mốc.',
+      'Từ mốc đó tới lúc vào lệnh: không có bàn thắng nào thêm.',
+      'Từ phút 34 trở đi: có mức Tài sát tỉ số hiện tại, nhà cái đang mở kèo → vào lệnh.',
     ],
-    note: 'PAPER 100% — không gọi API đặt cược thật ở bất kỳ nhánh code nào. Backfill CỐ Ý bỏ qua điều kiện khoá kèo/kèo ẩn (chỉ để kiểm chứng logic chọn lệnh có khớp data lịch sử không, LIVE vẫn tôn trọng đầy đủ khoá kèo/kèo ẩn). Xem chi tiết ở CLBV Analyst + TX Report.',
-    short: '🏟️ PAPER · CLB · rung H2≥60% (1 đội) + Tài cả trận≥40% + Tài H2≥40% (cả 2 đội) · phút 30-38 · Tài +0,5 giá>-0,85 (nhận cả giá dương) · tổng bàn<5 hoặc có thẻ đỏ · 1 lệnh/trận.',
+    note: 'PAPER 100% — chỉ ghi nhận giả lập, KHÔNG đặt tiền thật ở bất kỳ bước nào. Chấm theo tổng bàn CẢ TRẬN (khác bot Rung H1 chấm theo hiệp 1). Rule đã đơn giản hoá 2026-08-22 theo yêu cầu — bỏ các điều kiện phụ (mẫu tối thiểu, giới hạn giá, giới hạn phút cuối, điều kiện bàn thắng/thẻ đỏ).',
+    short: '🏟️ PAPER · Tài hiệp 2 · đội hay ghi bàn muộn H2 ≥60% · vào từ phút 34 nếu chưa có bàn từ phút 29 · 1 lệnh/trận.',
   },
   'TNK - CLB - Top Tài H2': {
     emoji: '🥅',
-    headline: 'Đánh TÀI ngay đầu hiệp 2 — CHỈ giải Câu Lạc Bộ 20 phút, CHỈ trận thoả cả 3 điều kiện tỉ lệ (bảng CLBV Analyst). PAPER — chưa backtest dài, đang dò. Rule cập nhật 2026-08-20.',
+    headline: 'Đánh TÀI hiệp 2 — CHỈ giải Câu Lạc Bộ 20 phút, CHỈ trận thoả 1 điều kiện tỉ lệ (bảng CLBV Analyst). PAPER — chưa backtest dài, đang dò. Rule cập nhật 2026-08-21.',
     side: 'Đánh TÀI (Over) — mỗi trận tối đa 1 lệnh',
-    when: 'Hiệp 2: chỉ ARM (ghi tỉ số nền) nếu lần đầu thấy trận rơi đúng phút 1-3 (đầu hiệp); vào kèo trong khoảng phút 1-10. Thấy trận lần đầu SAU phút 3, hoặc quá phút 10 chưa vào được → bỏ hẳn.',
+    when: 'Hiệp 2: chỉ ARM (ghi tỉ số nền) nếu lần đầu thấy trận rơi đúng phút 1-3 (đầu hiệp); CHỈ kiểm tra điều kiện vào kèo ĐÚNG tại phút 10 (2026-08-21, trước đây kiểm tra liên tục phút 1-10). Thấy trận lần đầu SAU phút 3, hoặc quá phút 10 chưa vào được → bỏ hẳn.',
     strategy: [
-      'CHỌN TRẬN (2026-08-20, cần CẢ 3 điều kiện): (1) có ÍT NHẤT 1 đội (sân nhà hoặc sân khách) tỉ lệ "Tài H2" ≥ 60% (≥10 trận dữ liệu); (2) CẢ 2 đội tỉ lệ "Tài cả trận" ≥ 40% (≥10 trận); (3) KHÔNG đội nào tỉ lệ "Tài H2" dưới 40% (tức cả 2 đội đều ≥ 40% trên chính chỉ số này — đội đã đạt ≥60% ở điều kiện 1 tự động qua, điều kiện này chỉ thật sự ràng buộc thêm ĐỘI CÒN LẠI) — danh sách tự cập nhật khi bấm Sync ở trang CLBV Analyst, bot đọc lại khoảng mỗi 3 phút.',
+      'CHỌN TRẬN (2026-08-21, DUY NHẤT 1 điều kiện — bỏ 2 điều kiện Tài cả trận/floor Tài H2 mà rule 2026-08-20 từng thêm): có ÍT NHẤT 1 đội (sân nhà hoặc sân khách) tỉ lệ "Tài H2" ≥ 60% (≥10 trận dữ liệu) — danh sách tự cập nhật khi bấm Sync ở trang CLBV Analyst, bot đọc lại khoảng mỗi 3 phút.',
       'Đầu hiệp 2 (phút 1-3, chỉ arm 1 lần): ghi tổng bàn hiện tại làm mốc nền. Từ đó tới lúc vào lệnh, hễ có thêm bàn là HUỶ luôn.',
-      'Từ phút 1 tới phút 10: tìm mức Tài cao hơn tổng bàn hiện tại tối đa 1,5 bàn (2026-08-20: siết từ 1,75 xuống 1,5 — không cần đúng bằng, lấy mức GẦN tỉ số nhất trong các mức thoả điều kiện) và giá kèo đó phải LỚN HƠN 0,85 (2026-08-20: nâng từ 0,75).',
-      'Điều kiện MỚI (2026-08-20): chỉ vào kèo nếu tổng bàn hiện tại < 5 HOẶC đang có ít nhất 1 đội bị thẻ đỏ — nếu tổng bàn ≥5 mà chưa có thẻ đỏ thì tiếp tục chờ (thẻ đỏ có thể xuất hiện sau, chưa huỷ hẳn trận).',
+      'CHỈ kiểm tra ĐÚNG tại phút 10 (2026-08-21, trước đây kiểm tra liên tục từ phút 1): tìm mức Tài cao hơn tổng bàn hiện tại tối đa 1,5 bàn (không cần đúng bằng, lấy mức GẦN tỉ số nhất trong các mức thoả điều kiện) và giá kèo đó phải LỚN HƠN 0,75 (2026-08-21: ĐẢO LẠI mức nâng 0,85 của rule 2026-08-20, quay về 0,75).',
+      'Điều kiện tổng bàn (2026-08-20, KHÔNG đổi): chỉ vào kèo nếu tổng bàn hiện tại < 5 HOẶC đang có ít nhất 1 đội bị thẻ đỏ — nếu tổng bàn ≥5 mà chưa có thẻ đỏ thì tiếp tục chờ (thẻ đỏ có thể xuất hiện sau, chưa huỷ hẳn trận).',
       'Chỉ vào khi nhà cái đang mở kèo (không khoá cả trận) và đúng mức kèo đó không bị ẩn/khoá riêng.',
       'Quá phút 10 mà chưa tìm được mức phù hợp → bỏ hẳn, không vào kèo trận đó nữa.',
       'Giải Câu Lạc Bộ (leagueId 1508) đã nằm trong feed thật dùng chung (feed-leagues.json, từ 2026-08-18) — bot này đọc CHUNG feed đó (http://localhost:8899) như mọi bot paper khác.',
     ],
-    data: [READ_ODDS, 'Bảng gs_clbv_analyst (tỉ lệ Tài H2 + Tài cả trận, số trận từng đội), tổng bàn hiện tại, thẻ đỏ, phút trong hiệp 2.', 'Chấm: theo tổng bàn cả trận (FT), luật Asian đầy đủ (có thể hoà/half-win vì mức không cố định là số lẻ 0,5).'],
+    data: [READ_ODDS, 'Bảng gs_clbv_analyst (tỉ lệ Tài H2, số trận từng đội), tổng bàn hiện tại, thẻ đỏ, phút trong hiệp 2.', 'Chấm: theo tổng bàn cả trận (FT), luật Asian đầy đủ (có thể hoà/half-win vì mức không cố định là số lẻ 0,5).'],
     entry: [
-      'Trận thuộc giải Câu Lạc Bộ 20 phút, thoả cả 3 điều kiện tỉ lệ: ≥1 đội Tài H2 ≥60%, CẢ 2 đội Tài cả trận ≥40%, không đội nào Tài H2 <40% (mỗi ngưỡng ≥10 trận dữ liệu).',
+      'Trận thuộc giải Câu Lạc Bộ 20 phút, có ≥1 đội tỉ lệ Tài H2 ≥60% (≥10 trận dữ liệu).',
       'Phút 1-3 của hiệp 2 (lần đầu thấy trận trong khoảng này): ghi tổng bàn làm nền. Thấy trận lần đầu muộn hơn → bỏ hẳn.',
       'Từ mốc nền tới lúc vào lệnh: không có bàn nào thêm.',
       'Tổng bàn hiện tại < 5 HOẶC đang có đội bị thẻ đỏ.',
-      'Trong phút 1-10: có mức Tài cao hơn tổng bàn hiện tại ≤1,5, giá > 0,85, nhà cái đang mở kèo, mức đó không bị khoá riêng → vào TÀI (ưu tiên mức gần tỉ số nhất nếu có nhiều mức thoả).',
+      'ĐÚNG tại phút 10: có mức Tài cao hơn tổng bàn hiện tại ≤1,5, giá > 0,75, nhà cái đang mở kèo, mức đó không bị khoá riêng → vào TÀI (ưu tiên mức gần tỉ số nhất nếu có nhiều mức thoả).',
     ],
-    note: 'PAPER 100% — không gọi API đặt cược thật ở bất kỳ nhánh code nào. Backfill 2 ngày gần nhất chạy theo yêu cầu: chỉ đánh giá dựa trên odds + thời điểm ghi bàn lịch sử, không áp bước arm hẹp hay kiểm tra cờ ẩn (dữ liệu lịch sử không có). Xem chi tiết ở CLBV Analyst + TX Report.',
-    short: '🥅 PAPER · CLB · Tài H2≥60% (1 đội) + Tài cả trận≥40% + không đội nào Tài H2<40% · phút 1-10 · Tài gap≤1,5 giá>0,85 · tổng bàn<5 hoặc có thẻ đỏ · 1 lệnh/trận.',
+    note: 'PAPER 100% — không gọi API đặt cược thật ở bất kỳ nhánh code nào. Backfill KHÔNG còn dùng được để kiểm chứng rule này (dữ liệu lịch sử 20p_club chỉ ghi snapshot theo sự kiện, không có mốc đúng phút 10) — xem chi tiết ở CLBV Analyst + TX Report.',
+    short: '🥅 PAPER · CLB · Tài H2≥60% (1 đội, n≥10) · ĐÚNG phút 10 · Tài gap≤1,5 giá>0,75 · tổng bàn<5 hoặc có thẻ đỏ · 1 lệnh/trận.',
   },
   'NVT - CLB - RH2': {
     emoji: '🎯',
-    headline: 'Đánh TÀI CẢ HAI HIỆP — CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508). PAPER. ⚠️ HAI HIỆP ĐÁNH HAI LOẠI KÈO KHÁC NHAU: hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chỉ tính bàn trong hiệp 1), hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (tính bàn cả trận) vì nhà cái KHÔNG treo kèo hiệp 2 cho giải này. Hiệp 1: vào thẳng phút 33 vô điều kiện. Hiệp 2: cắm cờ phút 29, vào phút 34 nếu tỉ số chưa đổi.',
+    headline: 'Đánh TÀI CẢ HAI HIỆP — CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508). PAPER. ⚠️ HAI HIỆP ĐÁNH HAI LOẠI KÈO KHÁC NHAU: hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chỉ tính bàn trong hiệp 1), hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (tính bàn cả trận) vì nhà cái KHÔNG treo kèo hiệp 2 cho giải này. Hiệp 1 — A30 (áp dụng từ 2026-08-21 11:27): cắm cờ ở phút 30 ghi tỉ số nền, vào phút 33 nếu tỉ số CHƯA đổi; có thêm bàn BẤT KỲ LÚC NÀO là HUỶ hẳn hiệp 1; thấy trận lần đầu khi đã qua phút 30 thì bỏ hẳn hiệp 1 (không có mốc nền thì không đoán mò). Hiệp 2: cắm cờ phút 29, vào phút 34 nếu tỉ số chưa đổi.',
     side: 'Đánh TÀI (Over) — hiệp 1 trên mức kèo HIỆP 1, hiệp 2 trên mức kèo CẢ TRẬN — 1 lệnh MỖI HIỆP, tối đa 2 lệnh/trận',
-    when: 'Hiệp 1: vào tại phút 33, trên mức Tài/Xỉu HIỆP 1. Hiệp 2: cắm cờ (ghi tỉ số nền) tại phút 29, theo dõi tới phút 34, vào tại phút 34 nếu tỉ số vẫn y nguyên, trên mức Tài/Xỉu CẢ TRẬN. Cả 2 hiệp: đang bị nhà cái khoá kèo thì KHÔNG vào, chờ tới lúc mở khoá rồi mới vào — nên phút vào thực tế có thể là 35, 36, 38...',
+    when: 'Hiệp 1 — A30: cắm cờ (ghi tỉ số nền) tại phút 30, theo dõi tới phút 33, vào tại phút 33 nếu tỉ số vẫn y nguyên, trên mức Tài/Xỉu HIỆP 1. Hiệp 2: cắm cờ (ghi tỉ số nền) tại phút 29, theo dõi tới phút 34, vào tại phút 34 nếu tỉ số vẫn y nguyên, trên mức Tài/Xỉu CẢ TRẬN. Cả 2 hiệp: đang bị nhà cái khoá kèo thì KHÔNG vào, chờ tới lúc mở khoá rồi mới vào — nên phút vào thực tế có thể là 35, 36, 38...',
     strategy: [
       'CHỌN TRẬN: chỉ giải Câu Lạc Bộ 20 phút (leagueId 1508) — đọc CHUNG feed thật với cả fleet rồi tự lọc riêng giải này, không tự poll nhà cái riêng.',
       'KHÔNG xét tỉ lệ đội — khác hẳn 3 bot TNK - CLB: bot này không dùng bảng CLBV Analyst, không đòi đội nào đạt ngưỡng phần trăm nào cả.',
       '⚠️ HAI THỊ TRƯỜNG KHÁC NHAU (sửa 2026-08-21): HIỆP 1 vào mức Tài/Xỉu HIỆP 1 do nhà cái treo riêng cho hiệp 1 (mức thường quanh 1,5-2,0) và CHẤM theo TỔNG BÀN HIỆP 1. HIỆP 2 vào mức Tài/Xỉu CẢ TRẬN (mức thường quanh 3,0-3,5) và CHẤM theo TỔNG BÀN CẢ TRẬN. Trước đây bot vào nhầm mức cả trận ở CẢ hai hiệp — đã sửa.',
       'VÌ SAO HIỆP 2 DÙNG KÈO CẢ TRẬN: nhà cái KHÔNG treo kèo Tài/Xỉu hiệp 2 cho giải 1508 (kiểm 17.774 lượt ghi nhận trong hiệp 2, không lượt nào có mức nửa hiệp). Nên trong hiệp 2, mức CẢ TRẬN chính là thứ đóng vai trò kèo Tài hiệp 2.',
-      'HIỆP 1 — VÔ ĐIỀU KIỆN: tới phút 33 là vào TÀI trên mức hiệp 1. Không cắm cờ, không xét tỉ số đang bao nhiêu, không chặn giá. Hiệp 1 không có mốc nền nên cũng không có chuyện huỷ vì có bàn.',
+      'HIỆP 1 — A30 (từ 2026-08-21 11:27, TRƯỚC ĐÓ là vô điều kiện): cắm cờ ở phút 30 ghi tỉ số nền, vào phút 33 nếu tỉ số CHƯA đổi; có thêm bàn BẤT KỲ LÚC NÀO là HUỶ hẳn hiệp 1; thấy trận lần đầu khi đã qua phút 30 thì bỏ hẳn hiệp 1 (không có mốc nền thì không đoán mò). Không chặn giá. Lệnh cũ hơn mốc này mang nhãn snapshot.filterVersion = NULL và chạy rule vô điều kiện — cắt dữ liệu theo filterVersion, ĐỪNG cắt theo ngày.',
       'HIỆP 2 — CÓ MỐC NỀN: tại phút 29 ghi TỔNG BÀN hiện tại làm mốc nền, rồi theo dõi từ phút 29 tới phút 34. Tới phút 34, nếu tỉ số VẪN Y NGUYÊN mốc nền thì vào TÀI trên mức cả trận.',
       'HIỆP 2 — HUỶ: bất kỳ lúc nào kể từ khi cắm cờ (kể cả trong lúc đang chờ nhà cái mở khoá) mà tổng bàn vượt mốc nền → huỷ hẳn hiệp đó, không vào nữa.',
       'ĐIỂM VÀO HIỆP 2 LÀ PHÚT 34, KHÔNG VÀO SỚM (sửa 2026-08-20): trước đây bot vào sớm nhất có thể trong khoảng 29-34; nay phải chờ đủ tới phút 34 mới vào.',
@@ -425,14 +419,14 @@ export const TX_RULES: Record<string, TxRule> = {
     ],
     entry: [
       'Trận thuộc giải Câu Lạc Bộ 20 phút (leagueId 1508).',
-      'HIỆP 1: tới phút 33 — không cần thêm điều kiện nào khác. Vào TÀI trên mức kèo HIỆP 1.',
+      'HIỆP 1: đã cắm cờ ở phút 30, đã tới phút 33, và từ mốc nền KHÔNG có thêm bàn nào (A30) → vào TÀI trên mức kèo HIỆP 1.',
       'HIỆP 2: đã cắm cờ ở phút 29, đã tới phút 34, và từ mốc nền tới giờ KHÔNG có thêm bàn nào. Vào TÀI trên mức kèo CẢ TRẬN.',
       'Nhà cái đang MỞ KÈO — đủ cả 3 tầng: trận đang nhận cược, trận không bị tạm dừng, và riêng mức Tài/Xỉu của hiệp đó cũng không bị khoá. Đang khoá thì chỉ chờ, TUYỆT ĐỐI không vào.',
       'Nhà cái đã đẩy mức kèo của đúng thị trường hiệp đó, và đọc được mức + giá cửa Tài ra số hợp lệ — không đặt sàn giá, giá âm/0/dương đều vào. Chưa có mức thì tính là lỗi kỹ thuật (đếm vào 3 lần thử lại).',
       'Hiệp đó chưa có lệnh nào (1 lệnh/hiệp) → vào TÀI, ghi lại đúng hiệp + phút thực tế lúc vào để xem được trên bảng chi tiết.',
     ],
     note: 'PAPER 100% — không gọi API đặt cược thật ở bất kỳ nhánh code nào. Không có backfill (chỉ chạy LIVE). ⚠️ Đọc bảng chi tiết nhớ phân biệt: dòng hiệp 1 là KÈO HIỆP 1 nên mức nhỏ (khoảng 1,5-2,0) và chấm theo bàn hiệp 1; dòng hiệp 2 là KÈO CẢ TRẬN nên mức lớn hơn (khoảng 3,0-3,5) và chấm theo bàn cả trận — hai loại kèo này KHÔNG so sánh mức trực tiếp với nhau được. Cột "Thời điểm vào" hiện rõ hiệp + phút thực (ví dụ H1 33, H2 34); nếu phải chờ nhà cái mở khoá thì hiện thêm "(chờ mở khoá)" và phút có thể lớn hơn 34.',
-    short: '🎯 PAPER · CLB 20p · H1 vào TÀI phút 33 vô điều kiện trên KÈO HIỆP 1 (chấm theo bàn hiệp 1) · H2 cắm cờ phút 29, vào phút 34 nếu chưa có bàn, trên KÈO CẢ TRẬN (chấm theo bàn cả trận, vì nhà cái không treo kèo hiệp 2) · lấy mức đầu tiên, KHÔNG chặn giá · bị khoá thì chờ mở khoá mới vào · tối đa 3 lần thử lại kỹ thuật · 1 lệnh/hiệp, tối đa 2 lệnh/trận.',
+    short: '🎯 PAPER · CLB 20p · H1 (A30) cắm cờ phút 30, vào TÀI phút 33 nếu tỉ số chưa đổi — có bàn là HUỶ — trên KÈO HIỆP 1 (chấm theo bàn hiệp 1) · H2 cắm cờ phút 29, vào phút 34 nếu chưa có bàn, trên KÈO CẢ TRẬN (chấm theo bàn cả trận, vì nhà cái không treo kèo hiệp 2) · lấy mức đầu tiên, KHÔNG chặn giá · bị khoá thì chờ mở khoá mới vào · tối đa 3 lần thử lại kỹ thuật · 1 lệnh/hiệp, tối đa 2 lệnh/trận.',
   },
   'V.Bot 14 Real': {
     emoji: '💥',
@@ -816,15 +810,203 @@ export const TX_RULES: Record<string, TxRule> = {
 };
 
 // ── 'NVT - CLB - RH2 Real' — bot TIỀN THẬT của group NVT-CLB-Real (-1003853799847) ──────────
-// Engine real (tx-paper-bot-nvt-clb-rh2-real.mjs) copy 1:1 RULE VÀO LỆNH từ bot paper
-// 'NVT - CLB - RH2': score gate, cửa sổ phút, không chặn giá, lọc giải, điều kiện bỏ qua và
-// điều kiện chấm đều GIỐNG HỆT — nên rule ở đây kế thừa thẳng, chỉ đổi phần nhãn PAPER → REAL.
+// ⚠️ TỪ 2026-08-21 RULE VÀO LỆNH KHÁC BOT PAPER — CỐ Ý, để chạy đối chứng A/B.
+// Engine real (tx-paper-bot-nvt-clb-rh2-real.mjs) thêm 2 bộ lọc vào lệnh CHỈ có ở bản tiền thật:
+//   F1 — bỏ chân hiệp 1 nếu tỉ số đang 0-0 tại phút vào lệnh.
+//   F2 — chân hiệp 2 chỉ vào khi line mở CẢ TRẬN > 3.0; không tra được line mở thì bỏ (fail-closed).
+// Bot paper 'NVT - CLB - RH2' GIỮ NGUYÊN rule cũ làm nhóm đối chứng — KHÔNG sửa entry đó.
+// Cách CHẤM/SETTLE vẫn giống hệt paper → vẫn kế thừa nguyên `data` (mô tả cách chấm) từ paper.
+// Lệnh trước/sau 2026-08-21 phân biệt trên DB bằng field snapshot.filterVersion = 'F1+F2-20260821'.
 TX_RULES['NVT - CLB - RH2 Real'] = {
   ...TX_RULES['NVT - CLB - RH2'],
   emoji: '💰',
-  headline: 'TIỀN THẬT — rule vào lệnh Y HỆT bot paper "NVT - CLB - RH2". Đánh TÀI CẢ HAI HIỆP, CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508). Hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chấm theo bàn hiệp 1), hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (chấm theo bàn cả trận). Hiệp 1: vào thẳng phút 33 vô điều kiện. Hiệp 2: cắm cờ phút 29, vào phút 34 nếu tỉ số chưa đổi.',
-  note: 'TIỀN THẬT — đặt lệnh trực tiếp lên nhà cái, ghi lại mã vé cho từng lệnh. Ví/token/tiền RIÊNG của group này, KHÔNG dùng chung với bất kỳ bot nào khác và KHÔNG mượn ví ai. Ba khoá độc lập, thiếu một khoá là KHÔNG đặt lệnh: đã bật bằng /start, đã nạp token bằng /settoken, đã đặt mức tiền bằng /setmoney. Rule vào lệnh không khác paper một chữ nào. Đọc bảng chi tiết nhớ phân biệt: dòng hiệp 1 là KÈO HIỆP 1 nên mức nhỏ (khoảng 1,5-2,0); dòng hiệp 2 là KÈO CẢ TRẬN nên mức lớn hơn (khoảng 3,0-3,5) — hai loại kèo này KHÔNG so mức trực tiếp với nhau được.',
-  short: '💰 TIỀN THẬT · CLB 20p · rule y hệt bản paper: H1 vào TÀI phút 33 vô điều kiện trên KÈO HIỆP 1 · H2 cắm cờ phút 29, vào phút 34 nếu chưa có bàn, trên KÈO CẢ TRẬN · lấy mức đầu tiên, KHÔNG chặn giá · bị khoá thì chờ mở khoá · 1 lệnh/hiệp, tối đa 2 lệnh/trận · ví + token RIÊNG group này.',
+  headline: 'TIỀN THẬT — ⚠️ TỪ 2026-08-21 RULE VÀO LỆNH KHÁC bot paper "NVT - CLB - RH2" (cố ý, để chạy đối chứng A/B): thêm 2 BỘ LỌC F1 + F2 chỉ có ở bản tiền thật. Nền không đổi: đánh TÀI, CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508), hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chấm theo bàn hiệp 1) vào phút 33, hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (chấm theo bàn cả trận) cắm cờ phút 29 — vào phút 34. MỚI: F1 — BỎ chân hiệp 1 nếu tỉ số đang 0-0 lúc vào lệnh; F2 — chân hiệp 2 CHỈ vào khi line mở cả trận > 3.0, không tra được line mở thì BỎ. Cách CHẤM/SETTLE vẫn Y HỆT bot paper.',
+  side: 'Đánh TÀI (Over) — hiệp 1 trên mức kèo HIỆP 1 (chỉ khi đã có bàn), hiệp 2 trên mức kèo CẢ TRẬN (chỉ khi line mở > 3.0) — tối đa 1 lệnh/hiệp, 2 lệnh/trận',
+  when: 'Hiệp 1: phút 33, CHỈ vào nếu tỉ số đang KHÁC 0-0 (bộ lọc F1). Hiệp 2: cắm cờ phút 29, tới phút 34 vào nếu tỉ số vẫn y nguyên VÀ line mở cả trận > 3.0 (bộ lọc F2). Cả 2 hiệp: đang bị khoá kèo thì KHÔNG vào, chờ mở khoá — phút vào thực tế có thể là 35, 36, 38...',
+  strategy: [
+    '⚠️ KHÁC BOT PAPER TỪ 2026-08-21 — CỐ Ý: bản tiền thật thêm 2 BỘ LỌC VÀO LỆNH (F1 + F2) mà bot paper "NVT - CLB - RH2" KHÔNG có. Bot paper giữ nguyên rule cũ để làm NHÓM ĐỐI CHỨNG A/B. Rule CHẤM/SETTLE của hai con vẫn giống hệt nhau, chỉ khác ở điều kiện VÀO LỆNH.',
+    'F1 — CHÂN HIỆP 1 (mới): tới phút 33 mà tỉ số vẫn đang 0-0 thì BỎ HẲN chân hiệp 1, không vào lệnh. Phải đã có ít nhất 1 bàn mới vào TÀI. (Backtest 421 trận giải 1508: nhánh 0-0 thắng 38,2% / n=131 — dưới mức hoà vốn 42,7% ⇒ ROI −8,0%; nhánh đã có bàn thắng 45,5% / n=290 ⇒ ROI +7,1%.)',
+    'F2 — CHÂN HIỆP 2 (mới): CHỈ vào khi LINE MỞ CẢ TRẬN (mức Tài/Xỉu cả trận nhà cái treo đầu tiên cho trận đó) LỚN HƠN 3.0. Không tra được line mở → BỎ chân hiệp 2 (fail-closed: thà bỏ còn hơn đánh mù). (Backtest: line mở > 3.0 thắng 52,8% / n=195 ⇒ ROI +18,9%, ổn định 3 ngày liền; line mở ≤ 3.0 thắng 36,5% / n=148 ⇒ chỉ hoà vốn, không đáng đánh. Khoảng 10% trận thiếu dữ liệu line mở sẽ bị bỏ.)',
+    '📊 XEM THỐNG KÊ NHỚ TÁCH 2 GIAI ĐOẠN: lệnh TRƯỚC 2026-08-21 của chính con này chạy RULE CŨ (chưa có F1/F2) nên KHÔNG gộp chung / không so trực tiếp với lệnh sau đó được. Trên dữ liệu phân biệt bằng field snapshot.filterVersion = \'F1+F2-20260821\' — lệnh có nhãn này là lệnh đã qua 2 bộ lọc mới.',
+    '— Phần dưới đây là RULE NỀN, giống bot paper. Rule nền ĐÃ CÓ SẴN A30 (cắm cờ phút 30 → vào phút 33 nếu chưa có bàn); F1/F2 ở trên là phần CỘNG THÊM —',
+    ...TX_RULES['NVT - CLB - RH2'].strategy,
+  ],
+  entry: [
+    'Trận thuộc giải Câu Lạc Bộ 20 phút (leagueId 1508).',
+    'HIỆP 1 — có bộ lọc F1 (mới 2026-08-21): tới phút 33 VÀ tỉ số đang KHÁC 0-0 → vào TÀI trên mức kèo HIỆP 1. Đang 0-0 → BỎ chân hiệp 1.',
+    'HIỆP 2 — có bộ lọc F2 (mới 2026-08-21): đã cắm cờ phút 29, đã tới phút 34, từ mốc nền KHÔNG có thêm bàn nào, VÀ line mở cả trận > 3.0 → vào TÀI trên mức kèo CẢ TRẬN. Line mở ≤ 3.0 hoặc không tra được line mở → BỎ chân hiệp 2.',
+    'Nhà cái đang MỞ KÈO — đủ cả 3 tầng: trận đang nhận cược, trận không bị tạm dừng, và riêng mức Tài/Xỉu của hiệp đó cũng không bị khoá. Đang khoá thì chỉ chờ, TUYỆT ĐỐI không vào.',
+    'Nhà cái đã đẩy mức kèo của đúng thị trường hiệp đó, và đọc được mức + giá cửa Tài ra số hợp lệ — KHÔNG chặn giá, giá âm/0/dương đều vào. Chưa có mức thì tính là lỗi kỹ thuật (tối đa 3 lần thử lại).',
+    'Hiệp đó chưa có lệnh nào (1 lệnh/hiệp, tối đa 2 lệnh/trận) → đặt lệnh TIỀN THẬT, ghi lại mã vé + đúng hiệp và phút thực tế lúc vào.',
+    'Ba khoá độc lập của bản tiền thật, thiếu một khoá là KHÔNG đặt lệnh: đã bật bằng /start, đã nạp token bằng /settoken, đã đặt mức tiền bằng /setmoney.',
+  ],
+  note: 'TIỀN THẬT — đặt lệnh trực tiếp lên nhà cái, ghi lại mã vé cho từng lệnh. Ví/token/tiền RIÊNG của group này, KHÔNG dùng chung với bất kỳ bot nào khác. ⚠️ TỪ 2026-08-21 rule VÀO LỆNH KHÁC bot paper (thêm F1 + F2) — đây là CHỦ ĐÍCH để chạy đối chứng A/B: paper = rule cũ, real = rule có lọc. Rule CHẤM/SETTLE của hai con vẫn giống hệt nhau. ⚠️ Lệnh TRƯỚC 2026-08-21 của chính con này chạy rule cũ (chưa có bộ lọc) — xem thống kê phải TÁCH 2 GIAI ĐOẠN, nhận biết bằng field snapshot.filterVersion = \'F1+F2-20260821\'. Đọc bảng chi tiết nhớ phân biệt: dòng hiệp 1 là KÈO HIỆP 1 nên mức nhỏ (khoảng 1,5-2,0); dòng hiệp 2 là KÈO CẢ TRẬN nên mức lớn hơn (khoảng 3,0-3,5) — hai loại kèo này KHÔNG so mức trực tiếp với nhau được.',
+  short: '💰 TIỀN THẬT · CLB 20p · ⚠️ TỪ 21/08 RULE VÀO LỆNH KHÁC PAPER (đối chứng A/B) · H1 (A30): cắm cờ phút 30, phút 33 vào TÀI trên KÈO HIỆP 1 nếu tỉ số chưa đổi — có bàn từ phút 30 là HUỶ, thấy trận sau phút 30 thì bỏ hẳn — và BỎ nếu đang 0-0 (F1) · H2: cắm cờ phút 29, phút 34 vào TÀI trên KÈO CẢ TRẬN nếu chưa có bàn VÀ line mở cả trận > 3.0 (F2 — không tra được line mở thì bỏ) · KHÔNG chặn giá · khoá kèo thì chờ mở · 1 lệnh/hiệp · CHẤM y hệt paper · lệnh trước 21/08 chạy rule cũ (nhãn snapshot.filterVersion=F1+F2-20260821).',
+};
+
+// ── 'NVT - CLB - RH2 - F1' — bot PAPER chạy ĐÚNG RULE CỦA BẢN TIỀN THẬT (A30 + F1 + F2) ──────
+// Vì sao có con này: 'NVT - CLB - RH2 Real' phụ thuộc ví (hết tiền / token hỏng / /stop là ngừng
+// ra lệnh), nên chuỗi dữ liệu bị đứt. Con này chạy paper 24/7 với ĐÚNG rule đó ⇒ đo được phần
+// đóng góp thật của bộ lọc F1+F2 mà không đứt đoạn. Bộ 3 đối chứng:
+//   'NVT - CLB - RH2'      = A30, không lọc  (đối chứng)
+//   'NVT - CLB - RH2 - F1' = A30 + F1 + F2, KHÔNG tiền   ← khối này
+//   'NVT - CLB - RH2 Real' = A30 + F1 + F2, TIỀN THẬT
+// Kế thừa `data` (cách chấm) + phần cuối `strategy` từ con paper vì cách CHẤM/SETTLE y hệt.
+TX_RULES['NVT - CLB - RH2 - F1'] = {
+  ...TX_RULES['NVT - CLB - RH2'],
+  emoji: '🧪',
+  headline: 'PAPER — KHÔNG đặt tiền, KHÔNG bắn thông báo (chạy ngầm). Rule VÀO LỆNH GIỐNG HỆT bot tiền thật "NVT - CLB - RH2 Real" (A30 + F1 + F2). KHÁC bot paper "NVT - CLB - RH2" ở chỗ CÓ THÊM 2 bộ lọc F1 + F2. Nền chung: đánh TÀI, CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508); hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chấm theo bàn hiệp 1), hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (chấm theo bàn cả trận).',
+  side: 'Đánh TÀI (Over) — PAPER (mô phỏng, không tiền) — hiệp 1 trên mức kèo HIỆP 1 (chỉ khi đã có bàn), hiệp 2 trên mức kèo CẢ TRẬN (chỉ khi line mở > 3.0) — tối đa 1 lệnh/hiệp, 2 lệnh/trận',
+  when: 'Hiệp 1: cắm cờ phút 30, tới phút 33 vào nếu tỉ số CHƯA đổi (A30) VÀ tỉ số đang KHÁC 0-0 (F1). Hiệp 2: cắm cờ phút 29, tới phút 34 vào nếu tỉ số vẫn y nguyên VÀ line mở cả trận > 3.0 (F2). Cả 2 hiệp: đang bị khoá kèo thì KHÔNG vào, chờ mở khoá — phút vào thực tế có thể là 35, 36, 38...',
+  strategy: [
+    '🧪 ĐÂY LÀ BẢN PAPER CỦA CON TIỀN THẬT: rule VÀO LỆNH sao chép nguyên vẹn từ "NVT - CLB - RH2 Real" (A30 + F1 + F2), nhưng KHÔNG đặt một đồng nào và KHÔNG bắn thông báo Telegram. Mục đích: có một chuỗi dữ liệu LIÊN TỤC, không bị đứt khi ví hết tiền / token hỏng / bot thật bị tắt.',
+    '⚠️ VÌ VẬY SỐ LỆNH CỦA 2 CON SẼ KHÁC NHAU — VÀ ĐÓ LÀ BÌNH THƯỜNG: bot tiền thật có thể ngừng ra lệnh giữa chừng (hết tiền, token hỏng, bị /stop), còn con này chạy liên tục không đứt. Khi so sánh 2 con, đừng kết luận "lệch = lỗi"; hãy so trên cùng khoảng thời gian mà cả hai đều đang hoạt động.',
+    '⚠️ KHÁC BOT PAPER "NVT - CLB - RH2": con kia KHÔNG có F1 và F2 — nó là NHÓM ĐỐI CHỨNG. So 2 con này với nhau chính là đo phần đóng góp thật của bộ lọc.',
+    'A30 — CHÂN HIỆP 1 (có ở CẢ BA con): cắm cờ ở phút 30 (ghi tổng bàn hiệp 1 làm nền), theo dõi tới phút 33; có thêm bàn BẤT KỲ LÚC NÀO thì HUỶ hẳn hiệp 1. Thấy trận lần đầu khi đã qua phút 30 → bỏ hẳn hiệp 1 (không có mốc nền thì không đoán mò).',
+    'F1 — CHÂN HIỆP 1: tới phút 33 mà tỉ số vẫn đang 0-0 thì BỎ HẲN chân hiệp 1. Phải đã có ít nhất 1 bàn mới vào TÀI. (Backtest 421 trận giải 1508: nhánh 0-0 thắng 38,2% / n=131 — dưới mức hoà vốn 42,7% ⇒ ROI −8,0%; nhánh đã có bàn thắng 45,5% / n=290 ⇒ ROI +7,1%.)',
+    'F2 — CHÂN HIỆP 2: CHỈ vào khi LINE MỞ CẢ TRẬN (mức Tài/Xỉu cả trận nhà cái treo đầu tiên cho trận đó) LỚN HƠN 3.0. Không tra được line mở → BỎ chân hiệp 2 (thà bỏ còn hơn đánh mù). (Backtest: line mở > 3.0 thắng 52,8% / n=195 ⇒ ROI +18,9%; line mở ≤ 3.0 thắng 36,5% / n=148 ⇒ chỉ hoà vốn. Khoảng 10% trận thiếu dữ liệu line mở sẽ bị bỏ.)',
+    'THỨ TỰ CỔNG CHÂN HIỆP 1: A30 (huỷ vì có bàn) xét TRƯỚC, F1 (0-0) xét SAU — vì A30 nổ được ngay từ phút 30, sớm hơn thời điểm F1 được định nghĩa (phút 33).',
+    '📊 Nhận biết trên dữ liệu: mọi lệnh của con này mang nhãn snapshot.filterVersion = \'A30+F1+F2-20260821\' — trùng nhãn với bot tiền thật (cùng bộ rule); phân biệt 2 con bằng calc_version.',
+    '— Phần dưới đây là RULE NỀN, giống bot paper đối chứng. Rule nền ĐÃ CÓ SẴN A30 (cắm cờ phút 30 → vào phút 33 nếu chưa có bàn); F1/F2 ở trên là phần CỘNG THÊM —',
+    ...TX_RULES['NVT - CLB - RH2'].strategy,
+  ],
+  entry: [
+    'Trận thuộc giải Câu Lạc Bộ 20 phút (leagueId 1508).',
+    'HIỆP 1 — A30 + F1: đã cắm cờ ở phút 30, đã tới phút 33, từ mốc nền KHÔNG có thêm bàn nào, VÀ tỉ số đang KHÁC 0-0 → vào TÀI trên mức kèo HIỆP 1. Đang 0-0 → BỎ chân hiệp 1.',
+    'HIỆP 2 — F2: đã cắm cờ phút 29, đã tới phút 34, từ mốc nền KHÔNG có thêm bàn nào, VÀ line mở cả trận > 3.0 → vào TÀI trên mức kèo CẢ TRẬN. Line mở ≤ 3.0 hoặc không tra được → BỎ chân hiệp 2.',
+    'Nhà cái đang MỞ KÈO — đủ cả 3 tầng: trận đang nhận cược, trận không bị tạm dừng, và riêng mức Tài/Xỉu của hiệp đó cũng không bị khoá. Đang khoá thì chỉ chờ, TUYỆT ĐỐI không vào.',
+    'Nhà cái đã đẩy mức kèo của đúng thị trường hiệp đó, và đọc được mức + giá cửa Tài ra số hợp lệ — KHÔNG chặn giá, giá âm/0/dương đều vào. Chưa có mức thì tính là lỗi kỹ thuật (tối đa 3 lần thử lại).',
+    'Hiệp đó chưa có lệnh nào (1 lệnh/hiệp, tối đa 2 lệnh/trận) → ghi 1 lệnh MÔ PHỎNG (không tiền, không mã vé), kèm đúng hiệp + phút thực tế lúc vào.',
+  ],
+  note: 'PAPER 100% — KHÔNG gọi API đặt cược ở bất kỳ nhánh code nào, KHÔNG đọc ví, KHÔNG có mức tiền, KHÔNG có mã vé. CHẠY NGẦM: Telegram tắt hẳn, không bắn thông báo. Rule VÀO LỆNH giống hệt bot tiền thật "NVT - CLB - RH2 Real"; khác bot paper "NVT - CLB - RH2" đúng ở 2 bộ lọc F1 + F2. Cách CHẤM/SETTLE của cả ba con giống hệt nhau. ⚠️ SỐ LỆNH của con này và con tiền thật SẼ KHÁC NHAU và đó là BÌNH THƯỜNG — con tiền thật có thể ngừng đặt vì hết tiền / token hỏng / bị /stop, còn con này chạy liên tục nên chuỗi dữ liệu không đứt. ⚠️ Đọc bảng chi tiết nhớ phân biệt: dòng hiệp 1 là KÈO HIỆP 1 nên mức nhỏ (khoảng 1,5-2,0) và chấm theo bàn hiệp 1; dòng hiệp 2 là KÈO CẢ TRẬN nên mức lớn hơn (khoảng 3,0-3,5) và chấm theo bàn cả trận — không so mức trực tiếp với nhau được.',
+  short: '🧪 PAPER (không tiền, không noti) · CLB 20p · RULE Y HỆT BẢN TIỀN THẬT: A30 + F1 + F2 · H1 (A30) cắm cờ phút 30 ghi tỉ số nền — có bàn bất kỳ lúc nào là HUỶ, thấy trận lần đầu sau phút 30 thì bỏ hẳn — vào phút 33 nếu chưa có bàn VÀ đang KHÁC 0-0 (F1), trên KÈO HIỆP 1 · H2 cắm cờ phút 29, vào phút 34 nếu chưa có bàn VÀ line mở cả trận > 3.0 (F2), trên KÈO CẢ TRẬN · khác bot paper "NVT - CLB - RH2" đúng ở F1+F2 (con kia là nhóm đối chứng) · số lệnh khác con tiền thật là bình thường (con này không bị đứt chuỗi).',
+};
+
+// ── 'NVT - CLUB - N Real' + 'NVT - CLUB - K Real' — 2 bot TIỀN THẬT ví RIÊNG (2026-08-21) ────
+// Rule VÀO LỆNH sao chép NGUYÊN VẸN từ 'NVT - CLB - RH2 Real' (A30 + F1 + F2). Khác nhau ĐÚNG ở
+// VÍ: mỗi con một money-config riêng, một group Telegram riêng, một calc_version riêng ⇒ PnL,
+// /pnl, /active tách bạch hoàn toàn. KHÔNG kế thừa từ entry 'NVT - CLB - RH2 Real' vì entry đó
+// mang phần "lệnh trước 21/08 chạy rule cũ" — không đúng với 2 con mới (sinh ra đã có đủ A30+F1+F2).
+const NVT_CLUB_REAL_BASE: TxRule = {
+  ...TX_RULES['NVT - CLB - RH2'],
+  emoji: '💰',
+  headline:
+    'TIỀN THẬT — VÍ RIÊNG. Rule VÀO LỆNH giống hệt bot "NVT - CLB - RH2 Real": đánh TÀI, CHỈ giải Câu Lạc Bộ 20 phút (leagueId 1508), đủ bộ A30 + F1 + F2 ngay từ lệnh đầu tiên. Hiệp 1 đánh KÈO TÀI/XỈU HIỆP 1 (chấm theo bàn hiệp 1): cắm cờ phút 30, vào phút 33 nếu CHƯA có thêm bàn (A30) VÀ tỉ số đang KHÁC 0-0 (F1). Hiệp 2 đánh KÈO TÀI/XỈU CẢ TRẬN (chấm theo bàn cả trận): cắm cờ phút 29, vào phút 34 nếu tỉ số vẫn y nguyên VÀ line mở cả trận > 3.0 (F2).',
+  side:
+    'Đánh TÀI (Over) — TIỀN THẬT — hiệp 1 trên mức kèo HIỆP 1 (chỉ khi đã có bàn), hiệp 2 trên mức kèo CẢ TRẬN (chỉ khi line mở > 3.0) — tối đa 1 lệnh/hiệp, 2 lệnh/trận',
+  when:
+    'Hiệp 1: cắm cờ phút 30, tới phút 33 vào nếu tỉ số CHƯA đổi (A30) VÀ đang KHÁC 0-0 (F1). Hiệp 2: cắm cờ phút 29, tới phút 34 vào nếu tỉ số vẫn y nguyên VÀ line mở cả trận > 3.0 (F2). Cả 2 hiệp: đang bị khoá kèo thì KHÔNG vào, chờ mở khoá — phút vào thực tế có thể là 35, 36, 38...',
+  strategy: [
+    '💰 BOT TIỀN THẬT, VÍ HOÀN TOÀN RIÊNG: token, mức tiền và công tắc bật/tắt của con này nằm trong file cấu hình RIÊNG của group nó, KHÔNG dùng chung với "NVT - CLB - RH2 Real" và KHÔNG dùng chung với con còn lại. Mỗi group tự /settoken, tự /setmoney, tự /start /stop; số liệu /pnl và /active cũng chỉ tính riêng cho con của group đó.',
+    '🔑 BA KHOÁ ĐỘC LẬP — thiếu một khoá là KHÔNG đặt một đồng nào: (1) đã BẬT bằng /start, (2) đã nạp token bằng /settoken, (3) đã đặt mức tiền > 0 bằng /setmoney. Lúc mới dựng, cả ba khoá đều TẮT (token rỗng, tiền 0, chưa bật) nên bot chạy nhưng KHÔNG cược.',
+    '⚠️ CẢNH BÁO CHUNG VÍ: nếu nạp CÙNG MỘT token cho nhiều group thì các bot đó dùng CHUNG một tài khoản nhà cái — mức cược cộng dồn trên cùng một trận, dù báo cáo vẫn tách riêng. Hệ thống KHÔNG tự chặn được. Muốn tách thật thì mỗi group một token của một tài khoản khác nhau.',
+    'A30 — CHÂN HIỆP 1: cắm cờ ở phút 30 (ghi tổng bàn hiệp 1 làm nền), theo dõi tới phút 33; có thêm bàn BẤT KỲ LÚC NÀO thì HUỶ hẳn hiệp 1. Thấy trận lần đầu khi đã qua phút 30 → bỏ hẳn hiệp 1 (không có mốc nền thì không đoán mò).',
+    'F1 — CHÂN HIỆP 1: tới phút 33 mà tỉ số vẫn đang 0-0 thì BỎ HẲN chân hiệp 1. Phải đã có ít nhất 1 bàn mới vào TÀI. (Backtest 421 trận giải 1508: nhánh 0-0 thắng 38,2% / n=131 — dưới mức hoà vốn 42,7% ⇒ ROI −8,0%; nhánh đã có bàn thắng 45,5% / n=290 ⇒ ROI +7,1%.)',
+    'F2 — CHÂN HIỆP 2: CHỈ vào khi LINE MỞ CẢ TRẬN (mức Tài/Xỉu cả trận nhà cái treo đầu tiên cho trận đó) LỚN HƠN 3.0. Không tra được line mở → BỎ chân hiệp 2 (thà bỏ còn hơn đánh mù). (Backtest: line mở > 3.0 thắng 52,8% / n=195 ⇒ ROI +18,9%; line mở ≤ 3.0 thắng 36,5% / n=148 ⇒ chỉ hoà vốn. Khoảng 10% trận thiếu dữ liệu line mở sẽ bị bỏ.)',
+    'THỨ TỰ CỔNG CHÂN HIỆP 1: A30 (huỷ vì có bàn) xét TRƯỚC, F1 (0-0) xét SAU — vì A30 nổ được ngay từ phút 30, sớm hơn thời điểm F1 được định nghĩa (phút 33).',
+    '🧾 KHÔNG GHI SỔ KHI LỆNH KHÔNG VÀO: chỉ khi nhà cái xác nhận đã nhận lệnh (có mã vé thật) thì bot mới ghi vào sổ. Nhà cái từ chối → thử lại, không ghi. Mất phản hồi giữa chừng → BỎ hẳn hiệp đó và KHÔNG đặt lại (tránh cược đúp), cũng không ghi sổ. Nhờ vậy PnL trên bảng phản ánh đúng tiền đã thực sự đặt.',
+    '📊 Nhận biết trên dữ liệu: mọi lệnh của con này mang nhãn snapshot.filterVersion = \'A30+F1+F2-20260821\' — trùng nhãn với "NVT - CLB - RH2 Real" và "NVT - CLB - RH2 - F1" (cùng bộ rule); phân biệt các con bằng calc_version.',
+    '⚠️ CÙNG RULE, CÙNG GIẢI, CÙNG PHÚT: con này ra tín hiệu GIỐNG HỆT "NVT - CLB - RH2 Real" và con CLUB còn lại. Số lệnh có thể lệch nhau do ví bị tắt/hết tiền/token hỏng ở từng con — lệch KHÔNG có nghĩa là lỗi.',
+    '— Phần dưới đây là RULE NỀN, giống bot paper đối chứng. Rule nền ĐÃ CÓ SẴN A30 (cắm cờ phút 30 → vào phút 33 nếu chưa có bàn); F1/F2 ở trên là phần CỘNG THÊM —',
+    ...TX_RULES['NVT - CLB - RH2'].strategy,
+  ],
+  entry: [
+    'Trận thuộc giải Câu Lạc Bộ 20 phút (leagueId 1508).',
+    'HIỆP 1 — A30 + F1: đã cắm cờ ở phút 30, đã tới phút 33, từ mốc nền KHÔNG có thêm bàn nào, VÀ tỉ số đang KHÁC 0-0 → vào TÀI trên mức kèo HIỆP 1. Đang 0-0 → BỎ chân hiệp 1.',
+    'HIỆP 2 — F2: đã cắm cờ phút 29, đã tới phút 34, từ mốc nền KHÔNG có thêm bàn nào, VÀ line mở cả trận > 3.0 → vào TÀI trên mức kèo CẢ TRẬN. Line mở ≤ 3.0 hoặc không tra được → BỎ chân hiệp 2.',
+    'Nhà cái đang MỞ KÈO — đủ cả 3 tầng: trận đang nhận cược, trận không bị tạm dừng, và riêng mức Tài/Xỉu của hiệp đó cũng không bị khoá. Đang khoá thì chỉ chờ, TUYỆT ĐỐI không vào.',
+    'Nhà cái đã đẩy mức kèo của đúng thị trường hiệp đó, và đọc được mức + giá cửa Tài ra số hợp lệ — KHÔNG chặn giá, giá âm/0/dương đều vào. Chưa có mức thì tính là lỗi kỹ thuật (tối đa 3 lần thử lại).',
+    'ĐỦ BA KHOÁ VÍ của group này: đã /start, đã /settoken, đã /setmoney > 0. Thiếu bất kỳ khoá nào → bot bỏ qua, KHÔNG mượn ví/token của bất kỳ group nào khác.',
+    'Hiệp đó chưa có lệnh nào (1 lệnh/hiệp, tối đa 2 lệnh/trận) → đặt lệnh TIỀN THẬT, ghi lại mã vé + đúng hiệp và phút thực tế lúc vào.',
+  ],
+  note:
+    'TIỀN THẬT — đặt lệnh trực tiếp lên nhà cái, ghi lại mã vé cho từng lệnh. VÍ / TOKEN / MỨC TIỀN RIÊNG TUYỆT ĐỐI cho group của con này: KHÔNG dùng chung với "NVT - CLB - RH2 Real", KHÔNG dùng chung với con CLUB còn lại, và KHÔNG lấy token gốc của hệ thống. Rule VÀO LỆNH và cách CHẤM/SETTLE giống hệt "NVT - CLB - RH2 Real" (A30 + F1 + F2) — con này sinh ra đã đủ bộ lọc nên KHÔNG có giai đoạn "rule cũ" phải tách như con RH2. Bot chỉ ghi sổ khi nhà cái xác nhận có mã vé thật ⇒ không có "lệnh ma". ⚠️ Đọc bảng chi tiết nhớ phân biệt: dòng hiệp 1 là KÈO HIỆP 1 nên mức nhỏ (khoảng 1,5-2,0) và chấm theo bàn hiệp 1; dòng hiệp 2 là KÈO CẢ TRẬN nên mức lớn hơn (khoảng 3,0-3,5) và chấm theo bàn cả trận — không so mức trực tiếp với nhau được. Lệnh group: /settoken 69-… → /setmoney <số> → /start · /stop · /pnl · /pnltotal · /active · /balance · /info.',
+  short:
+    '💰 TIỀN THẬT · VÍ RIÊNG · CLB 20p · RULE Y HỆT "NVT - CLB - RH2 Real": A30 + F1 + F2 · H1 (A30) cắm cờ phút 30 ghi tỉ số nền — có bàn bất kỳ lúc nào là HUỶ, thấy trận lần đầu sau phút 30 thì bỏ hẳn — vào phút 33 nếu chưa có bàn VÀ đang KHÁC 0-0, trên KÈO HIỆP 1 · H2 cắm cờ phút 29, vào phút 34 nếu chưa có bàn VÀ line mở cả trận > 3.0, trên KÈO CẢ TRẬN · KHÔNG chặn giá · khoá kèo thì chờ mở · 1 lệnh/hiệp · chỉ ghi sổ khi có mã vé thật · 3 khoá ví: /settoken → /setmoney → /start.',
+};
+
+TX_RULES['NVT - CLUB - N Real'] = {
+  ...NVT_CLUB_REAL_BASE,
+  note: 'Group Telegram: NVT - CLUB - N. Ví riêng: money-config-nvt-club-n.json · tiến trình gs-nvt-club-n-real. ' + NVT_CLUB_REAL_BASE.note,
+};
+
+TX_RULES['NVT - CLUB - K Real'] = {
+  ...NVT_CLUB_REAL_BASE,
+  note: 'Group Telegram: NVT - CLUB - K. Ví riêng: money-config-nvt-club-k.json · tiến trình gs-nvt-club-k-real. ' + NVT_CLUB_REAL_BASE.note,
+};
+
+// ── 'NVT-R-H1' + 'NVT-R-H2' (2026-08-22, user) ────────────────────────────────────────────────
+// Hai bot PAPER chạy ngầm, dựng lại NGUYÊN VĂN rule "Top Rung" BẢN CŨ (bản trước 19:17 ngày
+// 21/08, tức bản còn cổng giá PRICE_FLOOR = -0.85). Mục đích: giữ một chuỗi dữ liệu chạy đúng
+// rule cũ để đối chứng, trong khi 2 bot TNK gốc đã đổi sang rule khác.
+// Engine: tx-paper-bot-nvt-r-h1.mjs / tx-paper-bot-nvt-r-h2.mjs · pm2 gs-nvt-r-h1 / gs-nvt-r-h2.
+const NVT_R_COMMON = [
+  'CHỌN TRẬN: chỉ giải Câu Lạc Bộ 20 phút (leagueId 1508). Phải có ÍT NHẤT 1 đội (nhà hoặc khách) đạt ngưỡng trong bảng CLBV Analyst — xem dòng riêng của từng bot bên dưới.',
+  'CẮM CỜ: lần đầu tiên thấy trận ở phút 29, 30 hoặc 31 thì ghi lại tỉ số hiện tại làm mốc nền. Nếu lần đầu thấy trận đã qua phút 31 (bot vừa khởi động lại, hoặc trận vào feed muộn) thì BỎ HẲN trận đó — không cắm cờ trễ, vì không biết đã có bàn nào từ phút 29 hay chưa.',
+  'HUỶ: bất kỳ lúc nào kể từ khi cắm cờ mà tổng bàn vượt mốc nền → huỷ hẳn, không đánh trận đó nữa. Nói cách khác trận phải TỊT BÀN liên tục từ phút 29 tới lúc vào lệnh.',
+  'CỬA SỔ VÀO LỆNH: chỉ trong phút 34 đến 38. Quá phút 38 mà chưa vào được thì bỏ hẳn trận, không chờ thêm.',
+  'MỨC KÈO PHẢI KHỚP CHÍNH XÁC: chỉ nhận dòng có mức đúng bằng TỔNG BÀN HIỆN TẠI + 0,5. Không phải "gần bằng" — nhà cái không treo đúng mức đó thì bot đứng ngoài.',
+  'KHOÁ KÈO: trận đang nhận cược, trận không bị tạm dừng, và riêng dòng kèo đó cũng không bị khoá — thiếu một trong ba thì chờ tiếp.',
+  'Đánh TÀI, tối đa 1 lệnh mỗi trận.',
+];
+
+TX_RULES['NVT-R-H1'] = {
+  emoji: '🅰️',
+  headline: 'PAPER chạy ngầm. Bản sao rule "Top Rung H1" CŨ (trước 19:17 ngày 21/08). Trận tịt bàn từ phút 29 của HIỆP 1, vào TÀI ở phút 34-38 trên KÈO HIỆP 1, ăn nếu hiệp 1 còn thêm đúng 1 bàn.',
+  side: 'Đánh TÀI (Over) trên mức kèo Tài/Xỉu HIỆP 1 — tối đa 1 lệnh/trận',
+  when: 'Cắm cờ ở phút 29-31 của hiệp 1, vào lệnh trong phút 34-38 của hiệp 1 nếu tỉ số vẫn y nguyên mốc nền.',
+  strategy: [
+    'CHỌN TRẬN: cần ít nhất 1 đội có rung_h1_rate ≥ 60% VÀ rung_h1_n ≥ 10 trong bảng CLBV Analyst. Đội thoả gọi là "đội trigger". Đội không có trong bảng coi như KHÔNG đạt, không đoán mò.',
+    ...NVT_R_COMMON,
+    'ĐIỀU KIỆN RIÊNG CỦA BOT NÀY — CÒN CHỖ CHO BÀN: chỉ vào nếu TỔNG BÀN HIỆN TẠI + 1 < h1_tai_avg_goals của đội trigger. Ví dụ đội trigger có trung bình 3,08 bàn hiệp 1 thì chỉ vào khi tổng bàn đang ≤ 2. Thiếu số trung bình này thì CHỜ, không đoán.',
+    'CỔNG GIÁ (bản CŨ): giá cửa Tài phải > −0,85 — nhận cả giá dương. Đây chính là chỗ khác bot TNK gốc hiện tại.',
+    '⚠️ DÙNG THỊ TRƯỜNG HIỆP 1 RIÊNG: đọc mức từ danh sách kèo Tài/Xỉu HIỆP 1 (không phải kèo cả trận), và CHẤM theo TỔNG BÀN HIỆP 1.',
+  ],
+  data: [
+    READ_ODDS,
+    'Bảng CLBV Analyst: rung_h1_rate, rung_h1_n và h1_tai_avg_goals của từng đội (cửa sổ trượt 7 ngày, chỉ đổi khi bấm Sync).',
+    'Chấm theo TỔNG BÀN HIỆP 1. Mức luôn là số nguyên + 0,5 nên không bao giờ hoà.',
+  ],
+  entry: [
+    'Trận thuộc giải Câu Lạc Bộ 20 phút và có đội đạt ngưỡng rung_h1.',
+    'Đã cắm cờ trong phút 29-31 của hiệp 1 và từ đó tới giờ KHÔNG có thêm bàn nào.',
+    'Đang trong phút 34-38 của hiệp 1.',
+    'Tổng bàn hiện tại + 1 < h1_tai_avg_goals của đội trigger.',
+    'Có dòng kèo Tài/Xỉu HIỆP 1 với mức đúng bằng tổng bàn + 0,5, giá cửa Tài > −0,85.',
+    'Kèo đang mở ở cả ba tầng (trận, tạm dừng, dòng kèo) → vào TÀI.',
+  ],
+  note: 'PAPER 100% — không có nhánh code nào gọi API đặt cược, không đọc ví, không bắn Telegram (chạy ngầm hoàn toàn). Rule sao chép nguyên văn từ bản .bak của bot TNK Top Rung H1 trước 19:17 ngày 21/08; đã đối chiếu 0 dòng code khác ngoài chuỗi định danh. ⚠️ Bot TNK gốc hiện ĐÃ ĐỔI rule (bỏ cổng giá, bỏ mốc phút tối đa) nên hai bên KHÔNG còn giống nhau — đó là lý do bot này tồn tại.',
+  short: '🅰️ PAPER ngầm · CLB 20p · rung_h1 ≥ 60%/n10 · cắm cờ phút 29-31 hiệp 1, tịt bàn tới phút 34-38 thì vào TÀI trên KÈO HIỆP 1, mức = tổng bàn + 0,5, giá > −0,85 (nhận cả giá dương), thêm điều kiện tổng bàn + 1 < h1_tai_avg_goals đội trigger · 1 lệnh/trận · chấm theo bàn hiệp 1.',
+};
+
+TX_RULES['NVT-R-H2'] = {
+  emoji: '🅱️',
+  headline: 'PAPER chạy ngầm. Bản sao rule "Top Rung H2" CŨ (trước 19:17 ngày 21/08). Trận tịt bàn từ phút 29 của HIỆP 2, vào TÀI ở phút 34-38 trên KÈO CẢ TRẬN, ăn nếu còn thêm đúng 1 bàn.',
+  side: 'Đánh TÀI (Over) trên mức kèo Tài/Xỉu CẢ TRẬN — tối đa 1 lệnh/trận',
+  when: 'Cắm cờ ở phút 29-31 của hiệp 2, vào lệnh trong phút 34-38 của hiệp 2 nếu tỉ số vẫn y nguyên mốc nền.',
+  strategy: [
+    'CHỌN TRẬN: cần ít nhất 1 đội có rung_h2_rate ≥ 60% VÀ rung_h2_n ≥ 10 trong bảng CLBV Analyst. Đội không có trong bảng coi như KHÔNG đạt.',
+    ...NVT_R_COMMON,
+    'ĐIỀU KIỆN RIÊNG CỦA BOT NÀY — CÒN CHỖ CHO BÀN: chỉ vào nếu tổng bàn hiện tại < 5, HOẶC đang có ít nhất một đội bị thẻ đỏ. Nếu đã ≥ 5 bàn mà chưa có thẻ đỏ thì CHỜ tiếp (không huỷ) — thẻ đỏ có thể xuất hiện sau.',
+    'CỔNG GIÁ (bản CŨ): giá cửa Tài phải ÂM và > −0,85, tức nằm trong khoảng −0,85 đến 0. Giá dương hoặc âm sâu hơn −0,85 đều bị loại. Đây chính là chỗ khác bot TNK gốc hiện tại.',
+    'DÙNG KÈO CẢ TRẬN và CHẤM theo TỔNG BÀN CẢ TRẬN — vì nhà cái không treo kèo Tài/Xỉu hiệp 2 cho giải 1508.',
+  ],
+  data: [
+    READ_ODDS,
+    'Bảng CLBV Analyst: rung_h2_rate và rung_h2_n của từng đội (cửa sổ trượt 7 ngày, chỉ đổi khi bấm Sync).',
+    'Số thẻ đỏ hai bên, để mở ngoại lệ khi trận đã ≥ 5 bàn.',
+    'Chấm theo TỔNG BÀN CẢ TRẬN. Mức luôn là số nguyên + 0,5 nên không bao giờ hoà.',
+  ],
+  entry: [
+    'Trận thuộc giải Câu Lạc Bộ 20 phút và có đội đạt ngưỡng rung_h2.',
+    'Đã cắm cờ trong phút 29-31 của hiệp 2 và từ đó tới giờ KHÔNG có thêm bàn nào.',
+    'Đang trong phút 34-38 của hiệp 2.',
+    'Tổng bàn < 5, hoặc đang có thẻ đỏ.',
+    'Có dòng kèo Tài/Xỉu CẢ TRẬN với mức đúng bằng tổng bàn + 0,5, giá cửa Tài trong khoảng −0,85 đến 0.',
+    'Kèo đang mở ở cả ba tầng (trận, tạm dừng, dòng kèo) → vào TÀI.',
+  ],
+  note: 'PAPER 100% — không có nhánh code nào gọi API đặt cược, không đọc ví, không bắn Telegram (chạy ngầm hoàn toàn). Rule sao chép nguyên văn từ bản .bak của bot TNK Top Rung H2 trước 19:17 ngày 21/08; đã đối chiếu 0 dòng code khác ngoài chuỗi định danh. ⚠️ Bot TNK gốc hiện ĐÃ ĐỔI rule (bỏ cổng giá, bỏ mốc phút tối đa) nên hai bên KHÔNG còn giống nhau — đó là lý do bot này tồn tại.',
+  short: '🅱️ PAPER ngầm · CLB 20p · rung_h2 ≥ 60%/n10 · cắm cờ phút 29-31 hiệp 2, tịt bàn tới phút 34-38 thì vào TÀI trên KÈO CẢ TRẬN, mức = tổng bàn + 0,5, giá phải ÂM và > −0,85 · thêm điều kiện tổng bàn < 5 hoặc có thẻ đỏ · 1 lệnh/trận · chấm theo bàn cả trận.',
 };
 
 const GENERIC: TxRule = {

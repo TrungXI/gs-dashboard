@@ -52,7 +52,9 @@ function rateColor(v: number | null): string {
 // Nhóm cột: [tiêu đề nhóm, key rate, key avgGoals, key n, nhãn %]
 type MetricKey = keyof Pick<ClbvAnalystRow,
   'fullTaiRate' | 'fullTaiAvgGoals' | 'fullN' |
+  'fullXiuRate' | 'fullXiuAvgGoals' |
   'h1TaiRate' | 'h1TaiAvgGoals' | 'h1N' |
+  'h1XiuRate' | 'h1XiuAvgGoals' |
   'h2TaiRate' | 'h2TaiAvgGoals' | 'h2N' |
   'h2XiuRate' | 'h2XiuAvgGoals' |
   'rungH1Rate' | 'rungH1AvgGoals' | 'rungH1N' |
@@ -60,8 +62,10 @@ type MetricKey = keyof Pick<ClbvAnalystRow,
 >;
 
 const GROUPS: { label: string; rateLabel: string; rate: MetricKey; avg: MetricKey; n: MetricKey }[] = [
-  { label: 'Cả trận', rateLabel: 'Tài%', rate: 'fullTaiRate', avg: 'fullTaiAvgGoals', n: 'fullN' },
-  { label: 'Hiệp 1', rateLabel: 'Tài%', rate: 'h1TaiRate', avg: 'h1TaiAvgGoals', n: 'h1N' },
+  { label: 'Cả trận · Tài', rateLabel: 'Tài%', rate: 'fullTaiRate', avg: 'fullTaiAvgGoals', n: 'fullN' },
+  { label: 'Cả trận · Xỉu', rateLabel: 'Xỉu%', rate: 'fullXiuRate', avg: 'fullXiuAvgGoals', n: 'fullN' },
+  { label: 'Hiệp 1 · Tài', rateLabel: 'Tài%', rate: 'h1TaiRate', avg: 'h1TaiAvgGoals', n: 'h1N' },
+  { label: 'Hiệp 1 · Xỉu', rateLabel: 'Xỉu%', rate: 'h1XiuRate', avg: 'h1XiuAvgGoals', n: 'h1N' },
   { label: 'Hiệp 2 · Tài', rateLabel: 'Tài%', rate: 'h2TaiRate', avg: 'h2TaiAvgGoals', n: 'h2N' },
   { label: 'Hiệp 2 · Xỉu', rateLabel: 'Xỉu%', rate: 'h2XiuRate', avg: 'h2XiuAvgGoals', n: 'h2N' },
   { label: 'Rung H1', rateLabel: '%', rate: 'rungH1Rate', avg: 'rungH1AvgGoals', n: 'rungH1N' },

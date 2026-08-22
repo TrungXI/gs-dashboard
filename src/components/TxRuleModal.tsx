@@ -2,12 +2,53 @@
 
 import { useEffect, useState } from 'react';
 import { getTxRule } from '../lib/txRules';
+import type { ClbvAnalystRow } from '../app/api/clbv-analyst/route';
 
 // Các con chạy model PAIR_WL (2026-08-07) — CHỈ đánh 4 CẶP whitelist (pair-whitelist-r4d.json, reload 5s).
 // Gồm 4 con Real tiền thật + paper "V.Bot 12 Test Whitelist" (cùng gate PAIR_WL). Hiện live danh sách cặp ở box 🎯.
 const PAIR_WL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Trong', 'V.Bot 12 Nam', 'V.Bot 12 Test Whitelist']);
 // Các con V.Bot 17 — đánh TÀI, CHỈ đánh cặp trong pair-blacklist (reload 5s). Hiện live danh sách cặp ở box 🎯.
 const PAIR_BL_VERSIONS = new Set(['V.Bot 17 Real', 'V.Bot 17 Real Kien', 'V.Bot 17 Test BlackList']);
+
+// ── Bot LỌC ĐỘI theo bảng CLBV Analyst — hiện danh sách đội đủ điều kiện LIVE (2026-08-22, user).
+// Bảng gs_clbv_analyst là cửa sổ trượt 7 ngày và CHỈ đổi khi bấm Sync, nên KHÔNG hardcode danh sách
+// vào txRules.ts (sẽ lỗi thời âm thầm) — fetch /api/clbv-analyst rồi lọc lại đúng điều kiện của bot.
+// ⚠️ Điều kiện dưới đây phải khớp checkMatchEligible() trong engine tương ứng. Engine đổi thì sửa ở đây.
+type TeamFilter = {
+  cond: string;
+  test: (r: ClbvAnalystRow) => boolean;
+  stat: (r: ClbvAnalystRow) => string;
+};
+const pct = (v: number | null) => (v == null ? '–' : `${v.toFixed(1)}%`);
+const TEAM_FILTERS: Record<string, TeamFilter> = {
+  // TNK Rung: rule 2026-08-22 00:57 đã BỎ điều kiện số mẫu, chỉ còn tỉ lệ.
+  'TNK - CLB - Top Rung H1': {
+    cond: 'rung_h1_rate ≥ 60% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.rungH1Rate ?? -1) >= 60,
+    stat: (r) => `rung H1 ${pct(r.rungH1Rate)} · n${r.rungH1N ?? 0}`,
+  },
+  'TNK - CLB - Top Rung H2': {
+    cond: 'rung_h2_rate ≥ 60% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.rungH2Rate ?? -1) >= 60,
+    stat: (r) => `rung H2 ${pct(r.rungH2Rate)} · n${r.rungH2N ?? 0}`,
+  },
+  'TNK - CLB - Top Tài H2': {
+    cond: 'h2_tai_rate ≥ 60% VÀ h2_n ≥ 10',
+    test: (r) => (r.h2TaiRate ?? -1) >= 60 && (r.h2N ?? 0) >= 10,
+    stat: (r) => `tài H2 ${pct(r.h2TaiRate)} · n${r.h2N ?? 0}`,
+  },
+  // NVT-R giữ rule CŨ: còn đòi n ≥ 10, và H1 còn cần h1_tai_avg_goals để chạy gate avgGoals.
+  'NVT-R-H1': {
+    cond: 'rung_h1_rate ≥ 60% VÀ rung_h1_n ≥ 10 VÀ có h1_tai_avg_goals',
+    test: (r) => (r.rungH1Rate ?? -1) >= 60 && (r.rungH1N ?? 0) >= 10 && r.h1TaiAvgGoals != null,
+    stat: (r) => `rung H1 ${pct(r.rungH1Rate)} · n${r.rungH1N ?? 0} · avg bàn H1 ${r.h1TaiAvgGoals?.toFixed(2) ?? '–'}`,
+  },
+  'NVT-R-H2': {
+    cond: 'rung_h2_rate ≥ 60% VÀ rung_h2_n ≥ 10',
+    test: (r) => (r.rungH2Rate ?? -1) >= 60 && (r.rungH2N ?? 0) >= 10,
+    stat: (r) => `rung H2 ${pct(r.rungH2Rate)} · n${r.rungH2N ?? 0}`,
+  },
+};
 
 // Modal xem RULE của 1 bot (calc_version) hoặc 1 handicap model (key 'HCAP:A|B|C').
 // Mở từ nút "📖 Rule" trong Báo cáo T/X. `title` (nếu truyền) hiện ở header thay cho `version`
@@ -17,6 +58,9 @@ export default function TxRuleModal({ version, title, onClose }: { version: stri
   const headerTitle = title ?? version;
   const [wlPairs, setWlPairs] = useState<string[] | null>(null);
   const [blPairs, setBlPairs] = useState<string[] | null>(null);
+  const [teamRows, setTeamRows] = useState<ClbvAnalystRow[] | null>(null);
+  const [teamMeta, setTeamMeta] = useState<{ updatedAt: string | null; windowDays: number } | null>(null);
+  const teamFilter = TEAM_FILTERS[version];
   const isPairWl = PAIR_WL_VERSIONS.has(version);
   const isPairBl = PAIR_BL_VERSIONS.has(version);
 
@@ -41,6 +85,21 @@ export default function TxRuleModal({ version, title, onClose }: { version: stri
         .then((j) => { if (!cancelled && j.ok) setBlPairs(j.pairs); })
         .catch(() => { /* noop */ });
     }
+    return () => { cancelled = true; };
+  }, [version]);
+
+  // Danh sách đội đủ điều kiện — LẤY LIVE mỗi lần mở modal, không hardcode.
+  useEffect(() => {
+    if (!TEAM_FILTERS[version]) { setTeamRows(null); setTeamMeta(null); return; }
+    let cancelled = false;
+    fetch('/api/clbv-analyst', { cache: 'no-store' })
+      .then((res) => res.json())
+      .then((j) => {
+        if (cancelled || !j.ok) return;
+        setTeamRows(j.rows as ClbvAnalystRow[]);
+        setTeamMeta({ updatedAt: j.updatedAt ?? null, windowDays: j.windowDays ?? 7 });
+      })
+      .catch(() => { /* noop */ });
     return () => { cancelled = true; };
   }, [version]);
 
@@ -128,6 +187,44 @@ export default function TxRuleModal({ version, title, onClose }: { version: stri
                     : 'Chưa set cặp nào → KHÔNG đánh gì'}
               </div>
               <div className="mt-1 text-[11px] text-[#9ca3af]">Cặp NỔ TÀI từ backtest FT — đổi qua /setpairbl hoặc nút "Set blacklist" trang 📈 (file pair-blacklist-r4d.json, reload 5s, áp V.Bot 17 Real + Kiên + Test).</div>
+            </div>
+          )}
+
+          {teamFilter && (
+            /* 🏷 Đội đủ điều kiện — LIVE từ bảng CLBV Analyst, lọc lại đúng điều kiện của bot này. */
+            <div className="mb-4 rounded-lg border border-[#38bdf8]/30 bg-[#38bdf8]/[.08] px-3 py-2">
+              <div className="mb-1 text-[12px] font-semibold uppercase tracking-wide text-[#7dd3fc]">
+                🏷 CHỈ xét trận có đội đạt — {teamFilter.cond}
+              </div>
+              {teamRows == null ? (
+                <div className="text-[13px] text-[#9ca3af]">Đang tải danh sách đội…</div>
+              ) : (() => {
+                const ok = teamRows.filter(teamFilter.test)
+                  .sort((a, b) => a.teamName.localeCompare(b.teamName));
+                if (!ok.length) {
+                  return <div className="text-[13px] text-[#fda4af]">Hiện KHÔNG đội nào đạt → bot sẽ không vào lệnh nào.</div>;
+                }
+                return (
+                  <>
+                    <div className="mb-1 text-[13px] font-semibold text-[#e5c893]">
+                      {ok.length}/{teamRows.length} đội đang đạt
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      {ok.map((t) => (
+                        <div key={t.teamId} className="flex flex-wrap items-baseline justify-between gap-x-3 text-[12.5px]">
+                          <span className="text-[#e5e5e5]">{t.teamName}</span>
+                          <span className="text-[11.5px] text-[#9ca3af]">{teamFilter.stat(t)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                );
+              })()}
+              <div className="mt-1.5 text-[11px] text-[#9ca3af]">
+                Lấy trực tiếp từ bảng CLBV Analyst lúc mở bảng này — cửa sổ {teamMeta?.windowDays ?? 7} ngày trượt.
+                {teamMeta?.updatedAt ? ` Bảng cập nhật lần cuối ${new Date(teamMeta.updatedAt).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' })}.` : ''}
+                {' '}Bảng CHỈ đổi khi bấm Sync ở trang CLBV Analyst.
+              </div>
             </div>
           )}
 

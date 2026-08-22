@@ -211,7 +211,9 @@ export default function TxReport() {
 
                   // Category "NVT - CLB" (user 2026-08-20) — bot rung H2 giải Câu Lạc Bộ 20p, rule riêng
                   // (không dùng gs_clbv_analyst, vào ouLines[0], có gia hạn khi bị khoá kèo).
-                  const NVT_CLB_GROUP = new Set(['NVT - CLB - RH2', 'NVT - CLB - RH2 Real']);
+                  // 2026-08-22 (user): CHỈ giữ 2 bot PAPER ở section này để đọc cặp A/B cho gọn.
+                  // 3 con tiền thật (RH2 Real, N Real, K Real) đã bỏ ra — chúng rơi xuống "Các bot khác".
+                  const NVT_CLB_GROUP = new Set(['NVT - CLB - RH2', 'NVT - CLB - RH2 - F1', 'NVT-R-H1', 'NVT-R-H2']);
                   const nvtClb = visibleSummary
                     .filter((s) => NVT_CLB_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
