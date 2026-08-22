@@ -202,20 +202,23 @@ export default function TxReport() {
               </div>
               <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
                 {(() => {
-                  // Category CHUNG "TNK - CLB" (user 2026-08-20): gom 2 bot cùng giải Câu Lạc Bộ
+                  // Category CHUNG "TNK - CLB" (user 2026-08-20): gom các bot cùng giải Câu Lạc Bộ
                   // 20p để áp chung update/rule, pin lên ĐẦU danh sách (trước cả section Chính).
-                  const TNK_CLB_GROUP = new Set(['TNK - CLB - Top Rung H1', 'TNK - CLB - Top Rung H2', 'TNK - CLB - Top Tài H2']);
+                  // 'TNK - CLB - Rung Except' thêm vào nhóm 2026-08-22 (user yêu cầu move vào tab
+                  // này) — đây là fork của 'NVT - CLB - RH2 - F1', KHÔNG chung code với 3 bot kia,
+                  // nhưng cùng giải 1508 nên gộp hiển thị cho dễ so sánh.
+                  // 'TNK - CLB - Top Xỉu H1' / 'Top Xỉu FT' thêm vào nhóm 2026-08-22 (bot MỚI, đánh
+                  // XỈU thay vì TÀI, cùng giải 1508 nên gộp chung tab theo yêu cầu user).
+                  const TNK_CLB_GROUP = new Set(['TNK - CLB - Top Rung H1', 'TNK - CLB - Top Rung H2', 'TNK - CLB - Top Tài H2', 'TNK - CLB - Rung Except', 'TNK - CLB - Top Xỉu H1', 'TNK - CLB - Top Xỉu FT', 'TNK - CLB - Goal Xỉu H1', 'TNK - CLB - Goal Xỉu FT']);
                   const tnkClb = visibleSummary
                     .filter((s) => TNK_CLB_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
 
-                  // Category "NVT - CLB" (user 2026-08-20) — bot rung H2 giải Câu Lạc Bộ 20p, rule riêng
-                  // (không dùng gs_clbv_analyst, vào ouLines[0], có gia hạn khi bị khoá kèo).
-                  // 2026-08-22 (user): CHỈ giữ 2 bot PAPER ở section này để đọc cặp A/B cho gọn.
-                  // 3 con tiền thật (RH2 Real, N Real, K Real) đã bỏ ra — chúng rơi xuống "Các bot khác".
-                  const NVT_CLB_GROUP = new Set(['NVT - CLB - RH2', 'NVT - CLB - RH2 - F1', 'NVT-R-H1', 'NVT-R-H2']);
-                  const nvtClb = visibleSummary
-                    .filter((s) => NVT_CLB_GROUP.has(s.calcVersion))
+                  // Category CHUNG "TNK - AS16" (user 2026-08-22) — giải Giao hữu Châu Á 16 phút,
+                  // tách riêng khỏi TNK - CLB (giải Câu Lạc Bộ 20p) dù cùng prefix "TNK".
+                  const TNK_AS16_GROUP = new Set(['TNK - AS16 - Top Xỉu H1', 'TNK - AS16 - Top Xỉu FT', 'TNK - AS16 - Goal Xỉu H1', 'TNK - AS16 - Goal Xỉu FT', 'TNK - AS16 - Top Tài H2']);
+                  const tnkAs16 = visibleSummary
+                    .filter((s) => TNK_AS16_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
 
                   // Gom bot TIỀN THẬT theo CHỦ VÍ (name) thành từng section cho dễ quan sát: Chính / Kiên / Nam / Trọng.
@@ -231,7 +234,7 @@ export default function TxReport() {
 
                   const reals = visibleSummary.filter((s) => REAL.has(s.calcVersion));
                   const others = visibleSummary
-                    .filter((s) => !REAL.has(s.calcVersion) && !TNK_CLB_GROUP.has(s.calcVersion) && !NVT_CLB_GROUP.has(s.calcVersion))
+                    .filter((s) => !REAL.has(s.calcVersion) && !TNK_CLB_GROUP.has(s.calcVersion) && !TNK_AS16_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
                   const sections = SECTION_ORDER
                     .map((name) => ({ name, bots: reals.filter((s) => owner(s.calcVersion) === name).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl) }))
@@ -329,14 +332,14 @@ export default function TxReport() {
                           </Fragment>
                         );
                       })()}
-                      {nvtClb.length > 0 && (() => {
-                        const open = !collapsed.has('__nvt_clb');
+                      {tnkAs16.length > 0 && (() => {
+                        const open = !collapsed.has('__tnk_as16');
                         return (
-                          <Fragment key="__nvt_clb">
-                            <SectionHeader name="__nvt_clb" label="🎯 NVT - CLB" count={nvtClb.length} open={open} live={nvtClb.some((s) => s.openBets > 0)} />
+                          <Fragment key="__tnk_as16">
+                            <SectionHeader name="__tnk_as16" label="🌏 TNK - AS16" count={tnkAs16.length} open={open} live={tnkAs16.some((s) => s.openBets > 0)} />
                             {open && (
                               <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
-                                {nvtClb.map(renderCard)}
+                                {tnkAs16.map(renderCard)}
                               </div>
                             )}
                           </Fragment>

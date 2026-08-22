@@ -4,15 +4,13 @@ import { syncTeamAnalyst } from '../../../../lib/teamAnalystSync';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// POST /api/clbv-analyst/sync — rebuild gs_clbv_analyst FROM SCRATCH over a rolling 7-day
-// window, for the "Câu Lạc Bộ" 20p league ONLY (match_type = '20p_club', league_id 1508 —
-// real-club-named virtual league, distinct from the 16p/20p (S/V) friendlies the rest of the
-// dashboard covers). Never mix leagues here.
+// POST /api/asians-analyst/sync — rebuild gs_asians_analyst FROM SCRATCH over a rolling 7-day
+// window, for the "Giao hữu Châu Á" 16p league ONLY (match_type = '16p', league_id 2140).
+// Mirror of /api/clbv-analyst/sync for the 16p league instead of 20p_club.
 //
 // 2026-08-22: source switched from match_odds_log JOIN gs_matches_history to gs_full_ticks —
 // see src/lib/teamAnalystSync.ts for the methodology and why. Shared with
-// /api/asians-analyst/sync (identical schema/logic, only match_type + destination table
-// differ) to avoid re-duplicating this a third time.
+// /api/clbv-analyst/sync (identical schema/logic, only match_type + destination table differ).
 
 const ANALYSIS_DATABASE_URL = process.env.ANALYSIS_DATABASE_URL;
 let _pool: Pool | null = null;
@@ -27,7 +25,7 @@ export async function POST() {
   if (!pool) return Response.json({ ok: false, error: 'no db' });
 
   try {
-    const result = await syncTeamAnalyst(pool, { matchType: '20p_club', table: 'gs_clbv_analyst' });
+    const result = await syncTeamAnalyst(pool, { matchType: '16p', table: 'gs_asians_analyst' });
     return Response.json(result);
   } catch (e) {
     return Response.json({ ok: false, error: String(e) });

@@ -10,31 +10,89 @@ const PAIR_WL_VERSIONS = new Set(['V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Tr
 // Các con V.Bot 17 — đánh TÀI, CHỈ đánh cặp trong pair-blacklist (reload 5s). Hiện live danh sách cặp ở box 🎯.
 const PAIR_BL_VERSIONS = new Set(['V.Bot 17 Real', 'V.Bot 17 Real Kien', 'V.Bot 17 Test BlackList']);
 
-// ── Bot LỌC ĐỘI theo bảng CLBV Analyst — hiện danh sách đội đủ điều kiện LIVE (2026-08-22, user).
-// Bảng gs_clbv_analyst là cửa sổ trượt 7 ngày và CHỈ đổi khi bấm Sync, nên KHÔNG hardcode danh sách
-// vào txRules.ts (sẽ lỗi thời âm thầm) — fetch /api/clbv-analyst rồi lọc lại đúng điều kiện của bot.
+// ── Bot LỌC ĐỘI theo bảng CLBV Analyst / Asians Analyst — hiện danh sách đội đủ điều kiện LIVE
+// (2026-08-22, user). Cả 2 bảng là cửa sổ trượt 7 ngày và CHỈ đổi khi bấm Sync, nên KHÔNG hardcode
+// danh sách vào txRules.ts (sẽ lỗi thời âm thầm) — fetch đúng API rồi lọc lại đúng điều kiện của
+// bot. `source` chọn bảng: 'clbv' = /api/clbv-analyst (giải Câu Lạc Bộ 20p), 'asians' =
+// /api/asians-analyst (giải Giao hữu Châu Á 16p) — mặc định 'clbv' khi không khai báo.
 // ⚠️ Điều kiện dưới đây phải khớp checkMatchEligible() trong engine tương ứng. Engine đổi thì sửa ở đây.
 type TeamFilter = {
   cond: string;
+  source?: 'clbv' | 'asians';
   test: (r: ClbvAnalystRow) => boolean;
   stat: (r: ClbvAnalystRow) => string;
 };
 const pct = (v: number | null) => (v == null ? '–' : `${v.toFixed(1)}%`);
 const TEAM_FILTERS: Record<string, TeamFilter> = {
   // TNK Rung: rule 2026-08-22 00:57 đã BỎ điều kiện số mẫu, chỉ còn tỉ lệ.
+  // 2026-08-22 (sau đó, cùng ngày): user yêu cầu nới ngưỡng tỉ lệ 60%→55% (cả 3 bot) để tăng số đội được chọn.
   'TNK - CLB - Top Rung H1': {
-    cond: 'rung_h1_rate ≥ 60% — KHÔNG đòi số mẫu tối thiểu',
-    test: (r) => (r.rungH1Rate ?? -1) >= 60,
+    cond: 'rung_h1_rate ≥ 55% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.rungH1Rate ?? -1) >= 55,
     stat: (r) => `rung H1 ${pct(r.rungH1Rate)} · n${r.rungH1N ?? 0}`,
   },
   'TNK - CLB - Top Rung H2': {
-    cond: 'rung_h2_rate ≥ 60% — KHÔNG đòi số mẫu tối thiểu',
-    test: (r) => (r.rungH2Rate ?? -1) >= 60,
+    cond: 'rung_h2_rate ≥ 55% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.rungH2Rate ?? -1) >= 55,
     stat: (r) => `rung H2 ${pct(r.rungH2Rate)} · n${r.rungH2N ?? 0}`,
   },
   'TNK - CLB - Top Tài H2': {
-    cond: 'h2_tai_rate ≥ 60% VÀ h2_n ≥ 10',
-    test: (r) => (r.h2TaiRate ?? -1) >= 60 && (r.h2N ?? 0) >= 10,
+    cond: 'h2_tai_rate ≥ 55% VÀ h2_n ≥ 10',
+    test: (r) => (r.h2TaiRate ?? -1) >= 55 && (r.h2N ?? 0) >= 10,
+    stat: (r) => `tài H2 ${pct(r.h2TaiRate)} · n${r.h2N ?? 0}`,
+  },
+  // Bot MỚI (2026-08-22), đánh XỈU — KHÔNG đòi số mẫu tối thiểu, cùng quy ước 2 bot TNK Rung gốc.
+  'TNK - CLB - Top Xỉu H1': {
+    cond: 'h1_xiu_rate ≥ 55% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.h1XiuRate ?? -1) >= 55,
+    stat: (r) => `xỉu H1 ${pct(r.h1XiuRate)} · n${r.h1N ?? 0}`,
+  },
+  'TNK - CLB - Top Xỉu FT': {
+    cond: 'full_xiu_rate ≥ 55% — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => (r.fullXiuRate ?? -1) >= 55,
+    stat: (r) => `xỉu FT ${pct(r.fullXiuRate)} · n${r.fullN ?? 0}`,
+  },
+  // "Goal Xỉu H1" (2026-08-22) KHÔNG có entry ở đây — điều kiện chọn trận là TỔNG (cộng) avg bàn
+  // của CẢ HAI đội, không phải ngưỡng áp cho từng đội riêng lẻ, nên không khớp mẫu UI "danh sách
+  // đội đủ điều kiện" (mỗi dòng 1 đội) của TEAM_FILTERS. Xem txRules.ts để biết rule đầy đủ.
+  'TNK - CLB - Goal Xỉu FT': {
+    cond: 'full_xiu_avg_goals ≤ 2 (và khác NULL) — KHÔNG đòi số mẫu tối thiểu',
+    test: (r) => r.fullXiuAvgGoals != null && r.fullXiuAvgGoals <= 2,
+    stat: (r) => `avg bàn khi thắng xỉu FT ${r.fullXiuAvgGoals?.toFixed(2) ?? '–'} · n${r.fullN ?? 0}`,
+  },
+  // Bot MỚI (2026-08-22), giải Giao hữu Châu Á 16p (gs_asians_analyst) — đánh XỈU, có thêm gate
+  // kèo chấp (hiện riêng ở phần "VÀO KÈO" của rule, không phải điều kiện chọn đội nên không lặp
+  // ở đây). "Top" chọn theo tỉ lệ thắng, "Goal" chọn theo trung bình bàn khi thắng.
+  'TNK - AS16 - Top Xỉu H1': {
+    cond: 'h1_xiu_rate ≥ 52% — KHÔNG đòi số mẫu tối thiểu',
+    source: 'asians',
+    test: (r) => (r.h1XiuRate ?? -1) >= 52,
+    stat: (r) => `xỉu H1 ${pct(r.h1XiuRate)} · n${r.h1N ?? 0}`,
+  },
+  'TNK - AS16 - Top Xỉu FT': {
+    cond: 'full_xiu_rate ≥ 52% — KHÔNG đòi số mẫu tối thiểu',
+    source: 'asians',
+    test: (r) => (r.fullXiuRate ?? -1) >= 52,
+    stat: (r) => `xỉu FT ${pct(r.fullXiuRate)} · n${r.fullN ?? 0}`,
+  },
+  'TNK - AS16 - Goal Xỉu H1': {
+    cond: 'h1_xiu_avg_goals ≤ 0.12 (và khác NULL) — KHÔNG đòi số mẫu tối thiểu',
+    source: 'asians',
+    test: (r) => r.h1XiuAvgGoals != null && r.h1XiuAvgGoals <= 0.12,
+    stat: (r) => `avg bàn khi thắng xỉu H1 ${r.h1XiuAvgGoals?.toFixed(2) ?? '–'} · n${r.h1N ?? 0}`,
+  },
+  'TNK - AS16 - Goal Xỉu FT': {
+    cond: 'full_xiu_avg_goals ≤ 0.8 (và khác NULL) — KHÔNG đòi số mẫu tối thiểu',
+    source: 'asians',
+    test: (r) => r.fullXiuAvgGoals != null && r.fullXiuAvgGoals <= 0.8,
+    stat: (r) => `avg bàn khi thắng xỉu FT ${r.fullXiuAvgGoals?.toFixed(2) ?? '–'} · n${r.fullN ?? 0}`,
+  },
+  // Bot MỚI (2026-08-22), đánh TÀI hiệp 2 — điều kiện chọn đội GIỐNG hệt mẫu h2_tai_rate của
+  // "TNK - CLB - Top Tài H2" gốc nhưng đọc bảng Asians Analyst, ngưỡng 54%.
+  'TNK - AS16 - Top Tài H2': {
+    cond: 'h2_tai_rate ≥ 54% — KHÔNG đòi số mẫu tối thiểu',
+    source: 'asians',
+    test: (r) => (r.h2TaiRate ?? -1) >= 54,
     stat: (r) => `tài H2 ${pct(r.h2TaiRate)} · n${r.h2N ?? 0}`,
   },
   // NVT-R giữ rule CŨ: còn đòi n ≥ 10, và H1 còn cần h1_tai_avg_goals để chạy gate avgGoals.
@@ -88,11 +146,14 @@ export default function TxRuleModal({ version, title, onClose }: { version: stri
     return () => { cancelled = true; };
   }, [version]);
 
-  // Danh sách đội đủ điều kiện — LẤY LIVE mỗi lần mở modal, không hardcode.
+  // Danh sách đội đủ điều kiện — LẤY LIVE mỗi lần mở modal, không hardcode. Endpoint phụ thuộc
+  // `source` của TEAM_FILTERS entry (clbv-analyst mặc định, asians-analyst cho họ bot AS16).
   useEffect(() => {
-    if (!TEAM_FILTERS[version]) { setTeamRows(null); setTeamMeta(null); return; }
+    const filter = TEAM_FILTERS[version];
+    if (!filter) { setTeamRows(null); setTeamMeta(null); return; }
     let cancelled = false;
-    fetch('/api/clbv-analyst', { cache: 'no-store' })
+    const endpoint = filter.source === 'asians' ? '/api/asians-analyst' : '/api/clbv-analyst';
+    fetch(endpoint, { cache: 'no-store' })
       .then((res) => res.json())
       .then((j) => {
         if (cancelled || !j.ok) return;
