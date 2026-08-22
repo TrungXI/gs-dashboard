@@ -217,7 +217,7 @@ function HcBox({ title, lines, active = false }: { title: string; lines?: HcLine
 }
 
 // ── Trimmed card (mirror RankingLive MatchBox, K-Sport overlays stripped) ─────
-function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number) => void }) {
+function MatchBox({ m }: { m: SabaLiveMatch }) {
   const isHT = m.period === 4;
   const phase = phaseParts(m);
   // Hiệp đang diễn ra → box tương ứng (HT coi như đã sang FT/H2).
@@ -279,17 +279,6 @@ function MatchBox({ m, onWatch }: { m: SabaLiveMatch; onWatch: (matchId: number)
           {phase.small && (
             <div className="text-[11px] font-semibold text-[#aaa] mt-0.5 tabular-nums">{phase.small}</div>
           )}
-          {/* Watch link → chuyển sang tab SABA Video, deep-link matchId */}
-          {m.hasStreaming && (
-            <button
-              type="button"
-              onClick={() => onWatch(m.matchId)}
-              title="Xem video trực tiếp trận này"
-              className="mt-1 inline-flex items-center gap-0.5 rounded border border-[#3a3a3a] bg-[#1c1c1c] px-1 py-0.5 text-[10px] font-semibold text-[#bbb] transition-colors hover:border-[#38bdf8]/60 hover:text-[#7dd3fc]"
-            >
-              📺
-            </button>
-          )}
         </div>
       </div>
       {/* Chấp (HDP) — 2 box: H1 + FT (Hiệp 2 / cả trận) */}
@@ -329,11 +318,6 @@ export default function SabaFootballLive({ initialMatch = null }: { initialMatch
     const id = setInterval(() => { if (typeof document === 'undefined' || !document.hidden) setNowMs(Date.now()); }, 30_000);
     return () => clearInterval(id);
   }, []);
-
-  // Watch link → chuyển view sang SABA Video + deep-link matchId qua URL param.
-  const goToVideo = (matchId: number) => {
-    window.location.href = `/?view=saba-video&match=${matchId}`;
-  };
 
   // Deep-link (initialMatch) — cuộn tới trận đó khi list có (chỉ 1 lần).
   const deepLinkDone = useRef(false);
@@ -510,7 +494,7 @@ export default function SabaFootballLive({ initialMatch = null }: { initialMatch
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
                 {s.matches.map((m) => (
-                  <MatchBox key={m.eventId} m={m} onWatch={goToVideo} />
+                  <MatchBox key={m.eventId} m={m} />
                 ))}
               </div>
             </section>

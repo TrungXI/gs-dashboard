@@ -5,7 +5,7 @@ import { notiOnce } from '../lib/notiDedup';
 
 // ── SABA shared notifications (OS goal + OS HT + in-app toast) ────────────────
 // Ported from LiveVideoWall/RankingLive's notifyOS + toggle + toast machinery so
-// both SabaFootballLive and SabaVideo get identical goal/HT/toast behaviour.
+// SabaFootballLive gets the same goal/HT/toast behaviour.
 // Detection is client-side from the SABA API poll data (score/period diff between
 // polls), same as the GS pages. Toggles persist under SABA-specific localStorage
 // keys (independent from the GS video/ranking pages). Coordinator follow-up.
