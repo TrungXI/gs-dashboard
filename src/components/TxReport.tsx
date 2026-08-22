@@ -221,6 +221,16 @@ export default function TxReport() {
                     .filter((s) => TNK_AS16_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
 
+                  // Category "NVT - CLB" — bot rung H2 giải Câu Lạc Bộ 20p, rule riêng (không dùng
+                  // gs_clbv_analyst, vào ouLines[0], có gia hạn khi bị khoá kèo). Thêm LẠI section
+                  // này 2026-08-22 (user yêu cầu) sau khi nó bị gỡ cùng đợt dựng TNK - AS16.
+                  // NVT-R-H1 / NVT-R-H2 = 2 bot paper ngầm giữ NGUYÊN rule Top Rung BẢN CŨ (trước
+                  // 19:17 ngày 21/08, còn cổng giá PRICE_FLOOR=-0.85) — dựng để đối chứng.
+                  const NVT_CLB_GROUP = new Set(['NVT - CLB - RH2', 'NVT - CLB - RH2 - F1', 'NVT-R-H1', 'NVT-R-H2']);
+                  const nvtClb = visibleSummary
+                    .filter((s) => NVT_CLB_GROUP.has(s.calcVersion))
+                    .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
+
                   // Gom bot TIỀN THẬT theo CHỦ VÍ (name) thành từng section cho dễ quan sát: Chính / Kiên / Nam / Trọng.
                   const REAL = new Set([
                     'V.Bot 12 Real', 'V.Bot 12 Kien', 'V.Bot 12 Nam', 'V.Bot 12 Trong', // V.Bot 12 real 4 ví (Nam/Kien/Trong KHÔNG có chữ "Real")
@@ -234,7 +244,7 @@ export default function TxReport() {
 
                   const reals = visibleSummary.filter((s) => REAL.has(s.calcVersion));
                   const others = visibleSummary
-                    .filter((s) => !REAL.has(s.calcVersion) && !TNK_CLB_GROUP.has(s.calcVersion) && !TNK_AS16_GROUP.has(s.calcVersion))
+                    .filter((s) => !REAL.has(s.calcVersion) && !TNK_CLB_GROUP.has(s.calcVersion) && !TNK_AS16_GROUP.has(s.calcVersion) && !NVT_CLB_GROUP.has(s.calcVersion))
                     .sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl);
                   const sections = SECTION_ORDER
                     .map((name) => ({ name, bots: reals.filter((s) => owner(s.calcVersion) === name).sort((a, b) => b.withNhoi.pnl - a.withNhoi.pnl) }))
@@ -340,6 +350,19 @@ export default function TxReport() {
                             {open && (
                               <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
                                 {tnkAs16.map(renderCard)}
+                              </div>
+                            )}
+                          </Fragment>
+                        );
+                      })()}
+                      {nvtClb.length > 0 && (() => {
+                        const open = !collapsed.has('__nvt_clb');
+                        return (
+                          <Fragment key="__nvt_clb">
+                            <SectionHeader name="__nvt_clb" label="🎯 NVT - CLB" count={nvtClb.length} open={open} live={nvtClb.some((s) => s.openBets > 0)} />
+                            {open && (
+                              <div className="ml-1.5 flex flex-col gap-2 border-l-2 border-[#2a2a2a] pl-2">
+                                {nvtClb.map(renderCard)}
                               </div>
                             )}
                           </Fragment>

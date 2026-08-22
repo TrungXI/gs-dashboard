@@ -44,6 +44,9 @@ const BOTS: {
   { calcVersion: 'TNK - AS16 - Goal Xỉu H1', label: 'TNK AS16 · Goal Xỉu H1 (≤0.12)', side: 'xiu' },
   { calcVersion: 'TNK - AS16 - Goal Xỉu FT', label: 'TNK AS16 · Goal Xỉu FT (≤0.8)', side: 'xiu' },
   { calcVersion: 'TNK - AS16 - Top Tài H2', label: 'TNK AS16 · Tài H2 (≥54%)', side: 'tai' },
+  // 2 bot NVT giải Câu Lạc Bộ 20p — thêm lại vào báo cáo 2026-08-22 (user yêu cầu).
+  { calcVersion: 'NVT - CLB - RH2', label: 'NVT CLB · RH2', side: 'tai' },
+  { calcVersion: 'NVT - CLB - RH2 - F1', label: 'NVT CLB · RH2 - F1', side: 'tai' },
   // 3 handicap models — same output shape, sourced from gs_hcap_paper by `model`.
   { calcVersion: 'hcap:A', dbKey: 'A', label: 'HC-A · Trên tiếp', side: 'tai', source: 'hcap' },
   { calcVersion: 'hcap:B', dbKey: 'B', label: 'HC-B · Ngược dưới+Tài', side: 'tai', source: 'hcap' },
