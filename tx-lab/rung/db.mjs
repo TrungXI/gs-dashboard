@@ -35,7 +35,7 @@ SELECT t.event_id, t.recorded_at, t.minute, t.period, t.is_h2,
        t.match_type, t.league_id,
        t.raw -> 'ouLines'   AS ou_ft_raw,
        t.raw -> 'ouH1Lines' AS ou_h1_raw
-FROM gs_16p_ticks t
+FROM gs_full_ticks t
 WHERE t.league_id = $1
   AND t.period IN (2, 8)
 ORDER BY t.event_id, t.recorded_at ASC, t.id ASC
@@ -55,7 +55,7 @@ SELECT league_id, match_type, is_h2,
        count(DISTINCT event_id)       AS events,
        min(minute)                    AS min_minute,
        max(minute)                    AS max_minute
-FROM gs_16p_ticks
+FROM gs_full_ticks
 WHERE league_id = $1 AND period IN (2, 8)
 GROUP BY 1, 2, 3
 ORDER BY 3
@@ -74,7 +74,7 @@ SELECT
   count(*) FILTER (WHERE jsonb_array_length(raw->'ouH1Lines') > 0
                      AND h1_line IS NOT NULL
                      AND abs(h1_line - (raw->'ouH1Lines'->0->>'line')::numeric) < 1e-9) AS h1_match
-FROM gs_16p_ticks
+FROM gs_full_ticks
 WHERE league_id = $1 AND period IN (2, 8)
 `;
 
